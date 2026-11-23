@@ -11,21 +11,14 @@ public enum LogSource: String, Codable, CaseIterable, Identifiable, Sendable {
     case git
     case ollama
     case claude
+    case terminal
+    case startup
     case email
     case system
 
     public var id: String { rawValue }
 
-    public var label: String {
-        switch self {
-        case .vite: return "vite"
-        case .git: return "git"
-        case .ollama: return "ollama"
-        case .claude: return "claude"
-        case .email: return "email"
-        case .system: return "system"
-        }
-    }
+    public var label: String { rawValue }
 }
 
 public enum LogLevel: String, Codable, CaseIterable, Sendable {
@@ -50,17 +43,113 @@ public struct LogEntry: Identifiable, Codable, Sendable {
     }
 }
 
-public struct ViteMonitorState: Sendable {
+public enum AppStackPreset: String, Codable, CaseIterable, Identifiable, Sendable {
+    case vite = "Vite + Node"
+    case nodeServer = "Node.js Server"
+    case nextjs = "Next.js"
+    case custom = "Custom"
+
+    public var id: String { rawValue }
+
+    public var defaultInstallCommand: String { "auto" }
+
+    public var defaultBuildCommand: String {
+        switch self {
+        case .vite: return "npm run build"
+        case .nodeServer: return ""
+        case .nextjs: return "npm run build"
+        case .custom: return ""
+        }
+    }
+
+    public func defaultStartCommand(port: Int) -> String {
+        switch self {
+        case .vite: return "npm run dev -- --port \(port)"
+        case .nodeServer: return "npm start"
+        case .nextjs: return "npm run dev -- -p \(port)"
+        case .custom: return ""
+        }
+    }
+}
+
+public struct ManagedApp: Identifiable, Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var stackPreset: AppStackPreset
+    public var repoURL: String
+    public var branch: String
+    public var localPath: String
+    public var monitorURL: String
+    public var port: Int
+    public var installCommand: String
+    public var buildCommand: String
+    public var startCommand: String
+    public var autoRestart: Bool
+    public var autoDeploy: Bool
+    public var runOnStartup: Bool
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        stackPreset: AppStackPreset = .vite,
+        repoURL: String = "",
+        branch: String = "main",
+        localPath: String = "",
+        monitorURL: String = "http://localhost:5173",
+        port: Int = 5173,
+        installCommand: String = "auto",
+        buildCommand: String = "npm run build",
+        startCommand: String = "npm run dev -- --port 5173",
+        autoRestart: Bool = true,
+        autoDeploy: Bool = true,
+        runOnStartup: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.stackPreset = stackPreset
+        self.repoURL = repoURL
+        self.branch = branch
+        self.localPath = localPath
+        self.monitorURL = monitorURL
+        self.port = port
+        self.installCommand = installCommand
+        self.buildCommand = buildCommand
+        self.startCommand = startCommand
+        self.autoRestart = autoRestart
+        self.autoDeploy = autoDeploy
+        self.runOnStartup = runOnStartup
+    }
+
+    /// Extracts `owner/repo` from GitHub HTTPS or SSH URLs when available.
+    public var githubFullName: String? {
+        let trimmed = repoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let range = trimmed.range(of: "github.com/") {
+            let suffix = String(trimmed[range.upperBound...])
+            return suffix.hasSuffix(".git") ? String(suffix.dropLast(4)) : suffix
+        }
+        if let range = trimmed.range(of: "github.com:") {
+            let suffix = String(trimmed[range.upperBound...])
+            return suffix.hasSuffix(".git") ? String(suffix.dropLast(4)) : suffix
+        }
+        return nil
+    }
+}
+
+public struct ManagedAppRuntimeState: Sendable {
     public var light: TrafficLightColor = .amber
-    public var statusLabel: String = "Checking"
-    public var monitorURL: String = "http://localhost:5173"
+    public var statusLabel: String = "Idle"
     public var httpStatus: Int?
     public var responseTimeMs: Int?
     public var isHealthy: Bool = false
+    public var isDeploying: Bool = false
     public var restartCount: Int = 0
     public var consecutiveFailures: Int = 0
-    public var autoRestart: Bool = true
+    public var commitHash: String = "—"
+    public var commitMessage: String = ""
+    public var dependencySummary: String = "Not checked"
     public var lastCheckedAt: Date?
+    public var lastDeployedAt: Date?
     public var lastError: String?
     public var healthySince: Date?
 
@@ -68,6 +157,72 @@ public struct ViteMonitorState: Sendable {
         guard isHealthy, let since = healthySince else { return 0 }
         return max(0, Int(Date().timeIntervalSince(since)))
     }
+}
+
+public struct DependencyToolStatus: Identifiable, Sendable {
+    public var id: String { name }
+    public let name: String
+    public let available: Bool
+    public let detail: String
+}
+
+public struct TerminalOutputLine: Identifiable, Sendable {
+    public let id: String
+    public let timestamp: Date
+    public let appName: String
+    public let text: String
+    public let isError: Bool
+
+    public init(appName: String, text: String, isError: Bool = false) {
+        self.id = UUID().uuidString
+        self.timestamp = Date()
+        self.appName = appName
+        self.text = SecretMasker.redact(text)
+        self.isError = isError
+    }
+}
+
+public struct StartupScheduleConfig: Codable, Sendable {
+    public var launchAtLogin: Bool = false
+    public var autoDeployOnStartup: Bool = false
+    public var preventSleep: Bool = true
+    public var cronEnabled: Bool = false
+    public var cronExpression: String = "@reboot"
+
+    public init(
+        launchAtLogin: Bool = false,
+        autoDeployOnStartup: Bool = false,
+        preventSleep: Bool = true,
+        cronEnabled: Bool = false,
+        cronExpression: String = "@reboot"
+    ) {
+        self.launchAtLogin = launchAtLogin
+        self.autoDeployOnStartup = autoDeployOnStartup
+        self.preventSleep = preventSleep
+        self.cronEnabled = cronEnabled
+        self.cronExpression = cronExpression
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        self.autoDeployOnStartup = try container.decodeIfPresent(Bool.self, forKey: .autoDeployOnStartup) ?? false
+        self.preventSleep = try container.decodeIfPresent(Bool.self, forKey: .preventSleep) ?? true
+        self.cronEnabled = try container.decodeIfPresent(Bool.self, forKey: .cronEnabled) ?? false
+        self.cronExpression = try container.decodeIfPresent(String.self, forKey: .cronExpression) ?? "@reboot"
+    }
+}
+
+public struct LaunchdDaemonState: Sendable {
+    public var light: TrafficLightColor = .amber
+    public var statusLabel: String = "Not Loaded"
+    public var isInstalled: Bool = false
+    public var isLoaded: Bool = false
+    public var pidText: String = "—"
+    public var plistPath: String = "~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist"
+    public var serverLogPath: String = "~/beaconmac/server.log"
+    public var sleepAssertionActive: Bool = false
+    public var caffeinateActive: Bool = false
 }
 
 public struct GitRepoSummary: Identifiable, Codable, Hashable, Sendable {
@@ -138,42 +293,28 @@ public struct ClaudeState: Sendable {
 }
 
 public struct BeaconConfig: Codable, Sendable {
-    public var workingDir: String
-    public var monitorURL: String
-    public var autoRestart: Bool
+    public var managedApps: [ManagedApp]
+    public var startupSchedule: StartupScheduleConfig
     public var maxRestarts: Int
-    public var gitRepoFullName: String
-    public var gitBranch: String
-    public var gitAutoDeploy: Bool
     public var gitPollIntervalSec: Int
     public var ollamaEndpoint: String
     public var ollamaActiveModel: String
     public var emailEnabled: Bool
     public var recipientEmail: String
-    public var smtpHost: String
-    public var smtpPort: Int
-    public var smtpUsername: String
     public var notifyOnCrash: Bool
     public var notifyOnDeploy: Bool
     public var notifyOnOllamaDown: Bool
 
     public static var defaults: BeaconConfig {
         BeaconConfig(
-            workingDir: FileManager.default.homeDirectoryForCurrentUser.path,
-            monitorURL: "http://localhost:5173",
-            autoRestart: true,
+            managedApps: [],
+            startupSchedule: StartupScheduleConfig(),
             maxRestarts: 10,
-            gitRepoFullName: "",
-            gitBranch: "main",
-            gitAutoDeploy: true,
             gitPollIntervalSec: 60,
             ollamaEndpoint: "http://127.0.0.1:11434",
             ollamaActiveModel: "",
             emailEnabled: true,
             recipientEmail: "",
-            smtpHost: "smtp.gmail.com",
-            smtpPort: 587,
-            smtpUsername: "",
             notifyOnCrash: true,
             notifyOnDeploy: true,
             notifyOnOllamaDown: true

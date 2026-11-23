@@ -6,10 +6,13 @@ import Observation
 @Observable
 public final class BeaconController {
     public var config: BeaconConfig
-    public var vite = ViteMonitorState()
+    public var appStates: [UUID: ManagedAppRuntimeState] = [:]
+    public var systemTools: [DependencyToolStatus] = []
+    public var terminalLines: [TerminalOutputLine] = []
     public var git = GitDeployState()
     public var ollama = OllamaState()
     public var claude = ClaudeState()
+    public var launchd = LaunchdDaemonState()
     public var logs: [LogEntry] = []
     public var logFileBytes: Int64 = 0
     public var busyAction: String?
@@ -17,8 +20,12 @@ public final class BeaconController {
 
     public let flatFileStore = FlatFileStore()
     public let keychain = KeychainStore()
+    public let terminalService = TerminalIntegrationService()
+    public let startupService = StartupSchedulerService()
+    public let sleepService = SleepPreventionService()
 
     private let processService = LocalProcessService()
+    private let deploymentService = AppDeploymentService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
     private let claudeService = ClaudeService()
@@ -28,7 +35,8 @@ public final class BeaconController {
     private var tickCount = 0
 
     public var aggregateLight: TrafficLightColor {
-        let lights = [vite.light, git.light, ollama.light, claude.light]
+        var lights: [TrafficLightColor] = [git.light, ollama.light, claude.light]
+        lights.append(contentsOf: config.managedApps.map { runtimeState(for: $0.id).light })
         if lights.contains(.red) { return .red }
         if lights.contains(.amber) { return .amber }
         return .green
@@ -37,24 +45,36 @@ public final class BeaconController {
     public init() {
         let loaded = flatFileStore.loadConfig()
         self.config = loaded
-        self.vite.monitorURL = loaded.monitorURL
-        self.vite.autoRestart = loaded.autoRestart
-        self.git.repoFullName = loaded.gitRepoFullName
-        self.git.branch = loaded.gitBranch
-        self.git.autoDeploy = loaded.gitAutoDeploy
-        self.git.pollIntervalSec = loaded.gitPollIntervalSec
+        self.config.startupSchedule.launchAtLogin = startupService.isLaunchAtLoginEnabled
         self.ollama.endpoint = loaded.ollamaEndpoint
         self.ollama.activeModel = loaded.ollamaActiveModel
         self.logs = flatFileStore.loadRecentLogs()
         self.logFileBytes = flatFileStore.logFileByteCount()
 
+        for app in loaded.managedApps {
+            self.appStates[app.id] = ManagedAppRuntimeState()
+        }
+
+        self.launchd.plistPath = startupService.launchdPlistTildePath
+        self.launchd.serverLogPath = startupService.serverLogTildePath
+
+        if loaded.startupSchedule.preventSleep {
+            let sleepRes = sleepService.setPreventSystemSleep(true)
+            self.launchd.sleepAssertionActive = sleepService.isAssertionActive
+            log(.startup, sleepRes.ok ? .info : .warn, sleepRes.detail)
+        }
+
         alertService.requestPermission()
-        log(.system, .info, "Beacon SwiftUI monitor initialized (flat-file log: \(flatFileStore.logFileURL.path))")
+        log(.system, .info, "BeaconMac initialized with \(loaded.managedApps.count) managed app(s) (flat-file log: \(flatFileStore.logFileURL.path))")
 
         Task {
-            await restoreSavedKeysAndBoot()
+            await bootServices()
         }
         startPollingLoop()
+    }
+
+    public func runtimeState(for appID: UUID) -> ManagedAppRuntimeState {
+        appStates[appID] ?? ManagedAppRuntimeState()
     }
 
     public func log(_ source: LogSource, _ level: LogLevel, _ message: String) {
@@ -66,8 +86,21 @@ public final class BeaconController {
         logFileBytes = flatFileStore.logFileByteCount()
     }
 
-    private func restoreSavedKeysAndBoot() async {
-        await probeVite(logTransition: true)
+    public func appendTerminal(appName: String, text: String, isError: Bool = false) {
+        terminalLines.append(TerminalOutputLine(appName: appName, text: text, isError: isError))
+        if terminalLines.count > 500 {
+            terminalLines = Array(terminalLines.suffix(500))
+        }
+    }
+
+    public func clearTerminal() {
+        terminalLines = []
+    }
+
+    private func bootServices() async {
+        await auditSystemDependencies()
+        await refreshLaunchdStatus()
+        await probeAllManagedApps(logTransitions: true)
         await probeOllama(logResult: true)
 
         if let savedGitToken = keychain.read(.githubToken), !savedGitToken.isEmpty {
@@ -79,6 +112,22 @@ public final class BeaconController {
             claude.keyHint = SecretMasker.mask(savedClaudeKey)
             await probeClaude(logResult: true)
         }
+
+        // Automatically start or deploy any app marked runOnStartup
+        let startupApps = config.managedApps.filter(\.runOnStartup)
+        if !startupApps.isEmpty {
+            log(.startup, .info, "Running startup sequence for \(startupApps.count) app(s)...")
+            for app in startupApps {
+                let state = runtimeState(for: app.id)
+                if !state.isHealthy {
+                    if config.startupSchedule.autoDeployOnStartup && !app.repoURL.isEmpty {
+                        await cloneBuildAndDeploy(app: app, trigger: "startup")
+                    } else if !app.localPath.isEmpty {
+                        await restartManagedApp(app, reason: "startup")
+                    }
+                }
+            }
+        }
     }
 
     private func startPollingLoop() {
@@ -89,15 +138,15 @@ public final class BeaconController {
                 guard let self, !Task.isCancelled else { break }
                 self.tickCount += 1
 
-                await self.probeVite(logTransition: true)
+                await self.probeAllManagedApps(logTransitions: true)
 
                 if self.tickCount % 5 == 0 {
                     await self.probeOllama(logResult: false)
                 }
 
                 let gitIntervalTicks = max(5, self.config.gitPollIntervalSec / 3)
-                if self.config.gitAutoDeploy && !self.config.gitRepoFullName.isEmpty && self.tickCount % gitIntervalTicks == 0 {
-                    await self.checkAndDeployGit(forcePull: false, trigger: "poll")
+                if self.tickCount % gitIntervalTicks == 0 {
+                    await self.pollAutoDeployApps()
                 }
 
                 if self.tickCount % 20 == 0 && self.keychain.read(.claudeAPIKey) != nil {
@@ -107,98 +156,419 @@ public final class BeaconController {
         }
     }
 
-    // MARK: - Vite / Localhost Watchdog
+    // MARK: - Multi-App CRUD, Probe, Dependency Audit & Clone/Build/Deploy
 
-    public func updateMonitorURL(_ rawURL: String) async {
-        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard LocalProcessService.isValidLocalhostURL(trimmed) else {
-            bannerError = "Monitor URL must be a localhost or 127.0.0.1 HTTP(S) URL (e.g. http://localhost:5173)."
+    public func upsertManagedApp(_ app: ManagedApp) async {
+        let trimmedURL = app.monitorURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard LocalProcessService.isValidLocalAppURL(trimmedURL) else {
+            bannerError = "Monitor URL for \(app.name) must use a local host (localhost, 127.0.0.1, ::1, *.localhost, or *.local)."
             return
         }
+
+        var normalized = app
+        normalized.monitorURL = trimmedURL
+        normalized.port = LocalProcessService.extractPort(from: trimmedURL, fallback: app.port)
+
         bannerError = nil
-        config.monitorURL = trimmed
-        vite.monitorURL = trimmed
-        vite.consecutiveFailures = 0
-        vite.healthySince = nil
+        if let idx = config.managedApps.firstIndex(where: { $0.id == normalized.id }) {
+            config.managedApps[idx] = normalized
+            log(.vite, .info, "Updated managed app \"\(normalized.name)\" (\(normalized.monitorURL))")
+        } else {
+            config.managedApps.append(normalized)
+            appStates[normalized.id] = ManagedAppRuntimeState()
+            log(.vite, .info, "Added managed app \"\(normalized.name)\" (\(normalized.monitorURL))")
+        }
         flatFileStore.saveConfig(config)
-        log(.vite, .info, "Switched monitored localhost URL to \(trimmed)")
-        await probeVite(logTransition: true)
+        await probeManagedApp(normalized, logTransition: true)
+        if !normalized.localPath.isEmpty {
+            await checkDependencies(for: normalized)
+        }
     }
 
-    public func probeVite(logTransition: Bool) async {
-        let wasHealthy = vite.isHealthy
-        let result = await processService.probe(urlString: config.monitorURL)
-        vite.lastCheckedAt = Date()
-        vite.httpStatus = result.httpStatus
-        vite.responseTimeMs = result.responseTimeMs
-        vite.isHealthy = result.healthy
-        vite.lastError = result.error
+    public func deleteManagedApp(_ app: ManagedApp) {
+        config.managedApps.removeAll { $0.id == app.id }
+        appStates.removeValue(forKey: app.id)
+        flatFileStore.saveConfig(config)
+        log(.vite, .info, "Removed managed app \"\(app.name)\"")
+    }
+
+    public func toggleAppStartup(_ app: ManagedApp) {
+        guard let idx = config.managedApps.firstIndex(where: { $0.id == app.id }) else { return }
+        config.managedApps[idx].runOnStartup.toggle()
+        let enabled = config.managedApps[idx].runOnStartup
+        flatFileStore.saveConfig(config)
+        log(.startup, .info, "Startup launch \(enabled ? "enabled" : "disabled") for \(app.name)")
+    }
+
+    public func probeAllManagedApps(logTransitions: Bool) async {
+        for app in config.managedApps {
+            await probeManagedApp(app, logTransition: logTransitions)
+        }
+    }
+
+    public func probeManagedApp(_ app: ManagedApp, logTransition: Bool) async {
+        var state = runtimeState(for: app.id)
+        if state.isDeploying { return }
+
+        let wasHealthy = state.isHealthy
+        let result = await processService.probe(urlString: app.monitorURL)
+        state.lastCheckedAt = Date()
+        state.httpStatus = result.httpStatus
+        state.responseTimeMs = result.responseTimeMs
+        state.isHealthy = result.healthy
+        state.lastError = result.error
 
         if result.healthy {
-            vite.consecutiveFailures = 0
-            vite.light = .green
-            vite.statusLabel = "Running"
-            if vite.healthySince == nil {
-                vite.healthySince = Date()
+            state.consecutiveFailures = 0
+            state.light = .green
+            state.statusLabel = "Healthy"
+            if state.healthySince == nil {
+                state.healthySince = Date()
             }
             if logTransition && !wasHealthy {
-                log(.vite, .info, "Localhost app reachable at \(config.monitorURL) (HTTP \(result.httpStatus ?? 200), \(result.responseTimeMs ?? 1) ms)")
+                log(.vite, .info, "[\(app.name)] Reachable at \(app.monitorURL) (HTTP \(result.httpStatus ?? 200), \(result.responseTimeMs ?? 1) ms)")
             }
+            appStates[app.id] = state
         } else {
-            vite.healthySince = nil
-            vite.consecutiveFailures += 1
-            vite.light = .red
-            vite.statusLabel = "Unreachable"
+            state.healthySince = nil
+            state.consecutiveFailures += 1
+            state.light = .red
+            state.statusLabel = "Down"
+            appStates[app.id] = state
 
-            if vite.consecutiveFailures == 3 {
-                log(.vite, .error, "Monitored app \(config.monitorURL) failed 3 consecutive health checks")
+            if state.consecutiveFailures == 3 {
+                log(.vite, .error, "[\(app.name)] Failed 3 consecutive health checks at \(app.monitorURL)")
                 if config.notifyOnCrash {
                     let note = await alertService.sendAlert(
-                        title: "Localhost Server Down",
-                        body: "\(config.monitorURL) stopped responding.",
+                        title: "\(app.name) Down",
+                        body: "\(app.monitorURL) stopped responding.",
                         recipientEmail: config.recipientEmail,
                         emailEnabled: config.emailEnabled
                     )
                     log(.email, .info, note)
                 }
-                if config.autoRestart && vite.restartCount < config.maxRestarts {
-                    await triggerViteRestart(reason: "auto-recovery #\(vite.restartCount + 1)")
+                if app.autoRestart && !app.localPath.isEmpty && state.restartCount < config.maxRestarts {
+                    await restartManagedApp(app, reason: "auto-recovery #\(state.restartCount + 1)")
                 }
             }
         }
     }
 
-    public func triggerViteRestart(reason: String = "manual restart") async {
-        busyAction = "vite-restart"
-        defer { busyAction = nil }
-
-        vite.light = .amber
-        vite.statusLabel = "Restarting"
-        let port = LocalProcessService.extractPort(from: config.monitorURL)
-        log(.vite, .info, "Invoking App Sandbox restart script for \(config.workingDir) on port \(port) (\(reason))...")
-
-        let outcome = await processService.runSandboxRestartScript(workingDir: config.workingDir, port: port)
-        if outcome.ok {
-            vite.restartCount += 1
-            log(.vite, .info, outcome.detail)
-            try? await Task.sleep(for: .seconds(2))
-            await probeVite(logTransition: true)
-        } else {
-            vite.light = .red
-            vite.statusLabel = "Script Missing"
-            vite.lastError = outcome.detail
-            log(.vite, .warn, outcome.detail)
+    public func auditSystemDependencies() async {
+        let audit = await deploymentService.checkDependencies(for: nil)
+        if !audit.tools.isEmpty {
+            systemTools = audit.tools
+        }
+        for line in audit.result.stdoutLines {
+            appendTerminal(appName: "system", text: line)
+        }
+        for line in audit.result.stderrLines {
+            appendTerminal(appName: "system", text: line, isError: true)
         }
     }
 
-    public func toggleViteAutoRestart() {
-        config.autoRestart.toggle()
-        vite.autoRestart = config.autoRestart
-        flatFileStore.saveConfig(config)
-        log(.vite, .info, "Auto-restart watchdog \(config.autoRestart ? "enabled" : "disabled")")
+    public func checkDependencies(for app: ManagedApp) async {
+        busyAction = "deps-\(app.id.uuidString)"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: app.name, text: "$ beacon-check-deps.sh \"\(app.localPath)\"")
+        let audit = await deploymentService.checkDependencies(for: app.localPath)
+        if !audit.tools.isEmpty {
+            systemTools = audit.tools
+        }
+        for line in audit.result.stdoutLines {
+            appendTerminal(appName: app.name, text: line)
+        }
+        for line in audit.result.stderrLines {
+            appendTerminal(appName: app.name, text: line, isError: true)
+        }
+
+        var state = runtimeState(for: app.id)
+        state.dependencySummary = audit.appSummary
+        appStates[app.id] = state
+        log(.terminal, audit.result.ok ? .info : .warn, "[\(app.name)] Dependency check: \(audit.appSummary)")
     }
 
-    // MARK: - Git Auto-Deploy & Keychain Token
+    public func cloneBuildAndDeploy(app: ManagedApp, trigger: String = "manual") async {
+        busyAction = "deploy-\(app.id.uuidString)"
+        defer { busyAction = nil }
+
+        var state = runtimeState(for: app.id)
+        state.isDeploying = true
+        state.light = .amber
+        state.statusLabel = "Deploying"
+        state.lastError = nil
+        appStates[app.id] = state
+
+        log(.git, .info, "[\(app.name)] Starting clone/pull, dependency check, build & local deploy (\(trigger))...")
+        appendTerminal(appName: app.name, text: "$ beacon-deploy.sh \(app.repoURL) \(app.branch) \(app.localPath) \(app.port)")
+
+        let res = await deploymentService.deployApp(app)
+        for line in res.stdoutLines {
+            appendTerminal(appName: app.name, text: line)
+        }
+        for line in res.stderrLines {
+            appendTerminal(appName: app.name, text: line, isError: true)
+        }
+
+        state = runtimeState(for: app.id)
+        state.isDeploying = false
+
+        if res.ok {
+            state.lastDeployedAt = Date()
+            state.lastError = nil
+            state.dependencySummary = "Deps verified & built"
+            appStates[app.id] = state
+            log(.git, .info, "[\(app.name)] \(res.summary)")
+            if config.notifyOnDeploy {
+                let note = await alertService.sendAlert(
+                    title: "Deployed \(app.name)",
+                    body: res.summary,
+                    recipientEmail: config.recipientEmail,
+                    emailEnabled: config.emailEnabled
+                )
+                log(.email, .info, note)
+            }
+            try? await Task.sleep(for: .seconds(2))
+            await probeManagedApp(app, logTransition: true)
+        } else {
+            state.light = .red
+            state.statusLabel = "Deploy Failed"
+            state.lastError = res.summary
+            appStates[app.id] = state
+            bannerError = "[\(app.name)] \(res.summary)"
+            log(.git, .error, "[\(app.name)] \(res.summary)")
+        }
+    }
+
+    public func restartManagedApp(_ app: ManagedApp, reason: String = "manual") async {
+        busyAction = "restart-\(app.id.uuidString)"
+        defer { busyAction = nil }
+
+        var state = runtimeState(for: app.id)
+        state.light = .amber
+        state.statusLabel = "Restarting"
+        appStates[app.id] = state
+
+        appendTerminal(appName: app.name, text: "$ beacon-restart.sh \"\(app.localPath)\" \(app.port) (\(reason))")
+        let res = await deploymentService.restartApp(app)
+        for line in res.stdoutLines { appendTerminal(appName: app.name, text: line) }
+        for line in res.stderrLines { appendTerminal(appName: app.name, text: line, isError: true) }
+
+        if res.ok {
+            state.restartCount += 1
+            state.lastError = nil
+            appStates[app.id] = state
+            log(.vite, .info, "[\(app.name)] Restarted on port \(app.port) (\(reason))")
+            try? await Task.sleep(for: .seconds(2))
+            await probeManagedApp(app, logTransition: true)
+        } else {
+            state.light = .red
+            state.statusLabel = "Action Needed"
+            state.lastError = res.summary
+            appStates[app.id] = state
+            log(.vite, .warn, "[\(app.name)] \(res.summary)")
+        }
+    }
+
+    public func stopManagedApp(_ app: ManagedApp) async {
+        busyAction = "stop-\(app.id.uuidString)"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: app.name, text: "$ beacon-stop.sh \(app.port)")
+        let res = await deploymentService.stopApp(port: app.port)
+        for line in res.stdoutLines { appendTerminal(appName: app.name, text: line) }
+        for line in res.stderrLines { appendTerminal(appName: app.name, text: line, isError: true) }
+
+        var state = runtimeState(for: app.id)
+        state.light = .amber
+        state.statusLabel = "Stopped"
+        state.isHealthy = false
+        state.healthySince = nil
+        appStates[app.id] = state
+        log(.vite, .info, "[\(app.name)] \(res.summary)")
+    }
+
+    private func pollAutoDeployApps() async {
+        let token = keychain.read(.githubToken)
+        for app in config.managedApps where app.autoDeploy {
+            guard let fullName = app.githubFullName else { continue }
+            var state = runtimeState(for: app.id)
+            if state.isDeploying { continue }
+
+            if let commit = try? await gitService.fetchLatestCommit(repoFullName: fullName, branch: app.branch, token: token) {
+                let previous = state.commitHash
+                state.commitHash = commit.shaShort
+                state.commitMessage = commit.message
+                appStates[app.id] = state
+
+                if previous != "—" && previous != commit.shaShort {
+                    log(.git, .info, "[\(app.name)] New commit \(commit.shaShort) detected on \(fullName)@\(app.branch); triggering auto-deploy")
+                    await cloneBuildAndDeploy(app: app, trigger: "git poll \(commit.shaShort)")
+                }
+            }
+        }
+    }
+
+    // MARK: - Terminal & Startup / Cron Integration
+
+    public func openInTerminal(app: ManagedApp) {
+        let res = terminalService.openFolderInTerminal(app.localPath)
+        log(.terminal, res.ok ? .info : .warn, "[\(app.name)] \(res.detail)")
+        if !res.ok { bannerError = res.detail }
+    }
+
+    public func tailLogsInTerminal(app: ManagedApp) {
+        let res = terminalService.openAppLogInTerminal(app: app)
+        log(.terminal, .info, "[\(app.name)] \(res.detail)")
+    }
+
+    public func copyDeployCommand(for app: ManagedApp) {
+        let cmd = terminalService.copyDeployCommand(for: app)
+        appendTerminal(appName: app.name, text: "Copied deploy command: \(cmd)")
+        log(.terminal, .info, "[\(app.name)] Copied terminal deploy command to clipboard")
+    }
+
+    public func toggleLaunchAtLogin(_ enabled: Bool) {
+        let res = startupService.setLaunchAtLogin(enabled)
+        config.startupSchedule.launchAtLogin = startupService.isLaunchAtLoginEnabled
+        flatFileStore.saveConfig(config)
+        log(.startup, res.ok ? .info : .warn, res.detail)
+        if !res.ok { bannerError = res.detail }
+    }
+
+    public func updateStartupSchedule(autoDeploy: Bool, cronEnabled: Bool, cronExpression: String) {
+        config.startupSchedule.autoDeployOnStartup = autoDeploy
+        config.startupSchedule.cronEnabled = cronEnabled
+        config.startupSchedule.cronExpression = cronExpression.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "@reboot"
+            : cronExpression.trimmingCharacters(in: .whitespacesAndNewlines)
+        flatFileStore.saveConfig(config)
+        log(.startup, .info, "Saved startup schedule (cron: \(config.startupSchedule.cronExpression), auto-deploy on boot: \(autoDeploy))")
+    }
+
+    public func copyCrontabInstallCommand() {
+        let cmd = startupService.copyCrontabCommand(cronExpression: config.startupSchedule.cronExpression)
+        appendTerminal(appName: "cron", text: "Copied crontab command: \(cmd)")
+        log(.startup, .info, "Copied macOS crontab install command to clipboard")
+    }
+
+    public func exportLaunchAgentPlist() {
+        let res = startupService.exportLaunchAgentPlist(preventSleep: config.startupSchedule.preventSleep)
+        log(.startup, res.ok ? .info : .warn, res.detail)
+    }
+
+    public func refreshLaunchdStatus() async {
+        let probe = await deploymentService.runLaunchdAction(
+            "status",
+            bundleID: startupService.bundleID,
+            preventSleep: config.startupSchedule.preventSleep
+        )
+        applyLaunchdProbe(probe)
+    }
+
+    public func installAndLoadLaunchdAgent() async {
+        busyAction = "launchd-install"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "launchd", text: "$ beacon-launchd.sh install \(startupService.bundleID) \(config.startupSchedule.preventSleep ? "1" : "0")")
+        let probe = await deploymentService.runLaunchdAction(
+            "install",
+            bundleID: startupService.bundleID,
+            preventSleep: config.startupSchedule.preventSleep
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "launchd", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "launchd", text: line, isError: true) }
+
+        applyLaunchdProbe(probe)
+        if probe.result.ok {
+            log(.startup, .info, "Installed and loaded macOS launchd supervisor (\(startupService.launchdPlistTildePath))")
+            await refreshLaunchdStatus()
+        } else {
+            bannerError = probe.result.summary
+            log(.startup, .error, "Failed to load launchd supervisor: \(probe.result.summary)")
+        }
+    }
+
+    public func unloadLaunchdAgent() async {
+        busyAction = "launchd-stop"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "launchd", text: "$ launchctl unload \(startupService.launchdPlistTildePath)")
+        let probe = await deploymentService.runLaunchdAction(
+            "stop",
+            bundleID: startupService.bundleID,
+            preventSleep: config.startupSchedule.preventSleep
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "launchd", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "launchd", text: line, isError: true) }
+
+        applyLaunchdProbe(probe)
+        if probe.result.ok {
+            log(.startup, .info, "Stopped macOS launchd background service (\(startupService.launchdLabel))")
+        } else {
+            bannerError = probe.result.summary
+            log(.startup, .warn, probe.result.summary)
+        }
+    }
+
+    private func applyLaunchdProbe(_ probe: AppDeploymentService.LaunchdProbeResult) {
+        if let installed = probe.isInstalled { launchd.isInstalled = installed }
+        if let loaded = probe.isLoaded { launchd.isLoaded = loaded }
+        if let pid = probe.pidText { launchd.pidText = pid }
+        if let caff = probe.caffeinateActive { launchd.caffeinateActive = caff }
+        if let plist = probe.plistPath { launchd.plistPath = plist }
+        if let logPath = probe.serverLogPath { launchd.serverLogPath = logPath }
+        launchd.sleepAssertionActive = sleepService.isAssertionActive
+
+        if launchd.isLoaded {
+            launchd.light = .green
+            launchd.statusLabel = (launchd.pidText != "-" && launchd.pidText != "running" && launchd.pidText != "—")
+                ? "Loaded · PID \(launchd.pidText)"
+                : "Loaded"
+        } else if launchd.isInstalled {
+            launchd.light = .amber
+            launchd.statusLabel = "Unloaded"
+        } else {
+            launchd.light = .amber
+            launchd.statusLabel = "Not Installed"
+        }
+    }
+
+    public func togglePreventSleep(_ enabled: Bool) {
+        config.startupSchedule.preventSleep = enabled
+        flatFileStore.saveConfig(config)
+        let res = sleepService.setPreventSystemSleep(enabled)
+        launchd.sleepAssertionActive = sleepService.isAssertionActive
+        log(.startup, res.ok ? .info : .warn, res.detail)
+        if !res.ok { bannerError = res.detail }
+    }
+
+    public func watchSupervisorLiveLogs() {
+        let res = terminalService.watchSupervisorLogInTerminal()
+        appendTerminal(appName: "logs", text: "$ \(startupService.tailServerLogCommand)")
+        log(.terminal, res.ok ? .info : .warn, res.detail)
+    }
+
+    public func openEnergySettings() {
+        let res = sleepService.openEnergySettings()
+        log(.startup, res.ok ? .info : .warn, res.detail)
+    }
+
+    public func copyLaunchctlUnloadCommand() {
+        let cmd = startupService.launchctlUnloadCommand
+        terminalService.copyCommand(cmd)
+        appendTerminal(appName: "launchd", text: "Copied: \(cmd)")
+        log(.startup, .info, "Copied launchctl unload command to clipboard")
+    }
+
+    public func copyCaffeinateCommand() {
+        let cmd = sleepService.copyCaffeinateCommand()
+        appendTerminal(appName: "sleep", text: "Copied: \(cmd)")
+        log(.startup, .info, "Copied caffeinate -s command to clipboard")
+    }
+
+    // MARK: - GitHub Account Keychain Sync
 
     @discardableResult
     public func connectGitToken(_ rawToken: String, persistToKeychain: Bool = true) async -> Bool {
@@ -215,21 +585,9 @@ public final class BeaconController {
             git.keyHint = SecretMasker.mask(rawToken)
             git.repos = verified.repos
             git.lastError = nil
-            git.light = config.gitAutoDeploy ? .green : .amber
-            git.statusLabel = config.gitAutoDeploy ? "Synced" : "Paused"
-
-            if config.gitRepoFullName.isEmpty, let first = verified.repos.first {
-                config.gitRepoFullName = first.fullName
-                config.gitBranch = first.defaultBranch
-                git.repoFullName = first.fullName
-                git.branch = first.defaultBranch
-                flatFileStore.saveConfig(config)
-            }
-
-            log(.git, .info, "Connected GitHub account @\(verified.username) via Keychain token (\(verified.repos.count) repos accessible)")
-            if !config.gitRepoFullName.isEmpty {
-                await checkAndDeployGit(forcePull: false, trigger: "token connect")
-            }
+            git.light = .green
+            git.statusLabel = "Connected"
+            log(.git, .info, "Connected GitHub account @\(verified.username) via Keychain (\(verified.repos.count) repos accessible)")
             return true
         } catch {
             let msg = SecretMasker.redact(error.localizedDescription)
@@ -251,82 +609,6 @@ public final class BeaconController {
         git.light = .amber
         git.statusLabel = "Idle"
         log(.git, .info, "Removed GitHub token from macOS Keychain\(prevUser.map { " (@\($0))" } ?? "")")
-    }
-
-    public func selectGitRepo(_ repoFullName: String, branch: String) async {
-        config.gitRepoFullName = repoFullName
-        config.gitBranch = branch
-        git.repoFullName = repoFullName
-        git.branch = branch
-        flatFileStore.saveConfig(config)
-        log(.git, .info, "Selected GitHub repository \(repoFullName) (\(branch))")
-        await checkAndDeployGit(forcePull: false, trigger: "repo switch")
-    }
-
-    public func checkAndDeployGit(forcePull: Bool, trigger: String) async {
-        guard !config.gitRepoFullName.isEmpty else {
-            bannerError = "Paste your GitHub token and pick a repository first."
-            return
-        }
-        busyAction = "git-deploy"
-        defer { busyAction = nil }
-
-        git.light = .amber
-        git.statusLabel = "Checking"
-        git.lastCheckedAt = Date()
-
-        do {
-            let token = keychain.read(.githubToken)
-            let commit = try await gitService.fetchLatestCommit(
-                repoFullName: config.gitRepoFullName,
-                branch: config.gitBranch,
-                token: token
-            )
-            let changed = commit.shaShort != git.commitHash && git.commitHash != "—"
-            git.commitHash = commit.shaShort
-            git.commitMessage = commit.message
-            git.lastError = nil
-
-            if forcePull || changed {
-                log(.git, .info, "Detected commit \(commit.shaShort) on \(config.gitRepoFullName)@\(config.gitBranch) (\(trigger)): \"\(commit.message)\"")
-                let pullResult = await gitService.runSandboxGitPullScript(workingDir: config.workingDir, branch: config.gitBranch)
-                if pullResult.ok {
-                    git.deployCount += 1
-                    git.lastDeployedAt = Date()
-                    log(.git, .info, pullResult.detail)
-                    await triggerViteRestart(reason: "git deploy \(commit.shaShort)")
-                    if config.notifyOnDeploy {
-                        let note = await alertService.sendAlert(
-                            title: "Git Auto-Deploy (\(commit.shaShort))",
-                            body: "\(config.gitRepoFullName)@\(config.gitBranch): \(commit.message)",
-                            recipientEmail: config.recipientEmail,
-                            emailEnabled: config.emailEnabled
-                        )
-                        log(.email, .info, note)
-                    }
-                } else {
-                    log(.git, .warn, pullResult.detail)
-                }
-            }
-
-            git.light = config.gitAutoDeploy ? .green : .amber
-            git.statusLabel = config.gitAutoDeploy ? "Synced" : "Paused"
-        } catch {
-            let msg = SecretMasker.redact(error.localizedDescription)
-            git.light = .red
-            git.statusLabel = "Error"
-            git.lastError = msg
-            log(.git, .error, "Git check failed: \(msg)")
-        }
-    }
-
-    public func toggleGitAutoDeploy() {
-        config.gitAutoDeploy.toggle()
-        git.autoDeploy = config.gitAutoDeploy
-        git.light = config.gitAutoDeploy ? .green : .amber
-        git.statusLabel = config.gitAutoDeploy ? "Synced" : "Paused"
-        flatFileStore.saveConfig(config)
-        log(.git, .info, "Git auto-deploy polling \(config.gitAutoDeploy ? "enabled" : "paused")")
     }
 
     // MARK: - Ollama Local LLM
@@ -413,15 +695,7 @@ public final class BeaconController {
     @discardableResult
     public func probeClaude(logResult: Bool) async -> Bool {
         guard let apiKey = keychain.read(.claudeAPIKey), !apiKey.isEmpty else {
-            claude.light = .amber
-            claude.statusLabel = "No Key"
-            claude.isConnected = false
-            claude.keyHint = nil
-            claude.httpStatus = nil
-            claude.latencyMs = nil
-            claude.models = []
-            claude.activeModel = ""
-            claude.lastError = nil
+            claude = ClaudeState()
             return false
         }
 
@@ -460,52 +734,43 @@ public final class BeaconController {
         log(.claude, .info, "Cleared Claude API key from macOS Keychain")
     }
 
-    // MARK: - Batch & Utility Controls
+    // MARK: - Batch & Utility Actions
 
     public func refreshAllServices() async {
         busyAction = "refresh-all"
         defer { busyAction = nil }
-        await probeVite(logTransition: true)
+        await probeAllManagedApps(logTransitions: true)
         await probeOllama(logResult: true)
-        if !config.gitRepoFullName.isEmpty {
-            await checkAndDeployGit(forcePull: false, trigger: "refresh all")
-        }
         if keychain.read(.claudeAPIKey) != nil {
             await probeClaude(logResult: true)
         }
     }
 
-    public func saveConfiguration(_ updated: BeaconConfig) async {
-        config = updated
-        vite.monitorURL = updated.monitorURL
-        vite.autoRestart = updated.autoRestart
-        git.repoFullName = updated.gitRepoFullName
-        git.branch = updated.gitBranch
-        git.autoDeploy = updated.gitAutoDeploy
-        git.pollIntervalSec = updated.gitPollIntervalSec
-        ollama.endpoint = updated.ollamaEndpoint
-        flatFileStore.saveConfig(updated)
+    public func saveGlobalConfiguration(
+        ollamaEndpoint: String,
+        gitPollIntervalSec: Int,
+        maxRestarts: Int,
+        recipientEmail: String,
+        notifyOnCrash: Bool,
+        notifyOnDeploy: Bool,
+        notifyOnOllamaDown: Bool
+    ) async {
+        config.ollamaEndpoint = ollamaEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.gitPollIntervalSec = max(15, min(3600, gitPollIntervalSec))
+        config.maxRestarts = max(1, min(100, maxRestarts))
+        config.recipientEmail = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.notifyOnCrash = notifyOnCrash
+        config.notifyOnDeploy = notifyOnDeploy
+        config.notifyOnOllamaDown = notifyOnOllamaDown
+        ollama.endpoint = config.ollamaEndpoint
+        flatFileStore.saveConfig(config)
         log(.system, .info, "Saved flat-file configuration to \(flatFileStore.configFileURL.lastPathComponent)")
-        await probeVite(logTransition: true)
         await probeOllama(logResult: false)
-    }
-
-    public func chooseProjectFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Select Project Folder"
-        if panel.runModal() == .OK, let url = panel.url {
-            config.workingDir = url.path
-            flatFileStore.saveConfig(config)
-            log(.system, .info, "Updated local project folder to \(url.path)")
-        }
     }
 
     public func exportActivityLog() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "beacon-activity.log"
+        panel.nameFieldStringValue = "beaconmac-activity.log"
         if panel.runModal() == .OK, let dest = panel.url {
             try? FileManager.default.removeItem(at: dest)
             try? FileManager.default.copyItem(at: flatFileStore.logFileURL, to: dest)
@@ -522,7 +787,7 @@ public final class BeaconController {
     public func sendTestAlert() async {
         let note = await alertService.sendAlert(
             title: "Test Notification",
-            body: "Beacon native macOS alerts are active.",
+            body: "BeaconMac native macOS alerts are active.",
             recipientEmail: config.recipientEmail,
             emailEnabled: config.emailEnabled
         )

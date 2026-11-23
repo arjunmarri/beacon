@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BeaconMac — Native macOS Service Monitor</title>
+    <title>BeaconMac — Native macOS Multi-App Deploy &amp; Service Monitor</title>
     <meta
       name="description"
-      content="BeaconMac is a lightweight native macOS traffic-light monitor built in SwiftUI for local Vite/Node.js processes, Git auto-deployment, local Ollama LLM health, and Claude API verification."
+      content="Download BeaconMac (.dmg) for macOS 14+. Clone remote Git repos, verify Vite/Node dependencies, build and deploy multiple local apps, manage launchd daemons, prevent Mac sleep, and monitor Ollama and Claude API health."
     />
-    <meta property="og:title" content="BeaconMac — Native macOS Service Monitor" />
+    <meta property="og:title" content="BeaconMac — Native macOS Multi-App Deploy & Service Monitor" />
     <meta
       property="og:description"
-      content="BeaconMac is a lightweight native macOS traffic-light monitor built in SwiftUI for local Vite/Node.js processes, Git auto-deployment, local Ollama LLM health, and Claude API verification."
+      content="Download BeaconMac (.dmg) for macOS 14+ — native SwiftUI multi-app deployer, Apple launchd background daemon manager, live tail -f logs, and IOKit sleep prevention."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -77,17 +77,19 @@
         z-index: 1;
         flex: 1;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 20px;
         padding: 56px 24px 32px;
       }
 
       main {
         width: 100%;
-        max-width: 620px;
+        max-width: 660px;
         padding: 40px 36px;
         border-radius: 18px;
-        background: rgba(15, 19, 27, 0.72);
+        background: rgba(15, 19, 27, 0.74);
         border: 1px solid rgba(255, 255, 255, 0.085);
         box-shadow:
           0 24px 70px rgba(0, 0, 0, 0.55),
@@ -99,8 +101,16 @@
       .meta-row {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 12px;
         margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      .meta-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
       }
 
       .traffic-lights {
@@ -148,10 +158,16 @@
       }
 
       p {
-        margin: 0 0 32px;
-        font-size: 16px;
+        margin: 0 0 28px;
+        font-size: 15.5px;
         line-height: 1.68;
         color: #a1acbe;
+      }
+
+      code {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 0.9em;
+        color: #d7e3f4;
       }
 
       .actions {
@@ -170,6 +186,9 @@
         font-weight: 600;
         text-decoration: none;
         white-space: nowrap;
+        cursor: pointer;
+        border: none;
+        font-family: inherit;
         transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
       }
 
@@ -208,6 +227,488 @@
         flex-shrink: 0;
       }
 
+      .release-meta {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.075);
+        font-size: 12.5px;
+        color: #8c98ad;
+      }
+
+      .release-links {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .text-link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: #93c5fd;
+        font-size: 12.5px;
+        font-family: inherit;
+        text-decoration: none;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(147, 197, 253, 0.3);
+      }
+
+      .text-link:hover {
+        color: #38bdf8;
+        border-bottom-color: #38bdf8;
+      }
+
+      .notice-box {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-radius: 10px;
+        background: rgba(8, 11, 17, 0.88);
+        border: 1px solid rgba(56, 189, 248, 0.22);
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: #b7c4d8;
+        display: none;
+      }
+
+      .notice-box.visible {
+        display: block;
+      }
+
+      .notice-box pre {
+        margin: 8px 0 0;
+        padding: 10px 12px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        overflow-x: auto;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        color: #e2e8f0;
+      }
+
+      .versions-panel {
+        margin-top: 16px;
+        padding: 16px;
+        border-radius: 10px;
+        background: rgba(8, 11, 17, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: none;
+      }
+
+      .versions-panel.visible {
+        display: block;
+      }
+
+      .version-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .version-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .version-row:first-child {
+        padding-top: 0;
+      }
+
+      .version-title {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 13px;
+        font-weight: 600;
+        color: #f8fafc;
+      }
+
+      .version-sub {
+        font-size: 12px;
+        color: #8492a6;
+        margin-top: 2px;
+      }
+
+      .version-notes {
+        margin: 8px 0 0;
+        padding-left: 16px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: #9ba8bc;
+      }
+
+      /* Scrollable App Screenshots Showcase */
+      .gallery-section {
+        width: 100%;
+        max-width: 920px;
+        padding: 26px 28px 24px;
+        border-radius: 18px;
+        background: rgba(15, 19, 27, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.085);
+        box-shadow:
+          0 20px 56px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .gallery-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+      }
+
+      .gallery-heading-group h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        color: #f8fafc;
+      }
+
+      .gallery-heading-group span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12.5px;
+        color: #8492a6;
+      }
+
+      .gallery-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .gallery-counter {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        color: #8f9bb0;
+        margin-right: 4px;
+      }
+
+      .icon-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        color: #dbe6f5;
+        cursor: pointer;
+        transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+      }
+
+      .icon-btn:hover {
+        background: rgba(255, 255, 255, 0.095);
+        border-color: rgba(56, 189, 248, 0.4);
+      }
+
+      .icon-btn:focus-visible {
+        outline: 2px solid #38bdf8;
+        outline-offset: 2px;
+      }
+
+      .icon-btn svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .gallery-track {
+        display: flex;
+        gap: 16px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 10px;
+        scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+        scrollbar-width: thin;
+      }
+
+      .gallery-track::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      .gallery-track::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 999px;
+      }
+
+      .gallery-track::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.26);
+        border-radius: 999px;
+      }
+
+      .gallery-track::-webkit-scrollbar-thumb:hover {
+        background: rgba(56, 189, 248, 0.45);
+      }
+
+      .shot-card {
+        flex: 0 0 82%;
+        scroll-snap-align: start;
+        margin: 0;
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(8, 11, 17, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: border-color 160ms ease;
+      }
+
+      .shot-card:hover {
+        border-color: rgba(56, 189, 248, 0.3);
+      }
+
+      .shot-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #080a0f;
+        cursor: zoom-in;
+        overflow: hidden;
+      }
+
+      .shot-frame img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 240ms ease;
+      }
+
+      .shot-card:hover .shot-frame img {
+        transform: scale(1.015);
+      }
+
+      .shot-caption {
+        padding: 13px 16px 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .shot-caption-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: #f1f5f9;
+      }
+
+      .shot-step {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11px;
+        font-weight: 500;
+        color: #38bdf8;
+      }
+
+      .shot-caption p {
+        margin: 5px 0 0;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: #93a1b7;
+      }
+
+      .gallery-dots {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .gallery-dot {
+        width: 22px;
+        height: 4px;
+        border-radius: 999px;
+        border: none;
+        padding: 0;
+        background: rgba(255, 255, 255, 0.14);
+        cursor: pointer;
+        transition: background-color 150ms ease, width 150ms ease;
+      }
+
+      .gallery-dot.active {
+        width: 34px;
+        background: #38bdf8;
+      }
+
+      /* Lightbox modal for inspecting screenshots full-size */
+      .lightbox {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        background: rgba(4, 6, 10, 0.88);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .lightbox.visible {
+        display: flex;
+      }
+
+      .lightbox-inner {
+        position: relative;
+        width: 100%;
+        max-width: 1120px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #080a0f;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.75);
+      }
+
+      .lightbox-inner img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .lightbox-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(15, 19, 27, 0.95);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 13px;
+        color: #dbe6f5;
+      }
+
+      .faq-section {
+        width: 100%;
+        max-width: 660px;
+        padding: 28px 32px;
+        border-radius: 18px;
+        background: rgba(15, 19, 27, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.085);
+        box-shadow:
+          0 20px 56px rgba(0, 0, 0, 0.48),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .faq-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+
+      .faq-header h2 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+        color: #f8fafc;
+      }
+
+      .faq-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .faq-item {
+        border-radius: 10px;
+        background: rgba(8, 11, 17, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        transition: border-color 150ms ease, background-color 150ms ease;
+      }
+
+      .faq-item[open] {
+        border-color: rgba(56, 189, 248, 0.25);
+        background: rgba(9, 13, 21, 0.9);
+      }
+
+      .faq-item summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #e6edf7;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .faq-item summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .faq-item summary:hover {
+        color: #f8fafc;
+      }
+
+      .faq-item summary:focus-visible {
+        outline: 2px solid #38bdf8;
+        outline-offset: -2px;
+        border-radius: 10px;
+      }
+
+      .faq-chevron {
+        width: 15px;
+        height: 15px;
+        flex-shrink: 0;
+        color: #7c8ca3;
+        transition: transform 180ms ease, color 150ms ease;
+      }
+
+      .faq-item[open] .faq-chevron {
+        transform: rotate(180deg);
+        color: #38bdf8;
+      }
+
+      .faq-answer {
+        padding: 0 16px 14px;
+        font-size: 13px;
+        line-height: 1.65;
+        color: #9ba8bc;
+      }
+
+      .faq-answer p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.65;
+        color: #9ba8bc;
+      }
+
+      .faq-answer p:last-child {
+        margin-bottom: 0;
+      }
+
+      .faq-answer pre {
+        margin: 8px 0 0;
+        padding: 9px 12px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        overflow-x: auto;
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        color: #d7e3f4;
+      }
+
       footer {
         position: relative;
         z-index: 1;
@@ -232,8 +733,14 @@
       }
 
       @media (max-width: 560px) {
-        main {
-          padding: 28px 22px;
+        main,
+        .gallery-section,
+        .faq-section {
+          padding: 24px 18px;
+        }
+
+        .shot-card {
+          flex: 0 0 92%;
         }
       }
     </style>
@@ -242,36 +749,40 @@
     <div class="stage">
       <main>
         <div class="meta-row">
-          <div class="traffic-lights" aria-hidden="true">
-            <span class="dot dot-red"></span>
-            <span class="dot dot-amber"></span>
-            <span class="dot dot-green"></span>
+          <div class="meta-left">
+            <div class="traffic-lights" aria-hidden="true">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-amber"></span>
+              <span class="dot dot-green"></span>
+            </div>
+            <span class="platform-note" id="platform-meta">v1.0.0 · Universal · macOS 14+</span>
           </div>
-          <span class="platform-note">Swift 5.10 · SwiftUI · macOS 14+</span>
+          <span class="platform-note">Swift 5.10 · SwiftUI</span>
         </div>
 
         <h1>BeaconMac</h1>
 
         <p>
-          A lightweight native macOS traffic-light monitor built in SwiftUI for the Apple App Store.
-          Watch local Node.js and Vite servers on any localhost port with automatic crash recovery,
-          track Git auto-deployments, monitor local Ollama LLMs with instant model switching, and
-          verify Claude API health — backed by encrypted macOS Keychain storage and flat-file
-          activity logs with zero database or login required.
+          A lightweight native macOS multi-app deployer and traffic-light monitor built in SwiftUI.
+          Clone remote Git repositories, verify Vite &amp; Node.js dependencies, build and deploy
+          multiple local apps, manage background startup natively via Apple <code>launchd</code>
+          with live <code>tail -f</code> logs and IOKit / <code>caffeinate -s</code> sleep
+          prevention, and monitor Ollama LLMs and Claude API health — backed by macOS Keychain.
         </p>
 
         <div class="actions">
           <a
+            id="dmg-download-btn"
             class="btn btn-primary"
-            href="/api/download-swift"
-            download="BeaconMac-Swift-Xcode-Project.zip"
+            href="/download/dmg"
+            download="BeaconMac-1.0.0-universal.dmg"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download BeaconMac
+            <span id="dmg-download-label">Download BeaconMac v1.0.0 (.dmg)</span>
           </a>
 
           <a
@@ -287,12 +798,484 @@
             </svg>
           </a>
         </div>
+
+        <div class="release-meta">
+          <span id="release-status">BeaconMac-1.0.0-universal.dmg · Apple Silicon &amp; Intel</span>
+          <div class="release-links">
+            <button type="button" class="text-link" id="toggle-versions">Version History</button>
+            <a class="text-link" href="/api/download-swift">Source &amp; Xcode (.zip)</a>
+          </div>
+        </div>
+
+        <div class="notice-box" id="build-notice" role="status">
+          <strong>macOS DMG Release Not Published Yet for <span id="notice-version">v1.0.0</span></strong><br />
+          Compiling a Universal macOS <code>.app</code> and <code>.dmg</code> requires Apple's macOS
+          14 toolchain. Push a version tag to trigger the included GitHub Actions
+          (<code>macos-14</code>) workflow — this button will automatically serve the signed
+          <code>.dmg</code> once published — or build locally on your Mac:
+          <pre id="notice-commands"># Auto-build &amp; publish DMG via GitHub Actions (macos-14):
+git tag v1.0.0 &amp;&amp; git push origin v1.0.0
+
+# Or build releases/BeaconMac-1.0.0-universal.dmg directly on your Mac:
+./swift-app/BeaconMac/Scripts/build-dmg.sh</pre>
+        </div>
+
+        <div class="versions-panel" id="versions-panel" aria-live="polite"></div>
       </main>
+
+      <section class="gallery-section" aria-labelledby="gallery-heading">
+        <div class="gallery-header">
+          <div class="gallery-heading-group">
+            <h2 id="gallery-heading">See BeaconMac in Action</h2>
+            <span>Scroll horizontally or click any screenshot to inspect full-size</span>
+          </div>
+          <div class="gallery-controls">
+            <span class="gallery-counter" id="gallery-counter">1 / 4</span>
+            <button type="button" class="icon-btn" id="gallery-prev" aria-label="Previous screenshot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" id="gallery-next" aria-label="Next screenshot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="gallery-track" id="gallery-track" tabindex="0" aria-label="BeaconMac application screenshots">
+          <figure class="shot-card">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg" data-lightbox-caption="01 · Multi-App Deployment & Watchdog Hub">
+              <img
+                src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg"
+                alt="BeaconMac Managed Local Apps Hub showing SoroWiz Web, Billing API, and Docs Portal with traffic lights and Clone & Deploy actions"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <figcaption class="shot-caption">
+              <div class="shot-caption-title">
+                <span>Multi-App Deployment &amp; Watchdog Hub</span>
+                <span class="shot-step">01 / 04</span>
+              </div>
+              <p>
+                Monitor multiple local Vite, Node.js, and Next.js apps with real-time traffic-light
+                probes, runtime tool audits, and one-click Clone &amp; Deploy or Terminal access.
+              </p>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg" data-lightbox-caption="02 · Keychain Secrets, Local Ollama & Claude API">
+              <img
+                src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg"
+                alt="BeaconMac cards for GitHub Account via Keychain, Local LLM Ollama model switcher, and Claude API health checker"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <figcaption class="shot-caption">
+              <div class="shot-caption-title">
+                <span>Keychain Secrets, Local Ollama &amp; Claude API</span>
+                <span class="shot-step">02 / 04</span>
+              </div>
+              <p>
+                Store GitHub PATs and Claude API keys encrypted in macOS Keychain, switch local
+                Ollama models with live VRAM metrics, and run zero-token Claude health checks.
+              </p>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg" data-lightbox-caption="03 · Integrated Terminal Output & Activity Log">
+              <img
+                src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg"
+                alt="BeaconMac Integrated Terminal Output streaming git pull, pnpm install, npm run build, and local deployment logs"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <figcaption class="shot-caption">
+              <div class="shot-caption-title">
+                <span>Integrated Terminal Output &amp; Activity Log</span>
+                <span class="shot-step">03 / 04</span>
+              </div>
+              <p>
+                Stream live stdout and stderr from <code>git clone</code>, dependency installs, and
+                builds directly inside BeaconMac alongside filterable flat-file activity logs.
+              </p>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg" data-lightbox-caption="04 · Apple launchd Daemon, Live Logs & Sleep Prevention">
+              <img
+                src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg"
+                alt="BeaconMac macOS launchd Daemon panel with Launch at Login, Prevent Mac Sleep IOKit switch, and launchctl unload command"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <figcaption class="shot-caption">
+              <div class="shot-caption-title">
+                <span>Apple <code>launchd</code> Daemon &amp; Sleep Prevention</span>
+                <span class="shot-step">04 / 04</span>
+              </div>
+              <p>
+                Install and unload <code>~/Library/LaunchAgents</code> daemons, tail persistent
+                <code>~/beaconmac/server.log</code> logs, and keep your Mac awake with IOKit and
+                <code>caffeinate -s</code>.
+              </p>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="gallery-dots" id="gallery-dots" role="tablist" aria-label="Select screenshot">
+          <button type="button" class="gallery-dot active" data-index="0" aria-label="Screenshot 1"></button>
+          <button type="button" class="gallery-dot" data-index="1" aria-label="Screenshot 2"></button>
+          <button type="button" class="gallery-dot" data-index="2" aria-label="Screenshot 3"></button>
+          <button type="button" class="gallery-dot" data-index="3" aria-label="Screenshot 4"></button>
+        </div>
+      </section>
+
+      <section class="faq-section" aria-labelledby="faq-heading">
+        <div class="faq-header">
+          <h2 id="faq-heading">Frequently Asked Questions</h2>
+          <a
+            class="text-link"
+            href="https://github.com/arjunmarri/beacon/blob/main/docs/setup-guide.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Full Setup Guide
+          </a>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>
+              <span>How do I add a Git repository and deploy a local Vite or Node.js app?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                Install BeaconMac's App-Sandbox hook scripts once, then click
+                <strong>+ Add Local App</strong> inside BeaconMac. Paste any HTTPS or SSH Git URL
+                (or pick directly from your connected GitHub repositories), choose a
+                <strong>Vite + Node</strong>, <strong>Node.js Server</strong>, or
+                <strong>Next.js</strong> preset, set your local folder and target local URL (such as
+                <code>http://localhost:5173</code> or <code>http://127.0.0.1:3000</code>), and click
+                <strong>Clone &amp; Deploy</strong>.
+              </p>
+              <pre>./swift-app/BeaconMac/Scripts/install-sandbox-scripts.sh com.beaconmac.app</pre>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>Do I need a .env file, or how does macOS Keychain management work?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                BeaconMac requires <strong>no <code>.env</code> file</strong>. Paste your GitHub
+                Personal Access Token and Anthropic Claude API key directly inside the app — both are
+                stored encrypted in your <strong>macOS Keychain</strong> (<code>Security.framework</code>),
+                displayed only as masked hints, and automatically redacted from all logs and terminal
+                output.
+              </p>
+              <p>
+                For secrets needed by your individual deployed apps, keep an untracked
+                <code>.env.local</code> inside each app's folder or inject Keychain values via
+                <code>security find-generic-password</code> in the app's Start Command.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How do private Git repositories authenticate during clone and pull?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                BeaconMac uses your Keychain GitHub token to list repositories and poll for new
+                commits via the GitHub API. Local <code>git clone</code> and <code>git pull</code>
+                commands executed by <code>beacon-deploy.sh</code> use your Mac's native Git
+                credentials — either an SSH key stored in Keychain or macOS's
+                <code>osxkeychain</code> credential helper:
+              </p>
+              <pre>ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+# or for HTTPS clones:
+git config --global credential.helper osxkeychain</pre>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How does BeaconMac use Apple's launchd for background startup?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                Toggle <strong>Startup</strong> on any managed app, then click
+                <strong>Install &amp; Start launchd</strong> in BeaconMac. It writes and loads
+                <code>~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</code> with
+                <code>RunAtLoad</code> and crash recovery so your local apps boot automatically even
+                when BeaconMac's window is closed.
+              </p>
+              <pre># Stop the background launchd service anytime:
+launchctl unload ~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</pre>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How do I watch live server logs and prevent my Mac from sleeping?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                Click <strong>Watch Live Logs</strong> (or <strong>Tail Log</strong> on any app) to
+                open macOS <code>Terminal.app</code> with persistent logs under
+                <code>~/beaconmac/</code>. Keep <strong>Prevent Mac Sleep</strong> enabled to hold a
+                native IOKit power assertion while BeaconMac is open and run
+                <code>caffeinate -s</code> automatically under <code>launchd</code>:
+              </p>
+              <pre>tail -f ~/beaconmac/server.log
+caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
+            </div>
+          </details>
+        </div>
+      </section>
     </div>
 
     <footer>
       Designed by
       <a href="https://soroai.com" target="_blank" rel="noopener noreferrer">SoroAI</a>
     </footer>
+
+    <script>
+      (function () {
+        const dmgBtn = document.getElementById('dmg-download-btn');
+        const dmgLabel = document.getElementById('dmg-download-label');
+        const platformMeta = document.getElementById('platform-meta');
+        const releaseStatus = document.getElementById('release-status');
+        const toggleVersionsBtn = document.getElementById('toggle-versions');
+        const versionsPanel = document.getElementById('versions-panel');
+        const buildNotice = document.getElementById('build-notice');
+        const noticeVersion = document.getElementById('notice-version');
+        const noticeCommands = document.getElementById('notice-commands');
+
+        let releaseState = { latest: '1.0.0', dmgReady: false, releases: [] };
+
+        function formatBytes(bytes) {
+          if (!bytes || typeof bytes !== 'number') return '';
+          const mb = bytes / (1024 * 1024);
+          return mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+        }
+
+        function escapeHtml(str) {
+          return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        }
+
+        function renderVersions(releases) {
+          if (!releases.length) {
+            versionsPanel.innerHTML = '<div class="version-sub">No versions recorded yet.</div>';
+            return;
+          }
+          versionsPanel.innerHTML = releases
+            .map((rel) => {
+              const sizeStr = rel.sizeBytes ? ' · ' + formatBytes(rel.sizeBytes) : '';
+              const dateStr = rel.date ? ' · ' + escapeHtml(rel.date) : '';
+              const notesHtml =
+                Array.isArray(rel.notes) && rel.notes.length
+                  ? '<ul class="version-notes">' +
+                    rel.notes.map((n) => '<li>' + escapeHtml(n) + '</li>').join('') +
+                    '</ul>'
+                  : '';
+              const actionHtml = rel.dmgAvailable
+                ? '<a class="text-link" href="' +
+                  escapeHtml(rel.downloadUrl) +
+                  '" download="' +
+                  escapeHtml(rel.dmgFilename) +
+                  '">Download .dmg</a>'
+                : '<span class="version-sub">Build via macOS / GitHub Actions</span>';
+
+              return (
+                '<div class="version-row">' +
+                '<div>' +
+                '<div class="version-title">v' +
+                escapeHtml(rel.version) +
+                '</div>' +
+                '<div class="version-sub">' +
+                escapeHtml(rel.dmgFilename) +
+                dateStr +
+                sizeStr +
+                '</div>' +
+                notesHtml +
+                '</div>' +
+                '<div>' +
+                actionHtml +
+                '</div>' +
+                '</div>'
+              );
+            })
+            .join('');
+        }
+
+        toggleVersionsBtn.addEventListener('click', () => {
+          versionsPanel.classList.toggle('visible');
+        });
+
+        dmgBtn.addEventListener('click', (event) => {
+          if (!releaseState.dmgReady) {
+            event.preventDefault();
+            buildNotice.classList.toggle('visible');
+          }
+        });
+
+        fetch('/api/releases')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) return;
+            releaseState = data;
+            const latest = data.latest || '1.0.0';
+            const latestObj = (data.releases || []).find((r) => r.version === latest) || data.releases?.[0];
+            const filename = latestObj?.dmgFilename || 'BeaconMac-' + latest + '-universal.dmg';
+
+            platformMeta.textContent = 'v' + latest + ' · Universal · macOS ' + (latestObj?.minMacOS || '14.0') + '+';
+            dmgLabel.textContent = 'Download BeaconMac v' + latest + ' (.dmg)';
+            dmgBtn.setAttribute('href', data.latestDownloadUrl || '/download/dmg');
+            dmgBtn.setAttribute('download', filename);
+
+            const sizePart = latestObj?.sizeBytes ? ' · ' + formatBytes(latestObj.sizeBytes) : '';
+            releaseStatus.textContent = filename + sizePart + (data.dmgReady ? ' · Ready' : ' · macOS 14+');
+
+            noticeVersion.textContent = 'v' + latest;
+            noticeCommands.textContent =
+              '# Auto-build & publish DMG via GitHub Actions (macos-14):\n' +
+              'git tag v' +
+              latest +
+              ' && git push origin v' +
+              latest +
+              '\n\n# Or build releases/' +
+              filename +
+              ' directly on your Mac:\n' +
+              './swift-app/BeaconMac/Scripts/build-dmg.sh';
+
+            renderVersions(data.releases || []);
+          })
+          .catch(() => {});
+      })();
+    </script>
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot preview">
+      <div class="lightbox-inner">
+        <img id="lightbox-img" src="" alt="" referrerpolicy="no-referrer" />
+        <div class="lightbox-bar">
+          <span id="lightbox-caption"></span>
+          <button type="button" class="text-link" id="lightbox-close">Close (Esc)</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const track = document.getElementById('gallery-track');
+        const prevBtn = document.getElementById('gallery-prev');
+        const nextBtn = document.getElementById('gallery-next');
+        const counter = document.getElementById('gallery-counter');
+        const dots = Array.from(document.querySelectorAll('.gallery-dot'));
+        const cards = Array.from(document.querySelectorAll('.shot-card'));
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        const lightboxCaption = document.getElementById('lightbox-caption');
+        const lightboxClose = document.getElementById('lightbox-close');
+
+        let activeIndex = 0;
+
+        function updateIndicators(idx) {
+          activeIndex = Math.max(0, Math.min(cards.length - 1, idx));
+          if (counter) counter.textContent = activeIndex + 1 + ' / ' + cards.length;
+          dots.forEach((dot, i) => dot.classList.toggle('active', i === activeIndex));
+        }
+
+        function scrollToCard(idx) {
+          const targetIdx = Math.max(0, Math.min(cards.length - 1, idx));
+          const card = cards[targetIdx];
+          if (card && track) {
+            track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
+            updateIndicators(targetIdx);
+          }
+        }
+
+        if (prevBtn) prevBtn.addEventListener('click', () => scrollToCard(activeIndex - 1));
+        if (nextBtn) nextBtn.addEventListener('click', () => scrollToCard(activeIndex + 1));
+        dots.forEach((dot) => {
+          dot.addEventListener('click', () => scrollToCard(Number(dot.dataset.index || 0)));
+        });
+
+        if (track) {
+          let scrollTimer;
+          track.addEventListener('scroll', () => {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+              const scrollLeft = track.scrollLeft;
+              let closest = 0;
+              let minDist = Infinity;
+              cards.forEach((card, i) => {
+                const dist = Math.abs(card.offsetLeft - track.offsetLeft - scrollLeft);
+                if (dist < minDist) {
+                  minDist = dist;
+                  closest = i;
+                }
+              });
+              updateIndicators(closest);
+            }, 60);
+          });
+        }
+
+        function closeLightbox() {
+          if (lightbox) lightbox.classList.remove('visible');
+        }
+
+        document.querySelectorAll('.shot-frame').forEach((frame) => {
+          frame.addEventListener('click', () => {
+            const src = frame.getAttribute('data-lightbox-src');
+            const caption = frame.getAttribute('data-lightbox-caption') || '';
+            if (src && lightbox && lightboxImg && lightboxCaption) {
+              lightboxImg.src = src;
+              lightboxImg.alt = caption;
+              lightboxCaption.textContent = caption;
+              lightbox.classList.add('visible');
+            }
+          });
+        });
+
+        if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+        if (lightbox) {
+          lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox) closeLightbox();
+          });
+        }
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeLightbox();
+        });
+      })();
+    </script>
   </body>
 </html>

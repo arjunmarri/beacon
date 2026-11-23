@@ -7,47 +7,64 @@ public struct LocalProbeResult: Sendable {
     public let error: String?
 }
 
-/// Probes any user-configured localhost URL (loopback-only SSRF guard) and
-/// invokes Apple's App-Sandbox-approved NSUserUnixTask script to restart Vite.
+/// Probes any locally deployed target application URL (localhost, 127.0.0.1, ::1,
+/// *.localhost, or *.local) and invokes Apple's App-Sandbox-approved NSUserUnixTask
+/// script to restart that external target app if it crashes.
 public final class LocalProcessService: Sendable {
     private let session: URLSession
 
     public init() {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2.0
-        config.timeoutIntervalForResource = 3.0
+        config.timeoutIntervalForRequest = 2.5
+        config.timeoutIntervalForResource = 4.0
         self.session = URLSession(configuration: config)
     }
 
-    public static func isValidLocalhostURL(_ raw: String) -> Bool {
-        guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+    /// Accepts any local development host (localhost, 127.0.0.1, ::1, *.localhost, *.local)
+    /// while blocking remote public internet hosts and embedded URL credentials.
+    public static func isValidLocalAppURL(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.count <= 240,
+              let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
               (scheme == "http" || scheme == "https"),
               let host = url.host?.lowercased(),
-              (host == "localhost" || host == "127.0.0.1"),
               url.user == nil, url.password == nil else {
             return false
         }
+
+        let isLocalHost =
+            host == "localhost" ||
+            host == "127.0.0.1" ||
+            host == "::1" ||
+            host == "0.0.0.0" ||
+            host.hasSuffix(".localhost") ||
+            host.hasSuffix(".local")
+
+        guard isLocalHost else { return false }
+
         if let port = url.port, (port < 1 || port > 65535) {
             return false
         }
-        return raw.count <= 240
+        return true
     }
 
-    public static func extractPort(from raw: String, fallback: Int = 5173) -> Int {
-        guard let url = URL(string: raw), let port = url.port, (1...65535).contains(port) else {
-            return fallback
+    public static func extractPort(from raw: String, fallback: Int = 3000) -> Int {
+        guard let url = URL(string: raw) else { return fallback }
+        if let port = url.port, (1...65535).contains(port) {
+            return port
         }
-        return port
+        return url.scheme?.lowercased() == "https" ? 443 : 80
     }
 
     public func probe(urlString: String) async -> LocalProbeResult {
-        guard Self.isValidLocalhostURL(urlString), let url = URL(string: urlString) else {
+        guard Self.isValidLocalAppURL(urlString), let url = URL(string: urlString) else {
             return LocalProbeResult(
                 healthy: false,
                 httpStatus: nil,
                 responseTimeMs: nil,
-                error: "Monitor URL must point to http://localhost:<port> or http://127.0.0.1:<port>."
+                error: "Enter a local app URL (e.g. http://localhost:3000, http://127.0.0.1:8080, or http://myapp.local:5173)."
             )
         }
 
@@ -77,8 +94,17 @@ public final class LocalProcessService: Sendable {
     }
 
     /// Executes `~/Library/Application Scripts/<bundle-id>/beacon-restart.sh`
-    /// via Apple's App-Sandbox-approved NSUserUnixTask API.
-    public func runSandboxRestartScript(workingDir: String, port: Int) async -> (ok: Bool, detail: String) {
+    /// via Apple's App-Sandbox-approved NSUserUnixTask API to restart the target local app.
+    public func runSandboxRestartScript(
+        workingDir: String,
+        port: Int,
+        startCommand: String = ""
+    ) async -> (ok: Bool, detail: String) {
+        let trimmedDir = workingDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDir.isEmpty else {
+            return (false, "Set the Target App Folder in Configuration before triggering a restart.")
+        }
+
         guard let scriptsDir = try? FileManager.default.url(
             for: .applicationScriptsDirectory,
             in: .userDomainMask,
@@ -92,14 +118,19 @@ public final class LocalProcessService: Sendable {
         guard FileManager.default.fileExists(atPath: scriptURL.path) else {
             return (
                 false,
-                "Install beacon-restart.sh in ~/Library/Application Scripts/\(Bundle.main.bundleIdentifier ?? "com.beaconmonitor.mac")/ to enable App-Store-safe automatic restarts."
+                "Install beacon-restart.sh in ~/Library/Application Scripts/\(Bundle.main.bundleIdentifier ?? "com.beaconmac.app")/ to enable App-Store-safe automatic restarts."
             )
         }
 
         do {
             let task = try NSUserUnixTask(url: scriptURL)
+            var args = [trimmedDir, String(port)]
+            let trimmedCmd = startCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedCmd.isEmpty {
+                args.append(trimmedCmd)
+            }
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                task.execute(withArguments: [workingDir, String(port)]) { error in
+                task.execute(withArguments: args) { error in
                     if let error {
                         continuation.resume(throwing: error)
                     } else {
@@ -107,7 +138,7 @@ public final class LocalProcessService: Sendable {
                     }
                 }
             }
-            return (true, "Executed beacon-restart.sh for \(workingDir) on port \(port).")
+            return (true, "Restarted target local app in \(trimmedDir) on port \(port).")
         } catch {
             return (false, "Restart script failed: \(error.localizedDescription)")
         }

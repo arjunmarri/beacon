@@ -8,26 +8,26 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Minimalist top bar
-            HStack(spacing: 16) {
+            HStack(spacing: 14) {
                 HStack(spacing: 10) {
                     Text("BeaconMac")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("macOS Native · App Sandbox")
+                    Text("macOS Native · Multi-App Deploy & Watchdog")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                Button("Check All") {
-                    Task { await controller.refreshAllServices() }
+                Button("Audit Tools") {
+                    Task { await controller.auditSystemDependencies() }
                 }
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
-                Button("Restart Server") {
-                    Task { await controller.triggerViteRestart(reason: "header action") }
+                Button("Check All") {
+                    Task { await controller.refreshAllServices() }
                 }
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconPrimaryButtonStyle())
@@ -58,7 +58,10 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
+                    MultiAppSectionView(controller: controller)
                     ServiceCardsView(controller: controller)
+                    TerminalPanelView(controller: controller)
+                    StartupScheduleView(controller: controller)
                     ActivityLogView(controller: controller)
                     ConfigurationView(controller: controller)
 

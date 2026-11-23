@@ -10,19 +10,51 @@ struct MenuBarStatusView: View {
 
             Divider()
 
-            statusRow(name: "Vite / Localhost", light: controller.vite.light, detail: controller.vite.statusLabel)
-            statusRow(name: "Git Auto-Deploy", light: controller.git.light, detail: controller.git.statusLabel)
+            if controller.config.managedApps.isEmpty {
+                Text("No local apps configured")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(controller.config.managedApps) { app in
+                    let state = controller.runtimeState(for: app.id)
+                    statusRow(name: app.name, light: state.light, detail: state.statusLabel)
+                }
+            }
+
+            Divider()
+
+            statusRow(name: "launchd Daemon", light: controller.launchd.light, detail: controller.launchd.statusLabel)
+            statusRow(
+                name: "Prevent Mac Sleep",
+                light: controller.launchd.sleepAssertionActive ? .green : .amber,
+                detail: controller.launchd.sleepAssertionActive ? "Awake (IOKit)" : "Off"
+            )
+            statusRow(name: "GitHub Account", light: controller.git.light, detail: controller.git.statusLabel)
             statusRow(name: "Local LLM (Ollama)", light: controller.ollama.light, detail: controller.ollama.statusLabel)
             statusRow(name: "Claude API", light: controller.claude.light, detail: controller.claude.statusLabel)
 
             Divider()
 
-            Button("Check All Services") {
-                Task { await controller.refreshAllServices() }
+            Button(controller.config.startupSchedule.preventSleep ? "Allow Mac Sleep" : "Prevent Mac Sleep (IOKit)") {
+                controller.togglePreventSleep(!controller.config.startupSchedule.preventSleep)
             }
 
-            Button("Restart Local Server") {
-                Task { await controller.triggerViteRestart(reason: "menu bar") }
+            Button("Watch Live Logs (tail -f)") {
+                controller.watchSupervisorLiveLogs()
+            }
+
+            Button(controller.launchd.isLoaded ? "Stop launchd Daemon" : "Start launchd Daemon") {
+                Task {
+                    if controller.launchd.isLoaded {
+                        await controller.unloadLaunchdAgent()
+                    } else {
+                        await controller.installAndLoadLaunchdAgent()
+                    }
+                }
+            }
+
+            Button("Check All Services") {
+                Task { await controller.refreshAllServices() }
             }
 
             Divider()
@@ -33,7 +65,7 @@ struct MenuBarStatusView: View {
             .keyboardShortcut("q")
         }
         .padding(10)
-        .frame(width: 240)
+        .frame(width: 270)
     }
 
     private func statusRow(name: String, light: TrafficLightColor, detail: String) -> some View {
@@ -43,6 +75,7 @@ struct MenuBarStatusView: View {
                 .frame(width: 8, height: 8)
             Text(name)
                 .font(.system(size: 12))
+                .lineLimit(1)
             Spacer()
             Text(detail)
                 .font(.system(size: 11, design: .monospaced))

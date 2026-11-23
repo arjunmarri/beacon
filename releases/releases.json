@@ -1,0 +1,25 @@
+{
+  "latest": "1.0.0",
+  "githubRepo": "arjunmarri/beacon",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "build": 1,
+      "date": "2026-11-23",
+      "minMacOS": "14.0",
+      "architecture": "Universal (Apple Silicon + Intel)",
+      "dmgFilename": "BeaconMac-1.0.0-universal.dmg",
+      "githubDownloadUrl": "https://github.com/arjunmarri/beacon/releases/download/v1.0.0/BeaconMac-1.0.0-universal.dmg",
+      "sha256": null,
+      "sizeBytes": null,
+      "notes": [
+        "Multi-app local deployment & monitoring hub for Vite, Node.js, Next.js, and custom apps",
+        "Automated Git clone/pull, dependency verification (git, node, npm, pnpm, yarn, bun), build & local deploy",
+        "Native Apple launchd background daemon (~/Library/LaunchAgents) with persistent ~/beaconmac/server.log",
+        "Native macOS sleep prevention via IOKit Power Management + headless caffeinate -s",
+        "Integrated Terminal output console + macOS Terminal.app handoff",
+        "Encrypted macOS Keychain storage for GitHub PAT and Anthropic Claude API health checker + Ollama monitor"
+      ]
+    }
+  ]
+}

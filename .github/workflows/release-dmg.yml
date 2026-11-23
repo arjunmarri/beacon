@@ -1,0 +1,74 @@
+name: Build & Release BeaconMac DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (leave blank to use version.json)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Sync version from tag or input
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VER="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF#refs/tags/v}"
+          else
+            VER=$(python3 -c "import json; print(json.load(open('version.json'))['version'])")
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=BeaconMac-${VER}-universal.dmg" >> "$GITHUB_OUTPUT"
+
+          # Keep version.json aligned with the triggered tag
+          python3 - "$VER" <<'PY'
+          import json, sys
+          ver = sys.argv[1]
+          data = json.load(open("version.json"))
+          data["version"] = ver
+          data["dmgFilename"] = f"BeaconMac-{ver}-universal.dmg"
+          with open("version.json", "w") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Build Universal BeaconMac.app & DMG
+        run: |
+          chmod +x swift-app/BeaconMac/Scripts/*.sh
+          ./swift-app/BeaconMac/Scripts/build-dmg.sh
+
+      - name: Upload DMG build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeaconMac-${{ steps.version.outputs.version }}-universal-dmg
+          path: |
+            releases/${{ steps.version.outputs.dmg_name }}
+            releases/${{ steps.version.outputs.dmg_name }}.sha256
+
+      - name: Publish GitHub Release with DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: BeaconMac v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            releases/${{ steps.version.outputs.dmg_name }}
+            releases/${{ steps.version.outputs.dmg_name }}.sha256

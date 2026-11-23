@@ -78,7 +78,7 @@ struct ActivityLogView: View {
                                     .frame(width: 72, alignment: .leading)
                                 Text(entry.source.rawValue)
                                     .foregroundStyle(sourceColor(entry.source))
-                                    .frame(width: 54, alignment: .leading)
+                                    .frame(width: 64, alignment: .leading)
                                 Text(entry.level.rawValue)
                                     .foregroundStyle(levelColor(entry.level))
                                     .frame(width: 42, alignment: .leading)
@@ -126,6 +126,8 @@ struct ActivityLogView: View {
         case .git: return .purple
         case .ollama: return .green
         case .claude: return .orange
+        case .terminal: return .mint
+        case .startup: return .teal
         case .email: return .yellow
         case .system: return .gray
         }
