@@ -13,6 +13,9 @@ public final class BeaconController {
     public var ollama = OllamaState()
     public var claude = ClaudeState()
     public var launchd = LaunchdDaemonState()
+    public var scriptsInstalled: Bool = false
+    public var serverLogSearchResult: ServerLogSearchResult?
+    public var isSearchingServerLog: Bool = false
     public var logs: [LogEntry] = []
     public var logFileBytes: Int64 = 0
     public var busyAction: String?
@@ -26,6 +29,7 @@ public final class BeaconController {
 
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
+    private let serverLogSearchService = ServerLogSearchService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
     private let claudeService = ClaudeService()
@@ -57,6 +61,7 @@ public final class BeaconController {
 
         self.launchd.plistPath = startupService.launchdPlistTildePath
         self.launchd.serverLogPath = startupService.serverLogTildePath
+        self.scriptsInstalled = EmbeddedScripts.autoInstallIfNotSandboxed()
 
         if loaded.startupSchedule.preventSleep {
             let sleepRes = sleepService.setPreventSystemSleep(true)
@@ -98,8 +103,11 @@ public final class BeaconController {
     }
 
     private func bootServices() async {
-        await auditSystemDependencies()
-        await refreshLaunchdStatus()
+        scriptsInstalled = EmbeddedScripts.areScriptsInstalled()
+        if scriptsInstalled {
+            await auditSystemDependencies()
+            await refreshLaunchdStatus()
+        }
         await probeAllManagedApps(logTransitions: true)
         await probeOllama(logResult: true)
 
@@ -550,6 +558,39 @@ public final class BeaconController {
         log(.terminal, res.ok ? .info : .warn, res.detail)
     }
 
+    public func searchServerLog(query: String, options: ServerLogSearchOptions) async {
+        let cleaned = query.trimmingCharacters(in: .newlines)
+        guard !cleaned.isEmpty else {
+            serverLogSearchResult = nil
+            return
+        }
+        isSearchingServerLog = true
+        defer { isSearchingServerLog = false }
+
+        let result = await serverLogSearchService.search(
+            query: cleaned,
+            options: options,
+            deploymentService: deploymentService
+        )
+        serverLogSearchResult = result
+
+        if result.ok {
+            log(.terminal, .info, "Searched \(result.logPath) for \"\(cleaned)\": \(result.matchCount) match(es) in \(result.durationMs) ms")
+        } else if let err = result.errorMessage {
+            log(.terminal, .warn, "Server log search failed: \(err)")
+        }
+    }
+
+    public func clearServerLogSearch() {
+        serverLogSearchResult = nil
+    }
+
+    public func copyServerLogSearchResults() {
+        guard let result = serverLogSearchResult, !result.preformattedOutput.isEmpty else { return }
+        terminalService.copyCommand(result.preformattedOutput)
+        log(.terminal, .info, "Copied \(result.matchCount) matched line(s) from \(result.logPath) to clipboard")
+    }
+
     public func openEnergySettings() {
         let res = sleepService.openEnergySettings()
         log(.startup, res.ok ? .info : .warn, res.detail)
@@ -566,6 +607,27 @@ public final class BeaconController {
         let cmd = sleepService.copyCaffeinateCommand()
         appendTerminal(appName: "sleep", text: "Copied: \(cmd)")
         log(.startup, .info, "Copied caffeinate -s command to clipboard")
+    }
+
+    public func installHookScriptsFromApp() async {
+        let res = EmbeddedScripts.installViaOpenPanel()
+        scriptsInstalled = EmbeddedScripts.areScriptsInstalled()
+        log(.system, res.ok ? .info : .warn, res.detail)
+        if res.ok {
+            bannerError = nil
+            appendTerminal(appName: "system", text: res.detail)
+            await auditSystemDependencies()
+            await refreshLaunchdStatus()
+        } else {
+            bannerError = res.detail
+        }
+    }
+
+    public func copyInstallScriptsCommand() {
+        let cmd = EmbeddedScripts.terminalInstallOneLiner
+        terminalService.copyCommand(cmd)
+        appendTerminal(appName: "system", text: "Copied: \(cmd)")
+        log(.system, .info, "Copied hook script install command to clipboard")
     }
 
     // MARK: - GitHub Account Keychain Sync

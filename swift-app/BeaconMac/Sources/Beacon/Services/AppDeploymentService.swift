@@ -175,25 +175,47 @@ public final class AppDeploymentService: Sendable {
         )
     }
 
+    public func grepServerLog(
+        pattern: String,
+        useRegex: Bool,
+        caseSensitive: Bool,
+        includeContext: Bool,
+        maxMatches: Int
+    ) async -> ScriptExecutionResult {
+        await runUnixScript(
+            named: "beacon-launchd.sh",
+            arguments: [
+                "grep",
+                pattern,
+                useRegex ? "E" : "F",
+                caseSensitive ? "s" : "i",
+                includeContext ? "2" : "0",
+                String(maxMatches)
+            ]
+        )
+    }
+
     private func runUnixScript(named scriptName: String, arguments: [String]) async -> ScriptExecutionResult {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.beaconmac.app"
-        guard let scriptsDir = try? FileManager.default.url(
-            for: .applicationScriptsDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else {
-            return ScriptExecutionResult(
-                ok: false,
-                stdoutLines: [],
-                stderrLines: ["Application Scripts directory unavailable."],
-                summary: "Application Scripts directory unavailable."
-            )
+        // Outside App Sandbox (swift run, local builds, Developer ID DMG), auto-install embedded scripts
+        if !EmbeddedScripts.isSandboxed {
+            EmbeddedScripts.autoInstallIfNotSandboxed()
         }
 
-        let scriptURL = scriptsDir.appendingPathComponent(scriptName)
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            let hint = "Missing \(scriptName). Run ./Scripts/install-sandbox-scripts.sh \(bundleID) in Terminal to install BeaconMac's App Sandbox hook scripts."
+        let primaryDir = EmbeddedScripts.targetScriptsDirectoryURL()
+        let primaryScript = primaryDir.appendingPathComponent(scriptName)
+        let fallbackScript = EmbeddedScripts.fallbackScriptsDirectoryURL().appendingPathComponent(scriptName)
+
+        let resolvedScript: URL?
+        if FileManager.default.fileExists(atPath: primaryScript.path) {
+            resolvedScript = primaryScript
+        } else if !EmbeddedScripts.isSandboxed && FileManager.default.fileExists(atPath: fallbackScript.path) {
+            resolvedScript = fallbackScript
+        } else {
+            resolvedScript = nil
+        }
+
+        guard let scriptURL = resolvedScript else {
+            let hint = "Missing \(scriptName) in \(primaryDir.path). Click \"Install Hook Scripts\" at the top of BeaconMac or run: \(EmbeddedScripts.terminalInstallOneLiner)"
             return ScriptExecutionResult(
                 ok: false,
                 stdoutLines: [],
@@ -202,6 +224,13 @@ public final class AppDeploymentService: Sendable {
             )
         }
 
+        // Outside the App Sandbox, run via Foundation.Process directly (avoids NSUserUnixTask
+        // bundle-ID directory mismatches during `swift run` while keeping identical Pipe capture).
+        if !EmbeddedScripts.isSandboxed {
+            return await runViaProcess(scriptURL: scriptURL, scriptName: scriptName, arguments: arguments)
+        }
+
+        // Inside the Mac App Store App Sandbox, execute strictly via Apple's NSUserUnixTask API.
         do {
             let task = try NSUserUnixTask(url: scriptURL)
             let stdoutPipe = Pipe()
@@ -253,6 +282,61 @@ public final class AppDeploymentService: Sendable {
                 stderrLines: [errMsg],
                 summary: "\(scriptName) failed: \(errMsg)"
             )
+        }
+    }
+
+    private func runViaProcess(scriptURL: URL, scriptName: String, arguments: [String]) async -> ScriptExecutionResult {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/bash")
+                process.arguments = [scriptURL.path] + arguments
+
+                let stdoutPipe = Pipe()
+                let stderrPipe = Pipe()
+                process.standardOutput = stdoutPipe
+                process.standardError = stderrPipe
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    let stdoutLines = (String(data: outData, encoding: .utf8) ?? "")
+                        .split(separator: "\n", omittingEmptySubsequences: true)
+                        .map { SecretMasker.redact(String($0)) }
+                    var stderrLines = (String(data: errData, encoding: .utf8) ?? "")
+                        .split(separator: "\n", omittingEmptySubsequences: true)
+                        .map { SecretMasker.redact(String($0)) }
+
+                    if process.terminationStatus != 0 {
+                        if stderrLines.isEmpty {
+                            stderrLines.append("\(scriptName) exited with code \(process.terminationStatus).")
+                        }
+                        continuation.resume(returning: ScriptExecutionResult(
+                            ok: false,
+                            stdoutLines: stdoutLines,
+                            stderrLines: stderrLines,
+                            summary: stderrLines.last ?? "\(scriptName) failed (exit \(process.terminationStatus))."
+                        ))
+                    } else {
+                        continuation.resume(returning: ScriptExecutionResult(
+                            ok: true,
+                            stdoutLines: stdoutLines,
+                            stderrLines: stderrLines,
+                            summary: stdoutLines.last ?? "\(scriptName) completed."
+                        ))
+                    }
+                } catch {
+                    let errMsg = SecretMasker.redact(error.localizedDescription)
+                    continuation.resume(returning: ScriptExecutionResult(
+                        ok: false,
+                        stdoutLines: [],
+                        stderrLines: [errMsg],
+                        summary: "\(scriptName) failed: \(errMsg)"
+                    ))
+                }
+            }
         }
     }
 }

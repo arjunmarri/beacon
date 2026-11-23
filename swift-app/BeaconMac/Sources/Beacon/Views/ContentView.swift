@@ -58,10 +58,38 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
+                    if !controller.scriptsInstalled {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("One-Time macOS App Sandbox Script Setup Required")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Text("Install BeaconMac's 7 helper scripts into \(EmbeddedScripts.targetScriptsDirectoryURL().lastPathComponent) to enable Clone & Deploy, Check Deps, Restart, and launchd.")
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                            Spacer()
+                            Button("Copy Terminal Cmd") {
+                                controller.copyInstallScriptsCommand()
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+
+                            Button("Install Hook Scripts") {
+                                Task { await controller.installHookScriptsFromApp() }
+                            }
+                            .buttonStyle(BeaconPrimaryButtonStyle())
+                        }
+                        .padding(14)
+                        .background(Color(red: 0.08, green: 0.16, blue: 0.24))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.cyan.opacity(0.35)))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
                     MultiAppSectionView(controller: controller)
                     ServiceCardsView(controller: controller)
                     TerminalPanelView(controller: controller)
                     StartupScheduleView(controller: controller)
+                    ServerLogSearchView(controller: controller)
                     ActivityLogView(controller: controller)
                     ConfigurationView(controller: controller)
 

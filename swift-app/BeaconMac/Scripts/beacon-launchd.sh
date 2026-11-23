@@ -16,12 +16,14 @@ PREVENT_SLEEP="${3:-1}"
 LABEL="${BUNDLE_ID}.supervisor"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$AGENTS_DIR/${LABEL}.plist"
-SCRIPTS_DIR="$HOME/Library/Application Scripts/$BUNDLE_ID"
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 STARTUP_SCRIPT="$SCRIPTS_DIR/beacon-startup.sh"
 LOG_DIR="$HOME/beaconmac"
 SERVER_LOG="$LOG_DIR/server.log"
 
-mkdir -p "$AGENTS_DIR" "$LOG_DIR/logs"
+if [ "$ACTION" != "grep" ]; then
+  mkdir -p "$AGENTS_DIR" "$LOG_DIR/logs"
+fi
 
 write_plist() {
   cat > "$PLIST_PATH" <<EOF
@@ -116,8 +118,40 @@ case "$ACTION" in
     echo "LAUNCHD:LOG:OK:$SERVER_LOG"
     ;;
 
+  grep)
+    PATTERN="${2:-}"
+    MODE="${3:-E}"
+    CASE_FLAG="${4:-i}"
+    CTX_LINES="${5:-0}"
+    MAX_MATCHES="${6:-500}"
+    if [ ! -f "$SERVER_LOG" ]; then
+      echo "Log file not found at $SERVER_LOG. Start the launchd supervisor or deploy an app to generate server logs." >&2
+      exit 3
+    fi
+    GREP_ARGS=(-n -m "$MAX_MATCHES")
+    if [ "$MODE" = "F" ]; then
+      GREP_ARGS+=(-F)
+    else
+      GREP_ARGS+=(-E)
+    fi
+    if [ "$CASE_FLAG" = "i" ]; then
+      GREP_ARGS+=(-i)
+    fi
+    if [ "$CTX_LINES" = "2" ]; then
+      GREP_ARGS+=(-C 2)
+    fi
+    set +e
+    /usr/bin/grep "${GREP_ARGS[@]}" -- "$PATTERN" "$SERVER_LOG"
+    RC=$?
+    set -e
+    if [ "$RC" -eq 1 ]; then
+      exit 0
+    fi
+    exit "$RC"
+    ;;
+
   *)
-    echo "[beacon-launchd] Unknown action: $ACTION (expected install|stop|status)" >&2
+    echo "[beacon-launchd] Unknown action: $ACTION (expected install|stop|status|grep)" >&2
     exit 2
     ;;
 esac
