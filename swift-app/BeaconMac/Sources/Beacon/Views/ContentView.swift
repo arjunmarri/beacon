@@ -20,6 +20,12 @@ struct ContentView: View {
 
                 Spacer()
 
+                Button(controller.update.status == .checking ? "Checking…" : "Check Updates") {
+                    Task { await controller.checkForUpdates(userInitiated: true) }
+                }
+                .disabled(controller.update.status == .checking || controller.update.status == .downloading || controller.update.status == .installing)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
                 Button("Audit Tools") {
                     Task { await controller.auditSystemDependencies() }
                 }
@@ -56,6 +62,35 @@ struct ContentView: View {
                         .background(Color.red.opacity(0.12))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red.opacity(0.3)))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    if let release = controller.update.latestRelease,
+                       (controller.update.status == .updateAvailable || controller.update.status == .downloading || controller.update.status == .installing || controller.update.status == .readyToRelaunch) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("BeaconMac v\(release.version) Available (installed: v\(controller.update.currentVersion))")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Text(controller.update.statusMessage)
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                            Spacer()
+                            Button("Release Notes") {
+                                controller.openLatestReleasePage()
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+
+                            Button(controller.update.status == .downloading || controller.update.status == .installing ? "Updating…" : "Update & Relaunch") {
+                                Task { await controller.installAvailableUpdate() }
+                            }
+                            .disabled(controller.update.status == .downloading || controller.update.status == .installing || controller.update.status == .readyToRelaunch)
+                            .buttonStyle(BeaconPrimaryButtonStyle())
+                        }
+                        .padding(14)
+                        .background(Color(red: 0.07, green: 0.19, blue: 0.15))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.green.opacity(0.38)))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
 
                     if !controller.scriptsInstalled {

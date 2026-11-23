@@ -36,6 +36,14 @@ public enum EmbeddedScripts {
             .appendingPathComponent("Library/Application Scripts/com.beaconmac.app", isDirectory: true)
     }
 
+    /// Writable fallback directory inside Application Support used outside App Sandbox
+    /// if ~/Library/Application Scripts is restricted or unavailable.
+    public static func appSupportScriptsDirectoryURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("Beacon/scripts", isDirectory: true)
+    }
+
     public static let requiredScriptNames: [String] = [
         "beacon-check-deps.sh",
         "beacon-deploy.sh",
@@ -47,18 +55,30 @@ public enum EmbeddedScripts {
     ]
 
     public static func areScriptsInstalled() -> Bool {
-        let primary = targetScriptsDirectoryURL()
-        let primaryOK = requiredScriptNames.allSatisfy {
-            FileManager.default.fileExists(atPath: primary.appendingPathComponent($0).path)
-        }
-        if primaryOK { return true }
-        if !isSandboxed {
-            let fallback = fallbackScriptsDirectoryURL()
-            return requiredScriptNames.allSatisfy {
-                FileManager.default.fileExists(atPath: fallback.appendingPathComponent($0).path)
+        if isSandboxed {
+            let primary = targetScriptsDirectoryURL()
+            // Inside macOS App Sandbox, FileManager.fileExists(atPath:) can return false for
+            // ~/Library/Application Scripts/<bundle-id> even when scripts exist. Apple's
+            // NSUserUnixTask(url:) initializer validates existence and permissions via UserScriptService.
+            return requiredScriptNames.allSatisfy { name in
+                let url = primary.appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    return true
+                }
+                return (try? NSUserUnixTask(url: url)) != nil
             }
         }
-        return false
+
+        let candidates: [URL] = [
+            targetScriptsDirectoryURL(),
+            fallbackScriptsDirectoryURL(),
+            appSupportScriptsDirectoryURL()
+        ]
+        return candidates.contains { dir in
+            requiredScriptNames.allSatisfy {
+                FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
+            }
+        }
     }
 
     /// When running outside the Mac App Store App Sandbox (`swift run`, local Xcode run, or DMG),
@@ -66,13 +86,15 @@ public enum EmbeddedScripts {
     @discardableResult
     public static func autoInstallIfNotSandboxed() -> Bool {
         guard !isSandboxed else { return areScriptsInstalled() }
-        let targetDir = targetScriptsDirectoryURL()
-        do {
-            try writeAllScripts(to: targetDir)
+        let primaryDir = targetScriptsDirectoryURL()
+        if (try? writeAllScripts(to: primaryDir)) != nil {
             return true
-        } catch {
-            return areScriptsInstalled()
         }
+        let cacheDir = appSupportScriptsDirectoryURL()
+        if (try? writeAllScripts(to: cacheDir)) != nil {
+            return true
+        }
+        return areScriptsInstalled()
     }
 
     /// Apple App-Sandbox-compliant 1-click installer using NSOpenPanel so the user
@@ -93,24 +115,26 @@ public enum EmbeddedScripts {
 
         let panel = NSOpenPanel()
         panel.title = "Install BeaconMac Hook Scripts"
-        panel.message = "Click \"Install Scripts\" to allow BeaconMac to install its 7 helper scripts into \(targetDir.lastPathComponent)."
+        panel.message = "Select \"\(targetDir.lastPathComponent)\" (or \"Application Scripts\") and click \"Install Scripts\" to install BeaconMac's 7 helper scripts."
         panel.prompt = "Install Scripts"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.showsHiddenFiles = true
 
-        if FileManager.default.fileExists(atPath: targetDir.path) {
-            panel.directoryURL = targetDir
-        } else {
-            let parent = targetDir.deletingLastPathComponent()
-            if FileManager.default.fileExists(atPath: parent.path) {
-                panel.directoryURL = parent
-            }
-        }
+        // Powerbox (NSOpenPanel) runs out-of-process and can navigate to Application Scripts
+        // even when FileManager.fileExists returns false inside App Sandbox.
+        panel.directoryURL = targetDir
 
         guard panel.runModal() == .OK, let selectedURL = panel.url else {
             return (false, "Hook script installation cancelled.")
+        }
+
+        let didStartAccess = selectedURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccess {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
         }
 
         let destinationURL: URL

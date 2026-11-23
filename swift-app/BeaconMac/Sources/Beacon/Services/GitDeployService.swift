@@ -114,14 +114,10 @@ public final class GitDeployService: Sendable {
         }
 
         let scriptURL = scriptsDir.appendingPathComponent("beacon-git-pull.sh")
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            return (
-                false,
-                "Remote commit detected. Install beacon-git-pull.sh in ~/Library/Application Scripts/\(Bundle.main.bundleIdentifier ?? "com.beaconmonitor.mac")/ to pull automatically."
-            )
-        }
 
         do {
+            // Never gate on FileManager.fileExists(atPath:) inside macOS App Sandbox:
+            // Sandbox denies POSIX stat() on ~/Library/Application Scripts/<bundle-id>/.
             let task = try NSUserUnixTask(url: scriptURL)
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 task.execute(withArguments: [workingDir, branch]) { error in
@@ -134,6 +130,17 @@ public final class GitDeployService: Sendable {
             }
             return (true, "Pulled latest changes on branch \(branch) via beacon-git-pull.sh.")
         } catch {
+            let nsErr = error as NSError
+            let isMissing = nsErr.domain == NSCocoaErrorDomain && (
+                nsErr.code == NSFileReadNoSuchFileError ||
+                nsErr.code == NSFileNoSuchFileError
+            )
+            if isMissing {
+                return (
+                    false,
+                    "Remote commit detected. Click \"Install Hook Scripts\" or install beacon-git-pull.sh in ~/Library/Application Scripts/\(EmbeddedScripts.bundleID)/ to pull automatically."
+                )
+            }
             return (false, "Git pull script failed: \(error.localizedDescription)")
         }
     }

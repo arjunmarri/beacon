@@ -115,14 +115,10 @@ public final class LocalProcessService: Sendable {
         }
 
         let scriptURL = scriptsDir.appendingPathComponent("beacon-restart.sh")
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            return (
-                false,
-                "Install beacon-restart.sh in ~/Library/Application Scripts/\(Bundle.main.bundleIdentifier ?? "com.beaconmac.app")/ to enable App-Store-safe automatic restarts."
-            )
-        }
 
         do {
+            // Never gate on FileManager.fileExists(atPath:) inside macOS App Sandbox:
+            // Sandbox denies POSIX stat() on ~/Library/Application Scripts/<bundle-id>/.
             let task = try NSUserUnixTask(url: scriptURL)
             var args = [trimmedDir, String(port)]
             let trimmedCmd = startCommand.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -140,6 +136,17 @@ public final class LocalProcessService: Sendable {
             }
             return (true, "Restarted target local app in \(trimmedDir) on port \(port).")
         } catch {
+            let nsErr = error as NSError
+            let isMissing = nsErr.domain == NSCocoaErrorDomain && (
+                nsErr.code == NSFileReadNoSuchFileError ||
+                nsErr.code == NSFileNoSuchFileError
+            )
+            if isMissing {
+                return (
+                    false,
+                    "Click \"Install Hook Scripts\" or install beacon-restart.sh in ~/Library/Application Scripts/\(EmbeddedScripts.bundleID)/ to enable App-Store-safe automatic restarts."
+                )
+            }
             return (false, "Restart script failed: \(error.localizedDescription)")
         }
     }

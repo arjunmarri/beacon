@@ -292,6 +292,37 @@ public struct ClaudeState: Sendable {
     public var lastError: String?
 }
 
+public enum UpdateStatus: String, Sendable {
+    case idle
+    case checking
+    case upToDate
+    case updateAvailable
+    case downloading
+    case installing
+    case readyToRelaunch
+    case failed
+}
+
+public struct AppUpdateRelease: Sendable, Equatable {
+    public let version: String
+    public let tagName: String
+    public let releaseNotes: String
+    public let dmgDownloadURL: URL?
+    public let htmlReleaseURL: URL
+    public let publishedAt: String?
+}
+
+public struct AppUpdateState: Sendable {
+    public var currentVersion: String = AppUpdateService.currentAppVersion()
+    public var currentBuild: String = AppUpdateService.currentAppBuild()
+    public var status: UpdateStatus = .idle
+    public var latestRelease: AppUpdateRelease?
+    public var lastCheckedAt: Date?
+    public var downloadProgress: Double = 0
+    public var statusMessage: String = "Automatic updates ready"
+    public var lastError: String?
+}
+
 public struct BeaconConfig: Codable, Sendable {
     public var managedApps: [ManagedApp]
     public var startupSchedule: StartupScheduleConfig
@@ -304,6 +335,59 @@ public struct BeaconConfig: Codable, Sendable {
     public var notifyOnCrash: Bool
     public var notifyOnDeploy: Bool
     public var notifyOnOllamaDown: Bool
+    public var autoCheckForUpdates: Bool
+    public var autoInstallUpdates: Bool
+    public var updateFeedRepo: String
+
+    public init(
+        managedApps: [ManagedApp],
+        startupSchedule: StartupScheduleConfig,
+        maxRestarts: Int,
+        gitPollIntervalSec: Int,
+        ollamaEndpoint: String,
+        ollamaActiveModel: String,
+        emailEnabled: Bool,
+        recipientEmail: String,
+        notifyOnCrash: Bool,
+        notifyOnDeploy: Bool,
+        notifyOnOllamaDown: Bool,
+        autoCheckForUpdates: Bool = true,
+        autoInstallUpdates: Bool = false,
+        updateFeedRepo: String = AppUpdateService.defaultRepo
+    ) {
+        self.managedApps = managedApps
+        self.startupSchedule = startupSchedule
+        self.maxRestarts = maxRestarts
+        self.gitPollIntervalSec = gitPollIntervalSec
+        self.ollamaEndpoint = ollamaEndpoint
+        self.ollamaActiveModel = ollamaActiveModel
+        self.emailEnabled = emailEnabled
+        self.recipientEmail = recipientEmail
+        self.notifyOnCrash = notifyOnCrash
+        self.notifyOnDeploy = notifyOnDeploy
+        self.notifyOnOllamaDown = notifyOnOllamaDown
+        self.autoCheckForUpdates = autoCheckForUpdates
+        self.autoInstallUpdates = autoInstallUpdates
+        self.updateFeedRepo = updateFeedRepo
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.managedApps = try container.decodeIfPresent([ManagedApp].self, forKey: .managedApps) ?? []
+        self.startupSchedule = try container.decodeIfPresent(StartupScheduleConfig.self, forKey: .startupSchedule) ?? StartupScheduleConfig()
+        self.maxRestarts = try container.decodeIfPresent(Int.self, forKey: .maxRestarts) ?? 10
+        self.gitPollIntervalSec = try container.decodeIfPresent(Int.self, forKey: .gitPollIntervalSec) ?? 60
+        self.ollamaEndpoint = try container.decodeIfPresent(String.self, forKey: .ollamaEndpoint) ?? "http://127.0.0.1:11434"
+        self.ollamaActiveModel = try container.decodeIfPresent(String.self, forKey: .ollamaActiveModel) ?? ""
+        self.emailEnabled = try container.decodeIfPresent(Bool.self, forKey: .emailEnabled) ?? true
+        self.recipientEmail = try container.decodeIfPresent(String.self, forKey: .recipientEmail) ?? ""
+        self.notifyOnCrash = try container.decodeIfPresent(Bool.self, forKey: .notifyOnCrash) ?? true
+        self.notifyOnDeploy = try container.decodeIfPresent(Bool.self, forKey: .notifyOnDeploy) ?? true
+        self.notifyOnOllamaDown = try container.decodeIfPresent(Bool.self, forKey: .notifyOnOllamaDown) ?? true
+        self.autoCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoCheckForUpdates) ?? true
+        self.autoInstallUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? false
+        self.updateFeedRepo = try container.decodeIfPresent(String.self, forKey: .updateFeedRepo) ?? AppUpdateService.defaultRepo
+    }
 
     public static var defaults: BeaconConfig {
         BeaconConfig(
@@ -317,7 +401,10 @@ public struct BeaconConfig: Codable, Sendable {
             recipientEmail: "",
             notifyOnCrash: true,
             notifyOnDeploy: true,
-            notifyOnOllamaDown: true
+            notifyOnOllamaDown: true,
+            autoCheckForUpdates: true,
+            autoInstallUpdates: false,
+            updateFeedRepo: AppUpdateService.defaultRepo
         )
     }
 }

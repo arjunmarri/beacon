@@ -10,6 +10,8 @@ struct ConfigurationView: View {
     @State private var notifyOnCrash: Bool = true
     @State private var notifyOnDeploy: Bool = true
     @State private var notifyOnOllamaDown: Bool = true
+    @State private var autoCheckForUpdates: Bool = true
+    @State private var autoInstallUpdates: Bool = false
     @State private var expanded: Bool = false
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
@@ -100,26 +102,71 @@ struct ConfigurationView: View {
                     Toggle("Alert on deploy", isOn: $notifyOnDeploy)
                     Toggle("Alert on Ollama offline", isOn: $notifyOnOllamaDown)
                     Spacer()
-                    Button("Save Configuration") {
-                        let poll = Int(gitPollIntervalText) ?? controller.config.gitPollIntervalSec
-                        let maxR = Int(maxRestartsText) ?? controller.config.maxRestarts
-                        Task {
-                            await controller.saveGlobalConfiguration(
-                                ollamaEndpoint: ollamaEndpoint,
-                                gitPollIntervalSec: poll,
-                                maxRestarts: maxR,
-                                recipientEmail: recipientEmail,
-                                notifyOnCrash: notifyOnCrash,
-                                notifyOnDeploy: notifyOnDeploy,
-                                notifyOnOllamaDown: notifyOnOllamaDown
-                            )
-                            expanded = false
-                        }
-                    }
-                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Automatic Self-Updates (v\(controller.update.currentVersion) · build \(controller.update.currentBuild))")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(controller.update.statusMessage)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(controller.update.status == .checking ? "Checking…" : "Check Now") {
+                            Task { await controller.checkForUpdates(userInitiated: true) }
+                        }
+                        .disabled(controller.update.status == .checking || controller.update.status == .downloading || controller.update.status == .installing)
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+
+                        if controller.update.status == .updateAvailable, let release = controller.update.latestRelease {
+                            Button("Install v\(release.version)") {
+                                Task { await controller.installAvailableUpdate() }
+                            }
+                            .buttonStyle(BeaconPrimaryButtonStyle())
+                        }
+                    }
+
+                    HStack(spacing: 16) {
+                        Toggle("Automatically check for updates", isOn: $autoCheckForUpdates)
+                            .onChange(of: autoCheckForUpdates) { _, newVal in
+                                controller.updateAutoUpdatePreferences(autoCheck: newVal, autoInstall: autoInstallUpdates)
+                            }
+
+                        Toggle("Automatically download & install DMG updates", isOn: $autoInstallUpdates)
+                            .onChange(of: autoInstallUpdates) { _, newVal in
+                                controller.updateAutoUpdatePreferences(autoCheck: autoCheckForUpdates, autoInstall: newVal)
+                            }
+                        Spacer()
+                        Button("Save Configuration") {
+                            let poll = Int(gitPollIntervalText) ?? controller.config.gitPollIntervalSec
+                            let maxR = Int(maxRestartsText) ?? controller.config.maxRestarts
+                            Task {
+                                await controller.saveGlobalConfiguration(
+                                    ollamaEndpoint: ollamaEndpoint,
+                                    gitPollIntervalSec: poll,
+                                    maxRestarts: maxR,
+                                    recipientEmail: recipientEmail,
+                                    notifyOnCrash: notifyOnCrash,
+                                    notifyOnDeploy: notifyOnDeploy,
+                                    notifyOnOllamaDown: notifyOnOllamaDown,
+                                    autoCheckForUpdates: autoCheckForUpdates,
+                                    autoInstallUpdates: autoInstallUpdates
+                                )
+                                expanded = false
+                            }
+                        }
+                        .buttonStyle(BeaconPrimaryButtonStyle())
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(18)
@@ -136,6 +183,8 @@ struct ConfigurationView: View {
         notifyOnCrash = controller.config.notifyOnCrash
         notifyOnDeploy = controller.config.notifyOnDeploy
         notifyOnOllamaDown = controller.config.notifyOnOllamaDown
+        autoCheckForUpdates = controller.config.autoCheckForUpdates
+        autoInstallUpdates = controller.config.autoInstallUpdates
     }
 
     private func fieldLabel(_ text: String) -> some View {

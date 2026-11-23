@@ -183,28 +183,89 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 24px;
-        padding: 36px 24px 36px;
+        padding: 28px 24px 24px;
+        overflow-x: clip;
       }
 
-      main,
-      .gallery-section,
-      .faq-section {
-        scroll-margin-top: 78px;
-      }
-
-      main {
+      /* Fixed-size 3-Tab Carousel Stage (About / Preview / FAQ share exact same size) */
+      .tab-carousel {
+        position: relative;
         width: 100%;
-        max-width: 660px;
-        padding: 40px 36px;
+        max-width: 720px;
+        height: 540px;
+      }
+
+      .tab-panel {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 34px 34px 28px;
         border-radius: 18px;
-        background: rgba(15, 19, 27, 0.74);
+        background: rgba(15, 19, 27, 0.78);
         border: 1px solid rgba(255, 255, 255, 0.085);
         box-shadow:
           0 24px 70px rgba(0, 0, 0, 0.55),
           inset 0 1px 0 rgba(255, 255, 255, 0.08);
         backdrop-filter: blur(18px);
         -webkit-backdrop-filter: blur(18px);
+        overflow-y: auto;
+        scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+        scrollbar-width: thin;
+        will-change: transform, opacity;
+        transition:
+          transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 400ms ease;
+      }
+
+      .tab-panel.no-transition {
+        transition: none !important;
+      }
+
+      .tab-panel.is-active {
+        transform: translateX(0);
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        z-index: 2;
+      }
+
+      .tab-panel.is-hidden-left {
+        transform: translateX(-118%);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .tab-panel.is-hidden-right {
+        transform: translateX(118%);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .tab-panel.is-exiting-left {
+        transform: translateX(-118%);
+        opacity: 0;
+        visibility: visible;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .tab-panel.is-exiting-right {
+        transform: translateX(118%);
+        opacity: 0;
+        visibility: visible;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      main.tab-panel {
+        justify-content: safe center;
       }
 
       .meta-row {
@@ -452,19 +513,10 @@
         color: #9ba8bc;
       }
 
-      /* Scrollable App Screenshots Showcase */
-      .gallery-section {
-        width: 100%;
-        max-width: 920px;
-        padding: 26px 28px 24px;
-        border-radius: 18px;
-        background: rgba(15, 19, 27, 0.68);
-        border: 1px solid rgba(255, 255, 255, 0.085);
-        box-shadow:
-          0 20px 56px rgba(0, 0, 0, 0.5),
-          inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+      /* Scrollable App Screenshots Showcase inside exact-size Preview Tab */
+      .gallery-section.tab-panel {
+        padding: 26px 28px 22px;
+        overflow: hidden;
       }
 
       .gallery-header {
@@ -472,8 +524,9 @@
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        margin-bottom: 18px;
+        margin-bottom: 14px;
         flex-wrap: wrap;
+        flex-shrink: 0;
       }
 
       .gallery-heading-group h2 {
@@ -487,7 +540,7 @@
       .gallery-heading-group span {
         display: block;
         margin-top: 3px;
-        font-size: 12.5px;
+        font-size: 12px;
         color: #8492a6;
       }
 
@@ -534,13 +587,16 @@
       }
 
       .gallery-track {
+        flex: 1;
+        min-height: 0;
         display: flex;
-        gap: 16px;
+        gap: 14px;
         overflow-x: auto;
+        overflow-y: hidden;
         scroll-snap-type: x mandatory;
         scroll-behavior: smooth;
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 10px;
+        padding-bottom: 8px;
         scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
         scrollbar-width: thin;
       }
@@ -564,7 +620,10 @@
       }
 
       .shot-card {
-        flex: 0 0 82%;
+        flex: 0 0 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
         scroll-snap-align: start;
         margin: 0;
         border-radius: 12px;
@@ -581,7 +640,8 @@
       .shot-frame {
         position: relative;
         width: 100%;
-        aspect-ratio: 16 / 9;
+        flex: 1;
+        min-height: 0;
         background: #080a0f;
         cursor: zoom-in;
         overflow: hidden;
@@ -600,7 +660,8 @@
       }
 
       .shot-caption {
-        padding: 13px 16px 14px;
+        flex-shrink: 0;
+        padding: 12px 15px 13px;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
       }
 
@@ -609,7 +670,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        font-size: 13.5px;
+        font-size: 13px;
         font-weight: 600;
         color: #f1f5f9;
       }
@@ -622,9 +683,9 @@
       }
 
       .shot-caption p {
-        margin: 5px 0 0;
-        font-size: 12.5px;
-        line-height: 1.55;
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.5;
         color: #93a1b7;
       }
 
@@ -698,18 +759,9 @@
         color: #dbe6f5;
       }
 
-      .faq-section {
-        width: 100%;
-        max-width: 660px;
-        padding: 28px 32px;
-        border-radius: 18px;
-        background: rgba(15, 19, 27, 0.68);
-        border: 1px solid rgba(255, 255, 255, 0.085);
-        box-shadow:
-          0 20px 56px rgba(0, 0, 0, 0.48),
-          inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+      .faq-section.tab-panel {
+        padding: 26px 28px 22px;
+        overflow: hidden;
       }
 
       .faq-header {
@@ -717,8 +769,9 @@
         align-items: baseline;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 14px;
         flex-wrap: wrap;
+        flex-shrink: 0;
       }
 
       .faq-header h2 {
@@ -730,9 +783,15 @@
       }
 
       .faq-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 4px;
         display: flex;
         flex-direction: column;
         gap: 8px;
+        scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+        scrollbar-width: thin;
       }
 
       .faq-item {
@@ -842,14 +901,14 @@
       }
 
       @media (max-width: 560px) {
-        main,
-        .gallery-section,
-        .faq-section {
-          padding: 24px 18px;
+        .tab-carousel {
+          height: 580px;
         }
 
-        .shot-card {
-          flex: 0 0 92%;
+        .tab-panel,
+        .gallery-section.tab-panel,
+        .faq-section.tab-panel {
+          padding: 22px 18px;
         }
       }
     </style>
@@ -859,20 +918,21 @@
 
     <header class="top-nav">
       <div class="top-nav-inner">
-        <a class="nav-brand" href="#about" data-scroll-target="about">
+        <a class="nav-brand" href="#about" data-tab-target="about">
           <span class="nav-brand-dot" aria-hidden="true"></span>
           <span>BeaconMac</span>
         </a>
-        <nav class="nav-links" aria-label="Primary navigation">
-          <a class="nav-link active" href="#about" data-scroll-target="about" aria-current="true">About</a>
-          <a class="nav-link" href="#preview" data-scroll-target="preview">Preview</a>
-          <a class="nav-link" href="#faq" data-scroll-target="faq">FAQ</a>
+        <nav class="nav-links" role="tablist" aria-label="Primary navigation">
+          <a class="nav-link active" role="tab" href="#about" data-tab-target="about" aria-controls="about" aria-selected="true" aria-current="page">About</a>
+          <a class="nav-link" role="tab" href="#preview" data-tab-target="preview" aria-controls="preview" aria-selected="false">Preview</a>
+          <a class="nav-link" role="tab" href="#faq" data-tab-target="faq" aria-controls="faq" aria-selected="false">FAQ</a>
         </nav>
       </div>
     </header>
 
     <div class="stage">
-      <main id="about">
+      <div class="tab-carousel" id="tab-carousel">
+      <main id="about" class="tab-panel is-active" role="tabpanel" aria-hidden="false">
         <div class="meta-row">
           <div class="meta-left">
             <div class="traffic-lights" aria-hidden="true">
@@ -880,7 +940,7 @@
               <span class="dot dot-amber"></span>
               <span class="dot dot-green"></span>
             </div>
-            <span class="platform-note" id="platform-meta">v1.0.0 · Universal · macOS 14+</span>
+            <span class="platform-note" id="platform-meta">v1.1.0 · Universal · macOS 14+</span>
           </div>
           <span class="platform-note">Swift 5.10 · SwiftUI</span>
         </div>
@@ -900,14 +960,14 @@
             id="dmg-download-btn"
             class="btn btn-primary"
             href="/download/dmg"
-            download="BeaconMac-1.0.0-universal.dmg"
+            download="BeaconMac-1.1.0-universal.dmg"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span id="dmg-download-label">Download BeaconMac v1.0.0 (.dmg)</span>
+            <span id="dmg-download-label">Download BeaconMac v1.1.0 (.dmg)</span>
           </a>
 
           <a
@@ -925,7 +985,7 @@
         </div>
 
         <div class="release-meta">
-          <span id="release-status">BeaconMac-1.0.0-universal.dmg · Apple Silicon &amp; Intel</span>
+          <span id="release-status">BeaconMac-1.1.0-universal.dmg · Apple Silicon &amp; Intel</span>
           <div class="release-links">
             <button type="button" class="text-link" id="toggle-versions">Version History</button>
             <a class="text-link" href="/api/download-swift">Source &amp; Xcode (.zip)</a>
@@ -933,22 +993,22 @@
         </div>
 
         <div class="notice-box" id="build-notice" role="status">
-          <strong>macOS DMG Release Not Published Yet for <span id="notice-version">v1.0.0</span></strong><br />
+          <strong>macOS DMG Release Not Published Yet for <span id="notice-version">v1.1.0</span></strong><br />
           Compiling a Universal macOS <code>.app</code> and <code>.dmg</code> requires Apple's macOS
           14 toolchain. Push a version tag to trigger the included GitHub Actions
           (<code>macos-14</code>) workflow — this button will automatically serve the signed
           <code>.dmg</code> once published — or build locally on your Mac:
           <pre id="notice-commands"># Auto-build &amp; publish DMG via GitHub Actions (macos-14):
-git tag v1.0.0 &amp;&amp; git push origin v1.0.0
+git tag v1.1.0 &amp;&amp; git push origin v1.1.0
 
-# Or build releases/BeaconMac-1.0.0-universal.dmg directly on your Mac:
+# Or build releases/BeaconMac-1.1.0-universal.dmg directly on your Mac:
 ./swift-app/BeaconMac/Scripts/build-dmg.sh</pre>
         </div>
 
         <div class="versions-panel" id="versions-panel" aria-live="polite"></div>
       </main>
 
-      <section id="preview" class="gallery-section" aria-labelledby="gallery-heading">
+      <section id="preview" class="gallery-section tab-panel is-hidden-right" role="tabpanel" aria-hidden="true" aria-labelledby="gallery-heading">
         <div class="gallery-header">
           <div class="gallery-heading-group">
             <h2 id="gallery-heading">See BeaconMac in Action</h2>
@@ -1063,7 +1123,7 @@ git tag v1.0.0 &amp;&amp; git push origin v1.0.0
         </div>
       </section>
 
-      <section id="faq" class="faq-section" aria-labelledby="faq-heading">
+      <section id="faq" class="faq-section tab-panel is-hidden-right" role="tabpanel" aria-hidden="true" aria-labelledby="faq-heading">
         <div class="faq-header">
           <h2 id="faq-heading">Frequently Asked Questions</h2>
           <a
@@ -1166,6 +1226,35 @@ ssh -T git@github.com</pre>
 
           <details class="faq-item">
             <summary>
+              <span>What should I do if Git clone fails with a permissions error?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                A <code>Permission denied (publickey)</code> error during <code>git clone</code>
+                usually means your SSH key is not loaded into your macOS <code>ssh-agent</code> or
+                its file permissions are too open. Check your active SSH identities, ensure your
+                private key is readable only by you, and register it with <code>ssh-add</code>:
+              </p>
+              <pre># 1. Check currently loaded SSH identities:
+ssh-add -l
+
+# 2. Start ssh-agent if needed and enforce private key permissions:
+eval "$(ssh-agent -s)"
+chmod 600 ~/.ssh/id_ed25519
+
+# 3. Add your private key to ssh-agent (persisted in macOS Keychain):
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+
+# 4. Re-verify identity against GitHub:
+ssh -T git@github.com</pre>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
               <span>How does BeaconMac use Apple's launchd for background startup?</span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
@@ -1206,8 +1295,32 @@ launchctl unload ~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</pre>
 caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
             </div>
           </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How does BeaconMac handle automatic updates?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                BeaconMac uses the <strong>Sparkle framework</strong> to deliver seamless background
+                updates. It automatically checks for signed releases in the background, downloads
+                updates without interrupting your running local apps, and applies the update cleanly
+                on relaunch.
+              </p>
+              <p>
+                To check manually at any time, click the <strong>BeaconMac</strong> icon in the
+                macOS <strong>Menu Bar</strong> and select <strong>Check for Updates…</strong> (you
+                can also trigger a manual check or adjust automatic update preferences from the app
+                menubar and Settings).
+              </p>
+            </div>
+          </details>
         </div>
       </section>
+      </div>
     </div>
 
     <footer>
@@ -1227,7 +1340,7 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
         const noticeVersion = document.getElementById('notice-version');
         const noticeCommands = document.getElementById('notice-commands');
 
-        let releaseState = { latest: '1.0.0', dmgReady: false, releases: [] };
+        let releaseState = { latest: '1.1.0', dmgReady: false, releases: [] };
 
         function formatBytes(bytes) {
           if (!bytes || typeof bytes !== 'number') return '';
@@ -1304,7 +1417,7 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
           .then((data) => {
             if (!data) return;
             releaseState = data;
-            const latest = data.latest || '1.0.0';
+            const latest = data.latest || '1.1.0';
             const latestObj = (data.releases || []).find((r) => r.version === latest) || data.releases?.[0];
             const filename = latestObj?.dmgFilename || 'BeaconMac-' + latest + '-universal.dmg';
 
@@ -1429,83 +1542,143 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
     </script>
 
     <script>
-      /* Top Menu Smooth Scroll & Active Section Tracking */
+      /* 3-Tab Directional Carousel (About / Preview / FAQ — exact same size, Preview & FAQ hidden by default) */
       (function () {
+        const tabOrder = ['about', 'preview', 'faq'];
         const navLinks = Array.from(document.querySelectorAll('.nav-link'));
-        const triggers = Array.from(document.querySelectorAll('[data-scroll-target]'));
-        const sectionIds = ['about', 'preview', 'faq'];
-        const sections = sectionIds
-          .map((id) => document.getElementById(id))
-          .filter(Boolean);
+        const triggers = Array.from(document.querySelectorAll('[data-tab-target]'));
+        const panels = Object.fromEntries(
+          tabOrder.map((id) => [id, document.getElementById(id)])
+        );
 
-        function setActive(id) {
+        let activeId = 'about';
+        let cleanupTimer = null;
+
+        function updateNav(targetId) {
           navLinks.forEach((link) => {
-            const isMatch = link.getAttribute('data-scroll-target') === id;
+            const isMatch = link.getAttribute('data-tab-target') === targetId;
             link.classList.toggle('active', isMatch);
+            link.setAttribute('aria-selected', isMatch ? 'true' : 'false');
             if (isMatch) {
-              link.setAttribute('aria-current', 'true');
+              link.setAttribute('aria-current', 'page');
             } else {
               link.removeAttribute('aria-current');
             }
           });
         }
 
-        triggers.forEach((el) => {
-          el.addEventListener('click', (event) => {
-            const targetId = el.getAttribute('data-scroll-target');
-            const target = targetId ? document.getElementById(targetId) : null;
-            if (!target) return;
-            event.preventDefault();
-            setActive(targetId);
-
-            const navEl = document.querySelector('.top-nav');
-            const navHeight = navEl ? navEl.getBoundingClientRect().height : 56;
-            const targetTop =
-              targetId === 'about'
-                ? 0
-                : Math.max(0, target.getBoundingClientRect().top + window.scrollY - navHeight - 20);
-
-            window.scrollTo({ top: targetTop, behavior: 'smooth' });
-            if (history.replaceState) {
-              history.replaceState(null, '', '#' + targetId);
+        function setRestClasses(currentId) {
+          const currentIdx = tabOrder.indexOf(currentId);
+          tabOrder.forEach((id, idx) => {
+            const panel = panels[id];
+            if (!panel) return;
+            panel.classList.remove(
+              'no-transition',
+              'is-active',
+              'is-hidden-left',
+              'is-hidden-right',
+              'is-exiting-left',
+              'is-exiting-right'
+            );
+            if (idx === currentIdx) {
+              panel.classList.add('is-active');
+              panel.setAttribute('aria-hidden', 'false');
+            } else if (idx < currentIdx) {
+              panel.classList.add('is-hidden-left');
+              panel.setAttribute('aria-hidden', 'true');
+            } else {
+              panel.classList.add('is-hidden-right');
+              panel.setAttribute('aria-hidden', 'true');
             }
           });
-        });
+        }
 
-        let scrollTicking = false;
-        function syncActiveOnScroll() {
-          scrollTicking = false;
-          const scrollY = window.scrollY;
-          const viewportBottom = scrollY + window.innerHeight;
-          const docHeight = document.documentElement.scrollHeight;
-
-          if (viewportBottom >= docHeight - 24) {
-            setActive('faq');
+        function switchToTab(targetId, animate = true) {
+          if (!panels[targetId] || targetId === activeId) {
+            updateNav(targetId);
             return;
           }
 
-          const navEl = document.querySelector('.top-nav');
-          const offset = (navEl ? navEl.getBoundingClientRect().height : 56) + 90;
-          let current = 'about';
-          for (const sec of sections) {
-            if (sec.offsetTop - offset <= scrollY) {
-              current = sec.id;
-            }
+          if (cleanupTimer) {
+            clearTimeout(cleanupTimer);
+            cleanupTimer = null;
           }
-          setActive(current);
+
+          const fromIdx = tabOrder.indexOf(activeId);
+          const toIdx = tabOrder.indexOf(targetId);
+          const goingForward = toIdx > fromIdx;
+
+          const currentPanel = panels[activeId];
+          const nextPanel = panels[targetId];
+
+          if (!animate) {
+            activeId = targetId;
+            updateNav(targetId);
+            setRestClasses(targetId);
+            return;
+          }
+
+          // Hide any unrelated third panel immediately
+          tabOrder.forEach((id, idx) => {
+            if (id === activeId || id === targetId) return;
+            const p = panels[id];
+            if (!p) return;
+            p.classList.add('no-transition');
+            p.classList.remove('is-active', 'is-exiting-left', 'is-exiting-right', 'is-hidden-left', 'is-hidden-right');
+            p.classList.add(idx < toIdx ? 'is-hidden-left' : 'is-hidden-right');
+            p.setAttribute('aria-hidden', 'true');
+            void p.offsetWidth;
+            p.classList.remove('no-transition');
+          });
+
+          // Stage incoming panel on the right (forward) or left (backward) without transition
+          nextPanel.classList.add('no-transition');
+          nextPanel.classList.remove('is-active', 'is-exiting-left', 'is-exiting-right', 'is-hidden-left', 'is-hidden-right');
+          nextPanel.classList.add(goingForward ? 'is-hidden-right' : 'is-hidden-left');
+          nextPanel.style.visibility = 'visible';
+          void nextPanel.offsetWidth;
+          nextPanel.classList.remove('no-transition');
+
+          // Slide current panel out to left (forward) / right (backward) and incoming panel into center
+          currentPanel.classList.remove('is-active', 'is-hidden-left', 'is-hidden-right', 'is-exiting-left', 'is-exiting-right');
+          currentPanel.classList.add(goingForward ? 'is-exiting-left' : 'is-exiting-right');
+          currentPanel.setAttribute('aria-hidden', 'true');
+
+          nextPanel.classList.remove('is-hidden-left', 'is-hidden-right', 'is-exiting-left', 'is-exiting-right');
+          nextPanel.classList.add('is-active');
+          nextPanel.style.visibility = '';
+          nextPanel.setAttribute('aria-hidden', 'false');
+
+          activeId = targetId;
+          updateNav(targetId);
+
+          if (history.replaceState) {
+            history.replaceState(null, '', '#' + targetId);
+          }
+
+          cleanupTimer = setTimeout(() => {
+            setRestClasses(activeId);
+            cleanupTimer = null;
+          }, 540);
         }
 
-        window.addEventListener(
-          'scroll',
-          () => {
-            if (!scrollTicking) {
-              scrollTicking = true;
-              window.requestAnimationFrame(syncActiveOnScroll);
-            }
-          },
-          { passive: true }
-        );
-        syncActiveOnScroll();
+        triggers.forEach((el) => {
+          el.addEventListener('click', (event) => {
+            const targetId = el.getAttribute('data-tab-target');
+            if (!targetId || !panels[targetId]) return;
+            event.preventDefault();
+            switchToTab(targetId, true);
+          });
+        });
+
+        // Default to About visible with Preview & FAQ hidden (unless hash explicitly selects one)
+        const initialHash = window.location.hash.replace('#', '');
+        if (tabOrder.includes(initialHash) && initialHash !== 'about') {
+          switchToTab(initialHash, false);
+        } else {
+          setRestClasses('about');
+          updateNav('about');
+        }
       })();
 
       /* Constantly Animating Dark Beacon Constellation & Ambient Glow Canvas */

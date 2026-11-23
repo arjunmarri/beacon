@@ -1,9 +1,9 @@
 {
   "appName": "BeaconMac",
-  "version": "1.0.0",
-  "build": 1,
+  "version": "1.1.0",
+  "build": 2,
   "minMacOS": "14.0",
   "architecture": "Universal (Apple Silicon + Intel)",
-  "dmgFilename": "BeaconMac-1.0.0-universal.dmg",
+  "dmgFilename": "BeaconMac-1.1.0-universal.dmg",
   "githubRepo": "arjunmarri/beacon"
 }

@@ -196,58 +196,104 @@ public final class AppDeploymentService: Sendable {
     }
 
     private func runUnixScript(named scriptName: String, arguments: [String]) async -> ScriptExecutionResult {
-        // Outside App Sandbox (swift run, local builds, Developer ID DMG), auto-install embedded scripts
+        let primaryDir = EmbeddedScripts.targetScriptsDirectoryURL()
+
+        // Outside the App Sandbox (swift run, local builds, Developer ID DMG), auto-install embedded
+        // scripts and execute directly via Foundation.Process.
         if !EmbeddedScripts.isSandboxed {
             EmbeddedScripts.autoInstallIfNotSandboxed()
-        }
 
-        let primaryDir = EmbeddedScripts.targetScriptsDirectoryURL()
-        let primaryScript = primaryDir.appendingPathComponent(scriptName)
-        let fallbackScript = EmbeddedScripts.fallbackScriptsDirectoryURL().appendingPathComponent(scriptName)
+            let primaryScript = primaryDir.appendingPathComponent(scriptName)
+            let fallbackScript = EmbeddedScripts.fallbackScriptsDirectoryURL().appendingPathComponent(scriptName)
+            let appSupportScript = EmbeddedScripts.appSupportScriptsDirectoryURL().appendingPathComponent(scriptName)
 
-        let resolvedScript: URL?
-        if FileManager.default.fileExists(atPath: primaryScript.path) {
-            resolvedScript = primaryScript
-        } else if !EmbeddedScripts.isSandboxed && FileManager.default.fileExists(atPath: fallbackScript.path) {
-            resolvedScript = fallbackScript
-        } else {
-            resolvedScript = nil
-        }
+            let resolvedScript: URL?
+            if FileManager.default.fileExists(atPath: primaryScript.path) {
+                resolvedScript = primaryScript
+            } else if FileManager.default.fileExists(atPath: fallbackScript.path) {
+                resolvedScript = fallbackScript
+            } else if FileManager.default.fileExists(atPath: appSupportScript.path) {
+                resolvedScript = appSupportScript
+            } else {
+                resolvedScript = nil
+            }
 
-        guard let scriptURL = resolvedScript else {
-            let hint = "Missing \(scriptName) in \(primaryDir.path). Click \"Install Hook Scripts\" at the top of BeaconMac or run: \(EmbeddedScripts.terminalInstallOneLiner)"
-            return ScriptExecutionResult(
-                ok: false,
-                stdoutLines: [],
-                stderrLines: [hint],
-                summary: hint
-            )
-        }
+            guard let scriptURL = resolvedScript else {
+                let hint = "Missing \(scriptName) in \(primaryDir.path). Click \"Install Hook Scripts\" at the top of BeaconMac or run: \(EmbeddedScripts.terminalInstallOneLiner)"
+                return ScriptExecutionResult(
+                    ok: false,
+                    stdoutLines: [],
+                    stderrLines: [hint],
+                    summary: hint
+                )
+            }
 
-        // Outside the App Sandbox, run via Foundation.Process directly (avoids NSUserUnixTask
-        // bundle-ID directory mismatches during `swift run` while keeping identical Pipe capture).
-        if !EmbeddedScripts.isSandboxed {
             return await runViaProcess(scriptURL: scriptURL, scriptName: scriptName, arguments: arguments)
         }
 
-        // Inside the Mac App Store App Sandbox, execute strictly via Apple's NSUserUnixTask API.
+        // Inside the Mac App Store App Sandbox:
+        // 1. NEVER gate on FileManager.fileExists(atPath:) — App Sandbox denies POSIX stat() on
+        //    ~/Library/Application Scripts/<bundle-id>/. Pass the URL directly to NSUserUnixTask.
+        // 2. Capture stdout/stderr via real temporary FileHandles inside the app container's
+        //    temporaryDirectory instead of Pipe() — prevents macOS XPC UserScriptService
+        //    "Bad file descriptor" (EBADF) errors and avoids 64KB pipe buffer deadlocks.
+        let scriptURL = primaryDir.appendingPathComponent(scriptName)
+        let task: NSUserUnixTask
         do {
-            let task = try NSUserUnixTask(url: scriptURL)
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            task.standardOutput = stdoutPipe.fileHandleForWriting
-            task.standardError = stderrPipe.fileHandleForWriting
+            task = try NSUserUnixTask(url: scriptURL)
+        } catch {
+            let nsErr = error as NSError
+            let isMissing = nsErr.domain == NSCocoaErrorDomain && (
+                nsErr.code == NSFileReadNoSuchFileError ||
+                nsErr.code == NSFileNoSuchFileError
+            )
+            let msg = isMissing
+                ? "Missing \(scriptName) in \(primaryDir.path). Click \"Install Hook Scripts\" at the top of BeaconMac or run: \(EmbeddedScripts.terminalInstallOneLiner)"
+                : "\(scriptName) could not be prepared: \(SecretMasker.redact(error.localizedDescription))"
+            return ScriptExecutionResult(
+                ok: false,
+                stdoutLines: [],
+                stderrLines: [msg],
+                summary: msg
+            )
+        }
+
+        let tmpDir = FileManager.default.temporaryDirectory
+        let runID = UUID().uuidString
+        let outURL = tmpDir.appendingPathComponent("beacon-stdout-\(runID).log")
+        let errURL = tmpDir.appendingPathComponent("beacon-stderr-\(runID).log")
+
+        guard FileManager.default.createFile(atPath: outURL.path, contents: Data()),
+              FileManager.default.createFile(atPath: errURL.path, contents: Data()) else {
+            let msg = "Unable to create temporary output files for \(scriptName)."
+            return ScriptExecutionResult(ok: false, stdoutLines: [], stderrLines: [msg], summary: msg)
+        }
+        defer {
+            try? FileManager.default.removeItem(at: outURL)
+            try? FileManager.default.removeItem(at: errURL)
+        }
+
+        do {
+            let outHandle = try FileHandle(forWritingTo: outURL)
+            let errHandle = try FileHandle(forWritingTo: errURL)
+
+            task.standardOutput = outHandle
+            task.standardError = errHandle
 
             let executionError: Error? = await withCheckedContinuation { continuation in
                 task.execute(withArguments: arguments) { error in
-                    try? stdoutPipe.fileHandleForWriting.close()
-                    try? stderrPipe.fileHandleForWriting.close()
                     continuation.resume(returning: error)
                 }
             }
 
-            let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            // Flush & close handles only AFTER UserScriptService finishes executing.
+            try? outHandle.synchronize()
+            try? errHandle.synchronize()
+            try? outHandle.close()
+            try? errHandle.close()
+
+            let outData = (try? Data(contentsOf: outURL)) ?? Data()
+            let errData = (try? Data(contentsOf: errURL)) ?? Data()
             let stdoutLines = (String(data: outData, encoding: .utf8) ?? "")
                 .split(separator: "\n", omittingEmptySubsequences: true)
                 .map { SecretMasker.redact(String($0)) }
@@ -299,13 +345,45 @@ public final class AppDeploymentService: Sendable {
 
                 do {
                     try process.run()
+
+                    final class LockedDataBox: @unchecked Sendable {
+                        private let lock = NSLock()
+                        private var storage = Data()
+                        func set(_ data: Data) {
+                            lock.lock()
+                            storage = data
+                            lock.unlock()
+                        }
+                        func get() -> Data {
+                            lock.lock()
+                            defer { lock.unlock() }
+                            return storage
+                        }
+                    }
+
+                    let group = DispatchGroup()
+                    let outBox = LockedDataBox()
+                    let errBox = LockedDataBox()
+
+                    group.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        outBox.set(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                        group.leave()
+                    }
+
+                    group.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        errBox.set(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+                        group.leave()
+                    }
+
                     process.waitUntilExit()
-                    let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                    let stdoutLines = (String(data: outData, encoding: .utf8) ?? "")
+                    group.wait()
+
+                    let stdoutLines = (String(data: outBox.get(), encoding: .utf8) ?? "")
                         .split(separator: "\n", omittingEmptySubsequences: true)
                         .map { SecretMasker.redact(String($0)) }
-                    var stderrLines = (String(data: errData, encoding: .utf8) ?? "")
+                    var stderrLines = (String(data: errBox.get(), encoding: .utf8) ?? "")
                         .split(separator: "\n", omittingEmptySubsequences: true)
                         .map { SecretMasker.redact(String($0)) }
 

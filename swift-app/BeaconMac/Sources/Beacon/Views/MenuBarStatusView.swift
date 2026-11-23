@@ -57,6 +57,16 @@ struct MenuBarStatusView: View {
                 Task { await controller.refreshAllServices() }
             }
 
+            if controller.update.status == .updateAvailable, let release = controller.update.latestRelease {
+                Button("Update to v\(release.version)…") {
+                    Task { await controller.installAvailableUpdate() }
+                }
+            } else {
+                Button("Check for Updates…") {
+                    Task { await controller.checkForUpdates(userInitiated: true) }
+                }
+            }
+
             Divider()
 
             Button("Quit BeaconMac") {

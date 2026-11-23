@@ -1,7 +1,25 @@
 {
-  "latest": "1.0.0",
+  "latest": "1.1.0",
   "githubRepo": "arjunmarri/beacon",
   "releases": [
+    {
+      "version": "1.1.0",
+      "build": 2,
+      "date": "2026-11-23",
+      "minMacOS": "14.0",
+      "architecture": "Universal (Apple Silicon + Intel)",
+      "dmgFilename": "BeaconMac-1.1.0-universal.dmg",
+      "githubDownloadUrl": "https://github.com/arjunmarri/beacon/releases/download/v1.1.0/BeaconMac-1.1.0-universal.dmg",
+      "sha256": null,
+      "sizeBytes": null,
+      "notes": [
+        "Added Automatic Self-Updates: checks GitHub Releases on launch & every 6 hours, supports optional automatic DMG download/install & relaunch, plus Check Updates in the top bar, Settings, and Menu Bar",
+        "Added Server Log Search (grep / regex) bar above Activity Logs + full-size modal for searching ~/beaconmac/server.log with -E/-F, case sensitivity, ±2 context lines, and scrollable preformatted output",
+        "Embedded all 7 shell hook scripts inside the app binary with zero-setup auto-install outside App Sandbox (including Application Support fallback) and 1-click NSOpenPanel installation inside Mac App Store App Sandbox",
+        "Updated install-sandbox-scripts.sh to install scripts into both com.beaconmac.app and BeaconMac Application Scripts directories",
+        "Added App-Sandbox-compliant beacon-launchd.sh grep subcommand with automatic secret redaction"
+      ]
+    },
     {
       "version": "1.0.0",
       "build": 1,

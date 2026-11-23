@@ -333,10 +333,58 @@ app.get('/api/download-swift', async (_req: Request, res: Response) => {
   await archive.finalize();
 });
 
-app.get('*', (_req: Request, res: Response) => {
-  res.sendFile(INDEX_HTML_PATH);
+app.get('/healthz', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.get('*', (_req: Request, res: Response) => {
+  fs.readFile(INDEX_HTML_PATH, 'utf8', (err, html) => {
+    if (err) {
+      if (!res.headersSent) {
+        res.status(500).send('Unable to load application page.');
+      }
+      return;
+    }
+    if (!res.headersSent) {
+      res.status(200).type('text/html; charset=utf-8').send(html);
+    }
+  });
+});
+
+app.use((err: unknown, _req: Request, res: Response, _next: express.NextFunction) => {
+  console.error('Unhandled request error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`BeaconMac release portal listening on http://0.0.0.0:${PORT}`);
 });
+
+// Prevent TCP "connection reset by peer" behind proxies/pre-warmers with idle connection pools
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+server.requestTimeout = 120_000;
+
+let shuttingDown = false;
+function gracefulShutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, closing HTTP server gracefully...`);
+  server.close(() => {
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 5_000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

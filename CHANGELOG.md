@@ -5,6 +5,17 @@ Versioning follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATC
 
 ---
 
+## [1.1.0] — 2026-11-23
+
+### Added
+- **Automatic Self-Updates**: Added `AppUpdateService` to check GitHub Releases (with `releases/releases.json` fallback) on launch and every 6 hours, with opt-in automatic DMG download, atomic `.app` swap & relaunch, plus **Check Updates** / **Update & Relaunch** controls in the top bar, Settings, and Menu Bar.
+- **Server Log Search (`grep` / Regex)**: Added a dedicated search bar above the Real-Time Activity Log (plus a full-height modal view) to search `~/beaconmac/server.log` using Extended Regex (`-E`) or literal fixed-string (`-F`), case-sensitivity toggle, `±2` context lines, quick presets, and a scrollable preformatted results block.
+- **Embedded Hook Scripts & Auto-Installer**: Embedded all 7 shell hook scripts inside the Swift binary so non-sandboxed launches (`swift run`, local Xcode runs, Developer ID DMG) auto-install and run immediately with zero manual setup, while Mac App Store App-Sandboxed builds present a 1-click **Install Hook Scripts** banner.
+- **App-Sandbox `grep` Subcommand**: Added a safe `grep` action to `beacon-launchd.sh` for sandboxed log searching via `NSUserUnixTask` with automatic secret redaction.
+
+### Fixed
+- **Dual-Target Script Installation**: Updated `install-sandbox-scripts.sh` to install scripts into both `~/Library/Application Scripts/com.beaconmac.app` and `~/Library/Application Scripts/BeaconMac` to eliminate missing-script errors under `swift run`.
+
 ## [1.0.0] — 2026-11-23
 
 ### Added

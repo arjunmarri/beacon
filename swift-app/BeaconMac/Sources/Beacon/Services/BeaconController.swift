@@ -13,6 +13,7 @@ public final class BeaconController {
     public var ollama = OllamaState()
     public var claude = ClaudeState()
     public var launchd = LaunchdDaemonState()
+    public var update = AppUpdateState()
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
     public var isSearchingServerLog: Bool = false
@@ -30,12 +31,14 @@ public final class BeaconController {
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
     private let serverLogSearchService = ServerLogSearchService()
+    private let updateService = AppUpdateService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
     private let claudeService = ClaudeService()
     private let alertService = AlertService()
 
     private var pollingTask: Task<Void, Never>?
+    private var updateLoopTask: Task<Void, Never>?
     private var tickCount = 0
 
     public var aggregateLight: TrafficLightColor {
@@ -76,6 +79,7 @@ public final class BeaconController {
             await bootServices()
         }
         startPollingLoop()
+        startAutoUpdateLoop()
     }
 
     public func runtimeState(for appID: UUID) -> ManagedAppRuntimeState {
@@ -160,6 +164,22 @@ public final class BeaconController {
                 if self.tickCount % 20 == 0 && self.keychain.read(.claudeAPIKey) != nil {
                     await self.probeClaude(logResult: false)
                 }
+            }
+        }
+    }
+
+    private func startAutoUpdateLoop() {
+        updateLoopTask?.cancel()
+        updateLoopTask = Task { [weak self] in
+            // Short delay so initial launch stays snappy
+            try? await Task.sleep(for: .seconds(4))
+            while !Task.isCancelled {
+                guard let self else { break }
+                if self.config.autoCheckForUpdates {
+                    await self.checkForUpdates(userInitiated: false)
+                }
+                // Re-check every 6 hours automatically
+                try? await Task.sleep(for: .seconds(6 * 60 * 60))
             }
         }
     }
@@ -815,7 +835,9 @@ public final class BeaconController {
         recipientEmail: String,
         notifyOnCrash: Bool,
         notifyOnDeploy: Bool,
-        notifyOnOllamaDown: Bool
+        notifyOnOllamaDown: Bool,
+        autoCheckForUpdates: Bool? = nil,
+        autoInstallUpdates: Bool? = nil
     ) async {
         config.ollamaEndpoint = ollamaEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         config.gitPollIntervalSec = max(15, min(3600, gitPollIntervalSec))
@@ -824,10 +846,114 @@ public final class BeaconController {
         config.notifyOnCrash = notifyOnCrash
         config.notifyOnDeploy = notifyOnDeploy
         config.notifyOnOllamaDown = notifyOnOllamaDown
+        if let autoCheckForUpdates { config.autoCheckForUpdates = autoCheckForUpdates }
+        if let autoInstallUpdates { config.autoInstallUpdates = autoInstallUpdates }
         ollama.endpoint = config.ollamaEndpoint
         flatFileStore.saveConfig(config)
         log(.system, .info, "Saved flat-file configuration to \(flatFileStore.configFileURL.lastPathComponent)")
         await probeOllama(logResult: false)
+    }
+
+    // MARK: - Automatic Self-Updates
+
+    public func updateAutoUpdatePreferences(autoCheck: Bool, autoInstall: Bool) {
+        config.autoCheckForUpdates = autoCheck
+        config.autoInstallUpdates = autoInstall
+        flatFileStore.saveConfig(config)
+        log(.system, .info, "Auto-update settings updated (auto-check: \(autoCheck), auto-install: \(autoInstall))")
+    }
+
+    public func checkForUpdates(userInitiated: Bool) async {
+        guard update.status != .checking && update.status != .downloading && update.status != .installing else {
+            return
+        }
+        update.status = .checking
+        update.lastError = nil
+        update.statusMessage = "Checking GitHub releases for updates…"
+
+        do {
+            let release = try await updateService.checkLatestRelease(
+                repo: config.updateFeedRepo,
+                githubToken: keychain.read(.githubToken)
+            )
+            update.lastCheckedAt = Date()
+            update.latestRelease = release
+
+            let cmp = AppUpdateService.compareSemVer(release.version, update.currentVersion)
+            if cmp == .orderedDescending {
+                update.status = .updateAvailable
+                update.statusMessage = "BeaconMac v\(release.version) is available (installed: v\(update.currentVersion))"
+                log(.system, .info, "Update available: BeaconMac v\(release.version) (current: v\(update.currentVersion))")
+
+                if config.autoInstallUpdates && !EmbeddedScripts.isSandboxed && release.dmgDownloadURL != nil {
+                    log(.system, .info, "Automatic update installation enabled — installing BeaconMac v\(release.version)...")
+                    await installAvailableUpdate()
+                }
+            } else {
+                update.status = .upToDate
+                update.statusMessage = "BeaconMac v\(update.currentVersion) is up to date"
+                if userInitiated {
+                    log(.system, .info, "BeaconMac v\(update.currentVersion) is up to date (latest: v\(release.version))")
+                }
+            }
+        } catch {
+            let msg = SecretMasker.redact(error.localizedDescription)
+            update.lastCheckedAt = Date()
+            update.status = .failed
+            update.lastError = msg
+            update.statusMessage = "Update check failed"
+            if userInitiated {
+                bannerError = "Update check failed: \(msg)"
+                log(.system, .warn, "Update check failed: \(msg)")
+            }
+        }
+    }
+
+    public func installAvailableUpdate() async {
+        guard let release = update.latestRelease else {
+            await checkForUpdates(userInitiated: true)
+            return
+        }
+        guard update.status != .downloading && update.status != .installing else { return }
+
+        update.status = .downloading
+        update.downloadProgress = 0.08
+        update.lastError = nil
+        update.statusMessage = "Downloading BeaconMac v\(release.version)…"
+        log(.system, .info, "Starting self-update to BeaconMac v\(release.version)...")
+
+        let outcome = await updateService.downloadAndInstall(release: release) { [weak self] progress, message in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.update.downloadProgress = progress
+                self.update.status = progress >= 0.65 ? .installing : .downloading
+                self.update.statusMessage = message
+            }
+        }
+
+        if outcome.ok {
+            update.downloadProgress = 1.0
+            update.status = outcome.willRelaunch ? .readyToRelaunch : .upToDate
+            update.statusMessage = outcome.detail
+            log(.system, .info, outcome.detail)
+
+            if outcome.willRelaunch {
+                try? await Task.sleep(for: .milliseconds(450))
+                NSApplication.shared.terminate(nil)
+            }
+        } else {
+            update.status = .failed
+            update.lastError = outcome.detail
+            update.statusMessage = outcome.detail
+            bannerError = outcome.detail
+            log(.system, .error, "Self-update failed: \(outcome.detail)")
+        }
+    }
+
+    public func openLatestReleasePage() {
+        let url = update.latestRelease?.htmlReleaseURL
+            ?? URL(string: "https://github.com/\(AppUpdateService.sanitizeRepo(config.updateFeedRepo))/releases")!
+        NSWorkspace.shared.open(url)
     }
 
     public func exportActivityLog() {
