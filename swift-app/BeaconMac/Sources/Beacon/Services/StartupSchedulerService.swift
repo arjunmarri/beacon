@@ -40,11 +40,22 @@ public final class StartupSchedulerService: Sendable {
         "caffeinate -s"
     }
 
+    private var hasAppBundle: Bool {
+        Bundle.main.bundleURL.pathExtension.lowercased() == "app" && Bundle.main.bundleIdentifier != nil
+    }
+
     public var isLaunchAtLoginEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+        guard hasAppBundle else { return false }
+        return SMAppService.mainApp.status == .enabled
     }
 
     public func setLaunchAtLogin(_ enabled: Bool) -> (ok: Bool, detail: String) {
+        guard hasAppBundle else {
+            return (
+                false,
+                "Launch at Login requires running BeaconMac as a .app bundle (open BeaconMac.xcodeproj via xcodegen or run BeaconMac.app)."
+            )
+        }
         do {
             if enabled {
                 try SMAppService.mainApp.register()
