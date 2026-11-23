@@ -10,7 +10,7 @@ struct ContentView: View {
             // Minimalist top bar
             HStack(spacing: 16) {
                 HStack(spacing: 10) {
-                    Text("Beacon")
+                    Text("BeaconMac")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
                     Text("macOS Native · App Sandbox")
@@ -61,6 +61,17 @@ struct ContentView: View {
                     ServiceCardsView(controller: controller)
                     ActivityLogView(controller: controller)
                     ConfigurationView(controller: controller)
+
+                    HStack(spacing: 4) {
+                        Spacer()
+                        Text("Designed by")
+                            .foregroundStyle(.secondary)
+                        Link("SoroAI", destination: URL(string: "https://soroai.com")!)
+                            .foregroundStyle(.cyan)
+                        Spacer()
+                    }
+                    .font(.system(size: 11))
+                    .padding(.top, 4)
                 }
                 .padding(24)
             }

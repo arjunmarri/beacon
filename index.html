@@ -1,20 +1,298 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Beacon — Local Vite, Git &amp; Ollama Monitor for macOS</title>
-    <meta name="description" content="Lightweight macOS traffic-light monitor for local Vite/Node.js processes, Git auto-deployment, flat-file activity logs, email alerts, and local Ollama LLM health." />
-    <meta property="og:title" content="Beacon — Local Vite, Git &amp; Ollama Monitor for macOS" />
-    <meta property="og:description" content="Lightweight macOS traffic-light monitor for local Vite/Node.js processes, Git auto-deployment, flat-file activity logs, email alerts, and local Ollama LLM health." />
+    <title>BeaconMac — Native macOS Service Monitor</title>
+    <meta
+      name="description"
+      content="BeaconMac is a lightweight native macOS traffic-light monitor built in SwiftUI for local Vite/Node.js processes, Git auto-deployment, local Ollama LLM health, and Claude API verification."
+    />
+    <meta property="og:title" content="BeaconMac — Native macOS Service Monitor" />
+    <meta
+      property="og:description"
+      content="BeaconMac is a lightweight native macOS traffic-light monitor built in SwiftUI for local Vite/Node.js processes, Git auto-deployment, local Ollama LLM health, and Claude API verification."
+    />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        background-color: #07090d;
+        color: #f3f5f8;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body {
+        position: relative;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+        background:
+          radial-gradient(65% 55% at 18% 12%, rgba(56, 189, 248, 0.14) 0%, rgba(56, 189, 248, 0) 68%),
+          radial-gradient(55% 50% at 86% 22%, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0) 65%),
+          radial-gradient(70% 55% at 50% 95%, rgba(15, 23, 42, 0.9) 0%, rgba(7, 9, 13, 0) 70%),
+          linear-gradient(180deg, #0b0f17 0%, #07090d 55%, #06080c 100%);
+      }
+
+      /* Contemporary subtle dark architectural grid */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 10%, transparent 82%);
+        -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 10%, transparent 82%);
+      }
+
+      /* Subtle top horizon sheen */
+      body::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        pointer-events: none;
+        background: linear-gradient(90deg, transparent 0%, rgba(125, 211, 252, 0.35) 50%, transparent 100%);
+      }
+
+      .stage {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 56px 24px 32px;
+      }
+
+      main {
+        width: 100%;
+        max-width: 620px;
+        padding: 40px 36px;
+        border-radius: 18px;
+        background: rgba(15, 19, 27, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.085);
+        box-shadow:
+          0 24px 70px rgba(0, 0, 0, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .meta-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .traffic-lights {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(7, 9, 13, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .dot-red {
+        background: rgba(244, 63, 94, 0.85);
+      }
+
+      .dot-amber {
+        background: rgba(251, 191, 36, 0.85);
+      }
+
+      .dot-green {
+        background: #34d399;
+        box-shadow: 0 0 10px rgba(52, 211, 153, 0.75);
+      }
+
+      .platform-note {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 12px;
+        color: #8f9bb0;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: clamp(2.25rem, 5vw, 3.1rem);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        line-height: 1.08;
+        color: #f8fafc;
+      }
+
+      p {
+        margin: 0 0 32px;
+        font-size: 16px;
+        line-height: 1.68;
+        color: #a1acbe;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+      }
+
+      .btn:focus-visible {
+        outline: 2px solid #38bdf8;
+        outline-offset: 2px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(180deg, #56ccf8 0%, #38bdf8 100%);
+        color: #070a0f;
+        box-shadow: 0 6px 22px rgba(56, 189, 248, 0.25);
+      }
+
+      .btn-primary:hover {
+        background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.04);
+        color: #f3f5f8;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        font-weight: 500;
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.24);
+        transform: translateY(-1px);
+      }
+
+      .btn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      footer {
+        position: relative;
+        z-index: 1;
+        padding: 20px 24px 28px;
+        text-align: center;
+        font-size: 13px;
+        color: #7c8799;
+      }
+
+      footer a {
+        color: #cbd5e1;
+        text-decoration: none;
+        font-weight: 500;
+        border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+        padding-bottom: 1px;
+        transition: color 150ms ease, border-color 150ms ease;
+      }
+
+      footer a:hover {
+        color: #38bdf8;
+        border-bottom-color: rgba(56, 189, 248, 0.65);
+      }
+
+      @media (max-width: 560px) {
+        main {
+          padding: 28px 22px;
+        }
+      }
+    </style>
   </head>
-  <body class="bg-[#0B0D10] text-[#F3F5F8] antialiased selection:bg-sky-500/25 selection:text-sky-200">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body>
+    <div class="stage">
+      <main>
+        <div class="meta-row">
+          <div class="traffic-lights" aria-hidden="true">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-amber"></span>
+            <span class="dot dot-green"></span>
+          </div>
+          <span class="platform-note">Swift 5.10 · SwiftUI · macOS 14+</span>
+        </div>
+
+        <h1>BeaconMac</h1>
+
+        <p>
+          A lightweight native macOS traffic-light monitor built in SwiftUI for the Apple App Store.
+          Watch local Node.js and Vite servers on any localhost port with automatic crash recovery,
+          track Git auto-deployments, monitor local Ollama LLMs with instant model switching, and
+          verify Claude API health — backed by encrypted macOS Keychain storage and flat-file
+          activity logs with zero database or login required.
+        </p>
+
+        <div class="actions">
+          <a
+            class="btn btn-primary"
+            href="/api/download-swift"
+            download="BeaconMac-Swift-Xcode-Project.zip"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Download BeaconMac
+          </a>
+
+          <a
+            class="btn btn-secondary"
+            href="https://github.com/arjunmarri/beacon"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            GitHub Repository
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="7" y1="17" x2="17" y2="7" />
+              <polyline points="7 7 17 7 17 17" />
+            </svg>
+          </a>
+        </div>
+      </main>
+    </div>
+
+    <footer>
+      Designed by
+      <a href="https://soroai.com" target="_blank" rel="noopener noreferrer">SoroAI</a>
+    </footer>
   </body>
 </html>

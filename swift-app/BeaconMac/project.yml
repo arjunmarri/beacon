@@ -1,6 +1,6 @@
-name: Beacon
+name: BeaconMac
 options:
-  bundleIdPrefix: com.beaconmonitor
+  bundleIdPrefix: com.beaconmac
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "15.4"
@@ -14,7 +14,7 @@ settings:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  Beacon:
+  BeaconMac:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
@@ -25,8 +25,8 @@ targets:
           - Resources/Beacon.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.beaconmonitor.mac
-        PRODUCT_NAME: Beacon
+        PRODUCT_BUNDLE_IDENTIFIER: com.beaconmac.app
+        PRODUCT_NAME: BeaconMac
         INFOPLIST_FILE: Sources/Beacon/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/Beacon/Resources/Beacon.entitlements
         CODE_SIGN_STYLE: Automatic
@@ -42,8 +42,8 @@ targets:
     info:
       path: Sources/Beacon/Resources/Info.plist
       properties:
-        CFBundleDisplayName: Beacon
-        CFBundleName: Beacon
+        CFBundleDisplayName: BeaconMac
+        CFBundleName: BeaconMac
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "1"
         LSApplicationCategoryType: public.app-category.developer-tools
@@ -57,10 +57,10 @@ targets:
       - sdk: Network.framework
       - sdk: UserNotifications.framework
 schemes:
-  Beacon:
+  BeaconMac:
     build:
       targets:
-        Beacon: all
+        BeaconMac: all
     run:
       config: Debug
     archive:

@@ -14,7 +14,7 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   fi
 fi
 
-echo "Generating Beacon.xcodeproj..."
+echo "Generating BeaconMac.xcodeproj..."
 xcodegen generate
-echo "Opening Beacon.xcodeproj in Xcode..."
-open Beacon.xcodeproj
+echo "Opening BeaconMac.xcodeproj in Xcode..."
+open BeaconMac.xcodeproj

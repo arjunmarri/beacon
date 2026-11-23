@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Beacon",
+    name: "BeaconMac",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "Beacon", targets: ["Beacon"])
+        .executable(name: "BeaconMac", targets: ["Beacon"])
     ],
     targets: [
         .executableTarget(

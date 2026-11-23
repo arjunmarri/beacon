@@ -5,7 +5,7 @@ struct BeaconApp: App {
     @State private var controller = BeaconController()
 
     var body: some Scene {
-        WindowGroup("Beacon") {
+        WindowGroup("BeaconMac") {
             ContentView(controller: controller)
                 .preferredColorScheme(.dark)
                 .frame(minWidth: 940, minHeight: 680)

@@ -5,7 +5,7 @@ struct MenuBarStatusView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Beacon Service Monitor")
+            Text("BeaconMac Monitor")
                 .font(.headline)
 
             Divider()
@@ -27,7 +27,7 @@ struct MenuBarStatusView: View {
 
             Divider()
 
-            Button("Quit Beacon") {
+            Button("Quit BeaconMac") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
