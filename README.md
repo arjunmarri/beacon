@@ -1,21 +1,20 @@
 # BeaconMac
 
-**BeaconMac** is a lightweight, native macOS traffic-light monitor built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** distribution.
+**BeaconMac** is an open-source, lightweight native macOS traffic-light monitor built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** distribution.
 
 It monitors local Node.js / Vite servers on any localhost port with automatic crash recovery, tracks GitHub auto-deployments, monitors local **Ollama** LLMs with instant model switching, and checks **Claude API** health — all backed by encrypted **macOS Keychain** secret storage and local **flat-file logs** (zero database, zero login screen).
 
 ---
 
-## Key Capabilities
+## Documentation
 
-- **Vite / Localhost Server Watchdog** — Monitor any `http://localhost:<port>` or `http://127.0.0.1:<port>` app with live HTTP status, response latency, uptime, and automatic crash restart via App-Sandbox-safe `NSUserUnixTask` hooks.
-- **Git Auto-Deploy Watcher** — Paste your GitHub Personal Access Token directly in the app (stored encrypted in macOS Keychain), browse accessible repositories, poll remote branch commits, and trigger local pulls.
-- **Local LLM (Ollama) Monitor** — Probes `http://127.0.0.1:11434` (`/api/tags` & `/api/ps`), displays latency & loaded VRAM, and switches active local models with one click.
-- **Claude API Health Checker** — Paste your Anthropic API key (`sk-ant-...`) directly in the app (stored in macOS Keychain) and verify authentication, latency, and accessible models via `GET https://api.anthropic.com/v1/models` at zero token cost.
-- **Flat-File Storage (No Database, No Login)** — Logs (`activity.log`, auto-rotated at 2 MB) and settings (`config.json`) live cleanly inside the sandboxed macOS Application Support directory.
-- **Native Menu Bar Companion** — Live aggregate traffic-light status in the macOS menu bar with quick refresh and server restart controls.
+All project documentation is organized in the [`docs/`](./docs/) folder:
 
-See [FEATURES.md](./FEATURES.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [CONTEXT.md](./CONTEXT.md) for complete documentation.
+- **[Features](./docs/FEATURES.md)** — Full feature breakdown (Vite/localhost watchdog, Git auto-deploy, Ollama switcher, Claude checker, flat-file logs, and menu bar companion)
+- **[Architecture](./docs/ARCHITECTURE.md)** — System diagram, App Sandbox + `NSUserUnixTask` boundary, concurrency, Keychain security, and flat-file layout
+- **[Context](./docs/CONTEXT.md)** — Problem statement, design decisions, and visual guidelines
+- **[App Store Guide](./docs/APP-STORE.md)** — Step-by-step XcodeGen, code signing, sandbox scripts, and App Store Connect submission
+- **[Contributing](./docs/CONTRIBUTING.md)** — Local macOS development workflow and coding guidelines
 
 ---
 
@@ -23,18 +22,19 @@ See [FEATURES.md](./FEATURES.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [CON
 
 ```text
 .
-├── README.md
-├── FEATURES.md
-├── ARCHITECTURE.md
-├── CONTEXT.md
-├── CONTRIBUTING.md
-├── LICENSE
+├── README.md                            # Default repository README
+├── LICENSE                              # Open-source MIT License
+├── docs/
+│   ├── APP-STORE.md                     # Mac App Store archive & sandbox guide
+│   ├── ARCHITECTURE.md                  # System architecture & security model
+│   ├── CONTEXT.md                       # Product philosophy & design decisions
+│   ├── CONTRIBUTING.md                  # Contribution guidelines
+│   └── FEATURES.md                      # Detailed feature breakdown
 ├── index.html                           # Standalone dark landing page & download portal
 ├── server.ts                            # Lightweight static + Swift project ZIP server
 └── swift-app/BeaconMac/                 # Native SwiftUI macOS 14+ App Store project
     ├── Package.swift
     ├── project.yml                      # XcodeGen spec for BeaconMac.xcodeproj
-    ├── README-APP-STORE.md
     ├── Scripts/
     │   ├── generate-xcode-project.sh
     │   ├── beacon-restart.sh            # NSUserUnixTask Vite restart hook
@@ -76,7 +76,7 @@ chmod +x Scripts/*.sh
 *(Or run directly with Swift Package Manager: `swift run`)*
 
 ### 2. Configure Signing for the Mac App Store
-1. Open **BeaconMac** target → **Signing & Capabilities** in Xcode.
+1. Open the **BeaconMac** target → **Signing & Capabilities** in Xcode.
 2. Select your **Apple Developer Team** and set your unique **Bundle Identifier** (e.g. `com.yourorg.beaconmac`).
 3. Add a 1024×1024 **AppIcon** asset set.
 4. Select **Any Mac (Apple Silicon, Intel)** → **Product → Archive** → **Distribute App → App Store Connect**.
@@ -85,10 +85,10 @@ chmod +x Scripts/*.sh
 To allow BeaconMac to restart your local Vite/Node server or run `git pull` while staying 100% App Store Sandbox compliant, install the two helper scripts into Apple's user scripts directory:
 
 ```bash
-mkdir -p "$HOME/Library/Application Scripts/com.beaconmonitor.mac"
-cp swift-app/BeaconMac/Scripts/beacon-restart.sh "$HOME/Library/Application Scripts/com.beaconmonitor.mac/"
-cp swift-app/BeaconMac/Scripts/beacon-git-pull.sh "$HOME/Library/Application Scripts/com.beaconmonitor.mac/"
-chmod +x "$HOME/Library/Application Scripts/com.beaconmonitor.mac/"*.sh
+mkdir -p "$HOME/Library/Application Scripts/com.beaconmac.app"
+cp swift-app/BeaconMac/Scripts/beacon-restart.sh "$HOME/Library/Application Scripts/com.beaconmac.app/"
+cp swift-app/BeaconMac/Scripts/beacon-git-pull.sh "$HOME/Library/Application Scripts/com.beaconmac.app/"
+chmod +x "$HOME/Library/Application Scripts/com.beaconmac.app/"*.sh
 ```
 
 ---
@@ -96,6 +96,12 @@ chmod +x "$HOME/Library/Application Scripts/com.beaconmonitor.mac/"*.sh
 ## Secrets & Environment Variables
 
 **No `.env` file is required for BeaconMac.** Paste your GitHub Personal Access Token and Anthropic Claude API key directly inside the macOS app — both are saved encrypted in your **macOS Keychain** (`Security.framework`) and restored automatically across restarts.
+
+---
+
+## License
+
+BeaconMac is open-source software licensed under the **[MIT License](./LICENSE)**.
 
 ---
 

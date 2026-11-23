@@ -8,15 +8,9 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT_DIR = process.cwd();
 const INDEX_HTML_PATH = path.join(ROOT_DIR, 'index.html');
 const SWIFT_APP_DIR = path.join(ROOT_DIR, 'swift-app', 'BeaconMac');
+const DOCS_DIR = path.join(ROOT_DIR, 'docs');
 
-const ROOT_DOCS = [
-  'README.md',
-  'FEATURES.md',
-  'ARCHITECTURE.md',
-  'CONTEXT.md',
-  'CONTRIBUTING.md',
-  'LICENSE',
-];
+const ROOT_FILES = ['README.md', 'LICENSE'];
 
 const app = express();
 
@@ -38,27 +32,31 @@ app.get('/api/download-swift', async (_req: Request, res: Response) => {
 
   archive.pipe(res);
 
-  const walk = (dir: string, relBase: string) => {
+  const walkIntoZip = (dir: string, zipPrefix: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const absPath = path.join(dir, entry.name);
-      const relPath = relBase ? `${relBase}/${entry.name}` : entry.name;
+      const zipPath = `${zipPrefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        walk(absPath, relPath);
+        walkIntoZip(absPath, zipPath);
       } else {
         archive.file(absPath, {
-          name: `BeaconMac/${relPath}`,
+          name: zipPath,
           mode: entry.name.endsWith('.sh') ? 0o755 : 0o644,
         });
       }
     }
   };
 
-  walk(SWIFT_APP_DIR, '');
+  walkIntoZip(SWIFT_APP_DIR, 'BeaconMac');
 
-  for (const doc of ROOT_DOCS) {
-    const absDoc = path.join(ROOT_DIR, doc);
-    if (fs.existsSync(absDoc)) {
-      archive.file(absDoc, { name: `BeaconMac/${doc}`, mode: 0o644 });
+  if (fs.existsSync(DOCS_DIR)) {
+    walkIntoZip(DOCS_DIR, 'BeaconMac/docs');
+  }
+
+  for (const filename of ROOT_FILES) {
+    const absPath = path.join(ROOT_DIR, filename);
+    if (fs.existsSync(absPath)) {
+      archive.file(absPath, { name: `BeaconMac/${filename}`, mode: 0o644 });
     }
   }
 
