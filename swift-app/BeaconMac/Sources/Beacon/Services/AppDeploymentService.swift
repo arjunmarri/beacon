@@ -78,7 +78,7 @@ public final class AppDeploymentService: Sendable {
         var tools: [DependencyToolStatus] = []
         var appNotes: [String] = []
 
-        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun"]
+        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun", "python3", "uv", "go"]
 
         for line in res.stdoutLines {
             let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
@@ -100,6 +100,22 @@ public final class AppDeploymentService: Sendable {
             ? (res.ok ? "Environment audited" : res.summary)
             : appNotes.joined(separator: " · ")
         return (res, tools, summary)
+    }
+
+    public func installPrerequisitesAndDependencies(
+        workingDir: String?,
+        requestedTools: [String]
+    ) async -> ScriptExecutionResult {
+        let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git"]
+        let safeTools = requestedTools
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { allowedTools.contains($0) }
+        let toolsArg = safeTools.isEmpty ? "auto" : safeTools.joined(separator: ",")
+        let dirArg = workingDir?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return await runUnixScript(
+            named: "beacon-check-deps.sh",
+            arguments: ["--install", dirArg, toolsArg]
+        )
     }
 
     public func restartApp(_ app: ManagedApp) async -> ScriptExecutionResult {

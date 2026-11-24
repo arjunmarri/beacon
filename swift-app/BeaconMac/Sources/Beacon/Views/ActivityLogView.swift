@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct ActivityLogView: View {
     @Bindable var controller: BeaconController
     @State private var selectedSource: LogSource? = nil
     @State private var searchQuery: String = ""
+    @State private var copiedLogs = false
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let terminalBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
@@ -21,14 +23,23 @@ struct ActivityLogView: View {
         }
     }
 
+    private func formatEntry(_ entry: LogEntry) -> String {
+        let ts = entry.timestamp.formatted(date: .omitted, time: .standard)
+        return "\(ts) [\(entry.level.rawValue.uppercased())] [\(entry.source.rawValue)] \(entry.message)"
+    }
+
+    private var formattedFilteredLogs: String {
+        filteredLogs.reversed().map(formatEntry).joined(separator: "\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Real-Time Activity Log")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Flat file: \(controller.flatFileStore.logFileURL.lastPathComponent) · \(ByteCountFormatter.string(fromByteCount: controller.logFileBytes, countStyle: .file))")
+                    Text("Flat file: \(controller.flatFileStore.logFileURL.lastPathComponent) · \(ByteCountFormatter.string(fromByteCount: controller.logFileBytes, countStyle: .file)) · Right-click any entry to copy or ask AI")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
@@ -40,10 +51,31 @@ struct ActivityLogView: View {
                     .font(.system(size: 12))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .frame(width: 190)
+                    .frame(width: 170)
                     .background(terminalBackground)
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.1)))
                     .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                Button(copiedLogs ? "Copied ✓" : "Copy Logs") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(formattedFilteredLogs, forType: .string)
+                    copiedLogs = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        copiedLogs = false
+                    }
+                }
+                .disabled(filteredLogs.isEmpty)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
+                Button("AI Help") {
+                    controller.openAIHelp(
+                        title: "Real-Time Activity Log",
+                        logText: formattedFilteredLogs
+                    )
+                }
+                .disabled(filteredLogs.isEmpty)
+                .buttonStyle(BeaconPrimaryButtonStyle())
 
                 Button("Export .log") {
                     controller.exportActivityLog()
@@ -91,6 +123,23 @@ struct ActivityLogView: View {
                             .monospacedDigit()
                             .padding(.vertical, 3)
                             .padding(.horizontal, 8)
+                            .contextMenu {
+                                Button("Copy Entry") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(formatEntry(entry), forType: .string)
+                                }
+                                Button("Copy All Filtered Logs") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(formattedFilteredLogs, forType: .string)
+                                }
+                                Divider()
+                                Button("Ask AI About This Entry") {
+                                    controller.openAIHelp(
+                                        title: "Activity Log (\(entry.source.label))",
+                                        logText: formatEntry(entry)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

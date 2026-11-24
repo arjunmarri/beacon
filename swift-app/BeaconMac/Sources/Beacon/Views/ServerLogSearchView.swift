@@ -5,6 +5,7 @@ struct ServerLogSearchView: View {
     @State private var query: String = ""
     @State private var options = ServerLogSearchOptions()
     @State private var showModal = false
+    @State private var copiedResults = false
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let terminalBackground = Color(red: 0.035, green: 0.041, blue: 0.052)
@@ -174,10 +175,23 @@ struct ServerLogSearchView: View {
                 }
 
                 if !result.preformattedOutput.isEmpty {
-                    Button("Copy Results") {
+                    Button(copiedResults ? "Copied ✓" : "Copy Results") {
                         controller.copyServerLogSearchResults()
+                        copiedResults = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            copiedResults = false
+                        }
                     }
                     .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("AI Help") {
+                        controller.openAIHelp(
+                            title: "Server Log Search (\(result.query))",
+                            logText: "$ \(result.commandPreview)\n\n\(result.preformattedOutput)"
+                        )
+                    }
+                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
             }
 
@@ -244,6 +258,7 @@ private struct ServerLogSearchModalSheet: View {
     @Binding var options: ServerLogSearchOptions
     let onSearch: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var copiedModalResults = false
 
     private let canvasBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
     private let terminalBackground = Color(red: 0.031, green: 0.037, blue: 0.047)
@@ -323,10 +338,24 @@ private struct ServerLogSearchModalSheet: View {
                     }
 
                     if !result.preformattedOutput.isEmpty {
-                        Button("Copy Results") {
+                        Button(copiedModalResults ? "Copied ✓" : "Copy Results") {
                             controller.copyServerLogSearchResults()
+                            copiedModalResults = true
+                            Task {
+                                try? await Task.sleep(for: .seconds(2))
+                                copiedModalResults = false
+                            }
                         }
                         .buttonStyle(BeaconSecondaryButtonStyle())
+
+                        Button("AI Help") {
+                            dismiss()
+                            controller.openAIHelp(
+                                title: "Server Log Search (\(result.query))",
+                                logText: "$ \(result.commandPreview)\n\n\(result.preformattedOutput)"
+                            )
+                        }
+                        .buttonStyle(BeaconPrimaryButtonStyle())
                     }
                 }
 

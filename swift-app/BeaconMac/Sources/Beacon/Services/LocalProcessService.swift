@@ -8,17 +8,61 @@ public struct LocalProbeResult: Sendable {
     public let error: String?
 }
 
+/// Delegate for local development health probes:
+/// 1. Does NOT follow redirects (a 301/302/307/308 from localhost means the server is healthy).
+/// 2. Trusts self-signed TLS certificates ONLY on loopback / `.local` hosts so local HTTPS dev servers work.
+private final class LocalProbeSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // Do not follow redirects to external login/OAuth pages; the local server already responded.
+        completionHandler(nil)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust {
+            let host = challenge.protectionSpace.host.lowercased()
+            let isLocal =
+                host == "localhost" ||
+                host == "127.0.0.1" ||
+                host == "::1" ||
+                host == "0.0.0.0" ||
+                host.hasSuffix(".localhost") ||
+                host.hasSuffix(".local")
+            if isLocal {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+                return
+            }
+        }
+        completionHandler(.performDefaultHandling, nil)
+    }
+}
+
 /// Probes any locally deployed target application URL (localhost, 127.0.0.1, ::1,
 /// *.localhost, or *.local) and invokes Apple's App-Sandbox-approved NSUserUnixTask
 /// script to restart that external target app if it crashes.
 public final class LocalProcessService: Sendable {
     private let session: URLSession
+    private let delegate = LocalProbeSessionDelegate()
 
     public init() {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 2.5
-        config.timeoutIntervalForResource = 4.0
-        self.session = URLSession(configuration: config)
+        config.timeoutIntervalForRequest = 5.0
+        config.timeoutIntervalForResource = 8.0
+        config.waitsForConnectivity = false
+        // Bypass macOS system HTTP/SOCKS/VPN proxies for loopback monitoring so
+        // `http://localhost:3001` behaves identically to `http://127.0.0.1:11434`.
+        config.connectionProxyDictionary = [:]
+        self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
 
     /// Normalizes local URLs so inputs like `localhost:3001` or `127.0.0.1:5173` automatically
@@ -70,24 +114,39 @@ public final class LocalProcessService: Sendable {
         return url.scheme?.lowercased() == "https" ? 443 : 80
     }
 
+    private enum LoopbackFamily: Sendable {
+        case ipv4
+        case ipv6
+        case passthrough
+    }
+
     /// Lightweight, silent non-blocking TCP pre-check for loopback hosts (`localhost`, `127.0.0.1`,
     /// `::1`, `0.0.0.0`). Prevents `URLSession` / `Network.framework` from spamming Xcode's console
     /// with verbose `nw_socket_handle_socket_event [61: Connection refused]` diagnostics whenever a
     /// monitored local app has not been started yet or is offline.
-    public static func isLoopbackPortListening(host: String, port: Int, timeoutMs: Int32 = 250) -> Bool {
-        guard (1...65535).contains(port) else { return false }
+    public static func isLoopbackPortListening(host: String, port: Int, timeoutMs: Int32 = 300) -> Bool {
+        detectLoopbackFamily(host: host, port: port, timeoutMs: timeoutMs) != nil
+    }
+
+    private static func detectLoopbackFamily(host: String, port: Int, timeoutMs: Int32 = 300) -> LoopbackFamily? {
+        guard (1...65535).contains(port) else { return nil }
         let normalized = host.lowercased()
         switch normalized {
         case "127.0.0.1", "0.0.0.0":
-            return canConnectTCPv4(port: UInt16(port), timeoutMs: timeoutMs)
+            return canConnectTCPv4(port: UInt16(port), timeoutMs: timeoutMs) ? .ipv4 : nil
         case "::1":
-            return canConnectTCPv6(port: UInt16(port), timeoutMs: timeoutMs)
+            return canConnectTCPv6(port: UInt16(port), timeoutMs: timeoutMs) ? .ipv6 : nil
         case "localhost":
-            return canConnectTCPv4(port: UInt16(port), timeoutMs: timeoutMs)
-                || canConnectTCPv6(port: UInt16(port), timeoutMs: timeoutMs)
+            if canConnectTCPv4(port: UInt16(port), timeoutMs: timeoutMs) {
+                return .ipv4
+            }
+            if canConnectTCPv6(port: UInt16(port), timeoutMs: timeoutMs) {
+                return .ipv6
+            }
+            return nil
         default:
             // Non-loopback local names (e.g. *.local / *.localhost) fall through to URLSession.
-            return true
+            return .passthrough
         }
     }
 
@@ -107,12 +166,15 @@ public final class LocalProcessService: Sendable {
         addr.sin_port = port.bigEndian
         addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
 
-        let result = withUnsafePointer(to: &addr) { ptr in
+        var connectErrno: Int32 = 0
+        let result: Int32 = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                let r = Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                connectErrno = errno
+                return r
             }
         }
-        return finishNonBlockingConnect(fd: fd, connectResult: result, timeoutMs: timeoutMs)
+        return finishNonBlockingConnect(fd: fd, connectResult: result, connectErrno: connectErrno, timeoutMs: timeoutMs)
     }
 
     private static func canConnectTCPv6(port: UInt16, timeoutMs: Int32) -> Bool {
@@ -131,19 +193,27 @@ public final class LocalProcessService: Sendable {
         addr.sin6_port = port.bigEndian
         addr.sin6_addr = in6addr_loopback
 
-        let result = withUnsafePointer(to: &addr) { ptr in
+        var connectErrno: Int32 = 0
+        let result: Int32 = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in6>.size))
+                let r = Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in6>.size))
+                connectErrno = errno
+                return r
             }
         }
-        return finishNonBlockingConnect(fd: fd, connectResult: result, timeoutMs: timeoutMs)
+        return finishNonBlockingConnect(fd: fd, connectResult: result, connectErrno: connectErrno, timeoutMs: timeoutMs)
     }
 
-    private static func finishNonBlockingConnect(fd: Int32, connectResult: Int32, timeoutMs: Int32) -> Bool {
+    private static func finishNonBlockingConnect(
+        fd: Int32,
+        connectResult: Int32,
+        connectErrno: Int32,
+        timeoutMs: Int32
+    ) -> Bool {
         if connectResult == 0 {
             return true
         }
-        guard errno == EINPROGRESS else {
+        guard connectErrno == EINPROGRESS || connectErrno == EALREADY else {
             return false
         }
 
@@ -161,6 +231,45 @@ public final class LocalProcessService: Sendable {
         return soError == 0
     }
 
+    private static func buildDirectURL(from original: URL, family: LoopbackFamily, schemeOverride: String? = nil) -> URL {
+        guard var components = URLComponents(url: original, resolvingAgainstBaseURL: false) else {
+            return original
+        }
+        if let schemeOverride {
+            components.scheme = schemeOverride
+        }
+        switch family {
+        case .ipv4:
+            components.host = "127.0.0.1"
+        case .ipv6:
+            // RFC 3986 requires bracketed IPv6 literals via percentEncodedHost so URLComponents
+            // does not percent-encode the colons or brackets.
+            components.percentEncodedHost = "[::1]"
+        case .passthrough:
+            break
+        }
+        return components.url ?? original
+    }
+
+    private func performHeaderProbe(url: URL, hostHeader: String?) async throws -> (status: Int, elapsedMs: Int) {
+        let start = CFAbsoluteTimeGetCurrent()
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("close", forHTTPHeaderField: "Connection")
+        if let hostHeader {
+            request.setValue(hostHeader, forHTTPHeaderField: "Host")
+        }
+
+        // `session.bytes(for:)` returns as soon as HTTP response headers arrive,
+        // avoiding timeouts on SSE streams, chunked dev responses, or large bundles.
+        let (bytes, response) = try await session.bytes(for: request)
+        bytes.task.cancel()
+        let elapsedMs = max(1, Int((CFAbsoluteTimeGetCurrent() - start) * 1000.0))
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        return (status, elapsedMs)
+    }
+
     public func probe(urlString: String) async -> LocalProbeResult {
         let normalizedURLString = Self.normalizeLocalAppURL(urlString)
         guard Self.isValidLocalAppURL(normalizedURLString), let url = URL(string: normalizedURLString) else {
@@ -175,13 +284,13 @@ public final class LocalProcessService: Sendable {
         let host = url.host?.lowercased() ?? "localhost"
         let port = Self.extractPort(from: normalizedURLString, fallback: url.scheme?.lowercased() == "https" ? 443 : 80)
 
-        // Quietly verify the loopback port is open before invoking URLSession so offline apps
-        // don't emit noisy Network.framework `SO_ERROR [61: Connection refused]` logs every poll.
-        let portOpen = await Task.detached(priority: .utility) {
-            Self.isLoopbackPortListening(host: host, port: port)
+        // Quietly verify the loopback port is open and identify whether the server is listening
+        // on IPv4 (127.0.0.1) or IPv6 (::1) before invoking URLSession.
+        let family = await Task.detached(priority: .utility) {
+            Self.detectLoopbackFamily(host: host, port: port)
         }.value
 
-        guard portOpen else {
+        guard let family else {
             return LocalProbeResult(
                 healthy: false,
                 httpStatus: nil,
@@ -190,27 +299,48 @@ public final class LocalProcessService: Sendable {
             )
         }
 
-        let start = CFAbsoluteTimeGetCurrent()
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        let directURL = Self.buildDirectURL(from: url, family: family)
+        let hostHeader: String? = (family == .passthrough) ? nil : "\(host):\(port)"
 
         do {
-            let (_, response) = try await session.data(for: request)
-            let elapsedMs = max(1, Int((CFAbsoluteTimeGetCurrent() - start) * 1000.0))
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+            let (status, elapsedMs) = try await performHeaderProbe(url: directURL, hostHeader: hostHeader)
             return LocalProbeResult(
                 healthy: status < 500,
                 httpStatus: status,
                 responseTimeMs: elapsedMs,
-                error: status >= 500 ? "HTTP \(status)" : nil
+                error: status >= 500 ? "HTTP \(status) returned by \(normalizedURLString)" : nil
             )
         } catch {
+            // Retry against the original URL (e.g. if server requires literal `localhost` Host/SNI).
+            if directURL != url,
+               let (status, elapsedMs) = try? await performHeaderProbe(url: url, hostHeader: nil) {
+                return LocalProbeResult(
+                    healthy: status < 500,
+                    httpStatus: status,
+                    responseTimeMs: elapsedMs,
+                    error: status >= 500 ? "HTTP \(status) returned by \(normalizedURLString)" : nil
+                )
+            }
+
+            // If `http://` failed on a confirmed open loopback port (e.g. local dev server is
+            // serving HTTPS on that port), automatically try `https://` once.
+            if url.scheme?.lowercased() == "http" {
+                let httpsURL = Self.buildDirectURL(from: url, family: family, schemeOverride: "https")
+                if let (status, elapsedMs) = try? await performHeaderProbe(url: httpsURL, hostHeader: hostHeader) {
+                    return LocalProbeResult(
+                        healthy: status < 500,
+                        httpStatus: status,
+                        responseTimeMs: elapsedMs,
+                        error: status >= 500 ? "HTTP \(status) returned by https://\(host):\(port)" : nil
+                    )
+                }
+            }
+
             return LocalProbeResult(
                 healthy: false,
                 httpStatus: nil,
                 responseTimeMs: nil,
-                error: error.localizedDescription
+                error: "Port \(port) is open, but HTTP check failed: \(error.localizedDescription)"
             )
         }
     }

@@ -5,6 +5,8 @@ struct MultiAppSectionView: View {
 
     @State private var showingAddSheet = false
     @State private var editingApp: ManagedApp?
+    @State private var showingPrerequisiteInstaller = false
+    @State private var installerTargetAppID: UUID?
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let rowBackground = Color(red: 0.048, green: 0.056, blue: 0.070)
@@ -25,6 +27,12 @@ struct MultiAppSectionView: View {
 
                 Button("Check System Tools") {
                     Task { await controller.auditSystemDependencies() }
+                }
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
+                Button("Install Prerequisites") {
+                    installerTargetAppID = controller.config.managedApps.first?.id
+                    showingPrerequisiteInstaller = true
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
@@ -95,6 +103,9 @@ struct MultiAppSectionView: View {
         .sheet(item: $editingApp) { app in
             AppEditorSheet(controller: controller, existingApp: app)
         }
+        .sheet(isPresented: $showingPrerequisiteInstaller) {
+            PrerequisiteInstallerSheet(controller: controller, selectedAppID: installerTargetAppID)
+        }
     }
 
     private func appRow(_ app: ManagedApp) -> some View {
@@ -133,7 +144,7 @@ struct MultiAppSectionView: View {
                     "HTTP Probe",
                     state.isHealthy
                         ? "\(state.httpStatus ?? 200) · \(state.responseTimeMs ?? 1) ms"
-                        : "Unreachable",
+                        : (state.httpStatus.map { "HTTP \($0)" } ?? "Unreachable"),
                     color: state.isHealthy ? .green : .red
                 )
                 miniMetric("Commit", state.commitHash)
@@ -143,10 +154,33 @@ struct MultiAppSectionView: View {
             }
 
             if let err = state.lastError, !state.isHealthy {
-                Text(err)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red.opacity(0.88))
-                    .lineLimit(2)
+                HStack(spacing: 10) {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.88))
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                    Spacer()
+                    Button("AI Help") {
+                        let recentTerminal = controller.terminalLines
+                            .filter { $0.appName == app.name || $0.appName == "system" }
+                            .suffix(40)
+                            .map { "[\($0.appName)] \($0.text)" }
+                            .joined(separator: "\n")
+                        let snapshot = """
+                        App: \(app.name)
+                        Monitor URL: \(app.monitorURL) (port \(app.port))
+                        Local Path: \(app.localPath.isEmpty ? "(none)" : app.localPath)
+                        Dependencies: \(state.dependencySummary)
+                        Probe Error: \(err)
+
+                        Recent Terminal Output:
+                        \(recentTerminal.isEmpty ? "(none)" : recentTerminal)
+                        """
+                        controller.openAIHelp(title: "\(app.name) Troubleshooter", logText: snapshot, appName: app.name)
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+                }
             }
 
             HStack(spacing: 8) {
@@ -158,6 +192,13 @@ struct MultiAppSectionView: View {
 
                 Button("Check Deps") {
                     Task { await controller.checkDependencies(for: app) }
+                }
+                .disabled(controller.busyAction != nil)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
+                Button("Install Deps") {
+                    installerTargetAppID = app.id
+                    showingPrerequisiteInstaller = true
                 }
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconSecondaryButtonStyle())

@@ -144,5 +144,8 @@ struct ContentView: View {
             .background(obsidianCanvas)
         }
         .background(obsidianCanvas)
+        .sheet(item: $controller.aiHelpContext) { context in
+            AILogHelpSheet(controller: controller, context: context)
+        }
     }
 }

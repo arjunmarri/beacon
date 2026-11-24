@@ -17,6 +17,9 @@ public final class BeaconController {
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
     public var isSearchingServerLog: Bool = false
+    public var aiHelpContext: AILogContext?
+    public var aiHelpResult: AITroubleshootingResult?
+    public var isAnalyzingLogs: Bool = false
     public var logs: [LogEntry] = []
     public var logFileBytes: Int64 = 0
     public var busyAction: String?
@@ -31,6 +34,7 @@ public final class BeaconController {
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
     private let serverLogSearchService = ServerLogSearchService()
+    private let aiTroubleshootingService = LogTroubleshootingService()
     private let updateService = AppUpdateService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
@@ -328,6 +332,83 @@ public final class BeaconController {
         state.dependencySummary = audit.appSummary
         appStates[app.id] = state
         log(.terminal, audit.result.ok ? .info : .warn, "[\(app.name)] Dependency check: \(audit.appSummary)")
+    }
+
+    public func installPrerequisitesAndDependencies(
+        for app: ManagedApp?,
+        requestedTools: [String]
+    ) async -> ScriptExecutionResult {
+        busyAction = "install-deps-\(app?.id.uuidString ?? "system")"
+        defer { busyAction = nil }
+
+        let targetLabel = app?.name ?? "system"
+        let dirArg = app?.localPath ?? ""
+        let toolsDesc = requestedTools.isEmpty ? "auto" : requestedTools.joined(separator: ",")
+        appendTerminal(appName: targetLabel, text: "$ beacon-check-deps.sh --install \"\(dirArg)\" \(toolsDesc)")
+
+        let res = await deploymentService.installPrerequisitesAndDependencies(
+            workingDir: dirArg.isEmpty ? nil : dirArg,
+            requestedTools: requestedTools
+        )
+
+        for line in res.stdoutLines {
+            appendTerminal(appName: targetLabel, text: line)
+        }
+        for line in res.stderrLines {
+            appendTerminal(appName: targetLabel, text: line, isError: true)
+        }
+
+        if res.ok {
+            log(.terminal, .info, "[\(targetLabel)] Installed prerequisites/dependencies (\(toolsDesc))")
+        } else {
+            bannerError = "[\(targetLabel)] \(res.summary)"
+            log(.terminal, .error, "[\(targetLabel)] Prerequisite install failed: \(res.summary)")
+        }
+
+        await auditSystemDependencies()
+        if let app, !app.localPath.isEmpty {
+            await checkDependencies(for: app)
+        }
+        return res
+    }
+
+    // MARK: - AI Log Troubleshooting
+
+    public func openAIHelp(title: String, logText: String, appName: String? = nil) {
+        aiHelpResult = nil
+        aiHelpContext = AILogContext(title: title, logText: logText, appName: appName)
+    }
+
+    public func buildAITroubleshootingPrompt(context: AILogContext, followUp: String? = nil) -> String {
+        aiTroubleshootingService.buildPrompt(context: context, followUp: followUp)
+    }
+
+    public func analyzeLogsWithAI(
+        context: AILogContext,
+        followUp: String?,
+        provider: AIHelpProvider
+    ) async {
+        isAnalyzingLogs = true
+        defer { isAnalyzingLogs = false }
+
+        let result = await aiTroubleshootingService.analyze(
+            context: context,
+            followUp: followUp,
+            provider: provider,
+            claudeAPIKey: keychain.read(.claudeAPIKey),
+            claudeModel: claude.activeModel,
+            ollamaEndpoint: config.ollamaEndpoint,
+            ollamaModel: ollama.activeModel,
+            ollamaConnected: ollama.isConnected,
+            claudeConnected: claude.isConnected
+        )
+
+        aiHelpResult = result
+        if result.ok {
+            log(.system, .info, "AI Help analyzed \"\(context.title)\" via \(result.providerLabel) (\(result.durationMs) ms)")
+        } else if let err = result.error {
+            log(.system, .warn, "AI Help (\(result.providerLabel)): \(err)")
+        }
     }
 
     public func cloneBuildAndDeploy(app: ManagedApp, trigger: String = "manual") async {

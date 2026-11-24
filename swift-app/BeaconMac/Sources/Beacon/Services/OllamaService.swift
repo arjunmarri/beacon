@@ -16,6 +16,7 @@ public final class OllamaService: Sendable {
     public init() {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 3.0
+        config.connectionProxyDictionary = [:]
         self.session = URLSession(configuration: config)
     }
 
