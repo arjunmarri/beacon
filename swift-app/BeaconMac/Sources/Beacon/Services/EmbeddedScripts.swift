@@ -182,25 +182,34 @@ public enum EmbeddedScripts {
 set -euo pipefail
 
 WORKDIR="${1:-}"
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 check_bin() {
   local name="$1"
+  local mode="${2:-required}"
   if command -v "$name" >/dev/null 2>&1; then
     local ver
     ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
     echo "TOOL:$name:OK:$ver"
+  elif [ "$mode" = "optional" ]; then
+    echo "TOOL:$name:OPTIONAL:not installed (optional)"
   else
     echo "TOOL:$name:MISSING:not found in PATH"
   fi
 }
 
-check_bin git
-check_bin node
-check_bin npm
-check_bin pnpm
-check_bin yarn
-check_bin bun
+check_bin git required
+check_bin node required
+check_bin npm required
+check_bin pnpm optional
+check_bin yarn optional
+check_bin bun optional
 
 if [ -n "$WORKDIR" ]; then
   if [ ! -d "$WORKDIR" ]; then
@@ -218,10 +227,26 @@ if [ -n "$WORKDIR" ]; then
       PKG_COUNT=$(find "$WORKDIR/node_modules" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
       echo "APP:DEPS:OK:$PKG_COUNT packages installed"
     else
-      echo "APP:DEPS:MISSING:node_modules missing (install required)"
+      SUB_NM=$(find "$WORKDIR" -maxdepth 2 -mindepth 2 -type d -name "node_modules" 2>/dev/null | head -n 1 || true)
+      if [ -n "$SUB_NM" ]; then
+        PKG_COUNT=$(find "$SUB_NM" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        SUB_NAME=$(basename "$(dirname "$SUB_NM")")
+        echo "APP:DEPS:OK:$PKG_COUNT packages installed ($SUB_NAME/node_modules)"
+      elif ! grep -qE '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$WORKDIR/package.json" 2>/dev/null; then
+        echo "APP:DEPS:OK:no external npm packages required"
+      else
+        echo "APP:DEPS:MISSING:node_modules not found in root (run npm install if needed)"
+      fi
     fi
   else
-    echo "APP:DEPS:NONE:no package.json found"
+    SUB_NM=$(find "$WORKDIR" -maxdepth 2 -mindepth 2 -type d -name "node_modules" 2>/dev/null | head -n 1 || true)
+    if [ -n "$SUB_NM" ]; then
+      PKG_COUNT=$(find "$SUB_NM" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+      SUB_NAME=$(basename "$(dirname "$SUB_NM")")
+      echo "APP:DEPS:OK:$PKG_COUNT packages installed ($SUB_NAME/node_modules)"
+    else
+      echo "APP:DEPS:NONE:no package.json found"
+    fi
   fi
 fi
 """#
@@ -238,7 +263,13 @@ INSTALL_CMD="${5:-auto}"
 BUILD_CMD="${6:-}"
 START_CMD="${7:-}"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 echo "[beacon-deploy] Checking required developer tools..."
 for bin in git node; do
@@ -342,13 +373,20 @@ SERVER_LOG="$HOME/beaconmac/server.log"
 
 if [ -n "$START_CMD" ]; then
   echo "[beacon-deploy] Starting app on port $PORT: $START_CMD"
-  PORT="$PORT" nohup /bin/zsh -lc "$START_CMD" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup /bin/zsh -lc "$START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
 else
   echo "[beacon-deploy] Starting Vite/Node dev server on port $PORT..."
-  PORT="$PORT" nohup npm run dev -- --port "$PORT" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup npm run dev -- --port "$PORT" </dev/null >>"$APP_LOG" 2>&1 &
 fi
 
 NEW_PID=$!
+disown "$NEW_PID" 2>/dev/null || true
+sleep 1
+if ! kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "[beacon-deploy] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
+  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  exit 15
+fi
 SUMMARY="[beacon-deploy] Deployed commit $CURRENT_SHA on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $SUMMARY" >> "$SERVER_LOG"
@@ -362,7 +400,13 @@ WORKDIR="${1:-}"
 PORT="${2:-3000}"
 CUSTOM_CMD="${3:-}"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
   echo "Target app working directory not found: $WORKDIR" >&2
@@ -383,11 +427,18 @@ APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
 SERVER_LOG="$HOME/beaconmac/server.log"
 
 if [ -n "$CUSTOM_CMD" ]; then
-  PORT="$PORT" nohup /bin/zsh -lc "$CUSTOM_CMD" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup /bin/zsh -lc "$CUSTOM_CMD" </dev/null >>"$APP_LOG" 2>&1 &
 else
-  PORT="$PORT" nohup npm run dev -- --port "$PORT" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup npm run dev -- --port "$PORT" </dev/null >>"$APP_LOG" 2>&1 &
 fi
 NEW_PID=$!
+disown "$NEW_PID" 2>/dev/null || true
+sleep 1
+if ! kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "[beacon-restart] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
+  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  exit 15
+fi
 SUMMARY="Restarted target local app in $WORKDIR on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") [beacon-restart] $SUMMARY" >> "$SERVER_LOG"

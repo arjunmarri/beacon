@@ -12,7 +12,13 @@ WORKDIR="${1:-}"
 PORT="${2:-3000}"
 CUSTOM_CMD="${3:-}"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
   echo "Target app working directory not found: $WORKDIR" >&2
@@ -34,11 +40,18 @@ APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
 SERVER_LOG="$HOME/beaconmac/server.log"
 
 if [ -n "$CUSTOM_CMD" ]; then
-  PORT="$PORT" nohup /bin/zsh -lc "$CUSTOM_CMD" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup /bin/zsh -lc "$CUSTOM_CMD" </dev/null >>"$APP_LOG" 2>&1 &
 else
-  PORT="$PORT" nohup npm run dev -- --port "$PORT" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup npm run dev -- --port "$PORT" </dev/null >>"$APP_LOG" 2>&1 &
 fi
 NEW_PID=$!
+disown "$NEW_PID" 2>/dev/null || true
+sleep 1
+if ! kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "[beacon-restart] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
+  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  exit 15
+fi
 SUMMARY="Restarted target local app in $WORKDIR on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") [beacon-restart] $SUMMARY" >> "$SERVER_LOG"

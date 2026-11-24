@@ -34,12 +34,13 @@ struct MultiAppSectionView: View {
                 .buttonStyle(BeaconPrimaryButtonStyle())
             }
 
-            if !controller.systemTools.isEmpty {
+            let visibleTools = controller.systemTools.filter { !$0.isOptional || $0.available }
+            if !visibleTools.isEmpty {
                 HStack(spacing: 14) {
                     Text("Runtime tools:")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
-                    ForEach(controller.systemTools) { tool in
+                    ForEach(visibleTools) { tool in
                         HStack(spacing: 5) {
                             Circle()
                                 .fill(tool.available ? Color.green : Color.orange.opacity(0.7))

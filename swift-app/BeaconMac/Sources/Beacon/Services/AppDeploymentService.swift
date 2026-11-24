@@ -78,13 +78,18 @@ public final class AppDeploymentService: Sendable {
         var tools: [DependencyToolStatus] = []
         var appNotes: [String] = []
 
+        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun"]
+
         for line in res.stdoutLines {
             let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
             if parts.count == 4 && parts[0] == "TOOL" {
+                let name = parts[1]
+                let status = parts[2]
                 tools.append(DependencyToolStatus(
-                    name: parts[1],
-                    available: parts[2] == "OK",
-                    detail: parts[3]
+                    name: name,
+                    available: status == "OK",
+                    detail: parts[3],
+                    isOptional: status == "OPTIONAL" || optionalToolNames.contains(name)
                 ))
             } else if parts.count == 4 && parts[0] == "APP" {
                 appNotes.append("\(parts[1].lowercased()): \(parts[3])")

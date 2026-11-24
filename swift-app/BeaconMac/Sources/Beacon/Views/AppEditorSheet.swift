@@ -142,7 +142,8 @@ struct AppEditorSheet: View {
             HStack {
                 Spacer()
                 Button("Save App") {
-                    let port = LocalProcessService.extractPort(from: monitorURL, fallback: 5173)
+                    let normalizedMonitorURL = LocalProcessService.normalizeLocalAppURL(monitorURL)
+                    let port = LocalProcessService.extractPort(from: normalizedMonitorURL, fallback: 5173)
                     let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         ? "Local App :\(port)"
                         : name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -153,7 +154,7 @@ struct AppEditorSheet: View {
                         repoURL: repoURL.trimmingCharacters(in: .whitespacesAndNewlines),
                         branch: branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "main" : branch.trimmingCharacters(in: .whitespacesAndNewlines),
                         localPath: localPath.trimmingCharacters(in: .whitespacesAndNewlines),
-                        monitorURL: monitorURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                        monitorURL: normalizedMonitorURL,
                         port: port,
                         installCommand: installCommand.trimmingCharacters(in: .whitespacesAndNewlines),
                         buildCommand: buildCommand.trimmingCharacters(in: .whitespacesAndNewlines),

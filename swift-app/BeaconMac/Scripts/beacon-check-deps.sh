@@ -7,25 +7,34 @@
 set -euo pipefail
 
 WORKDIR="${1:-}"
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 check_bin() {
   local name="$1"
+  local mode="${2:-required}"
   if command -v "$name" >/dev/null 2>&1; then
     local ver
     ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
     echo "TOOL:$name:OK:$ver"
+  elif [ "$mode" = "optional" ]; then
+    echo "TOOL:$name:OPTIONAL:not installed (optional)"
   else
     echo "TOOL:$name:MISSING:not found in PATH"
   fi
 }
 
-check_bin git
-check_bin node
-check_bin npm
-check_bin pnpm
-check_bin yarn
-check_bin bun
+check_bin git required
+check_bin node required
+check_bin npm required
+check_bin pnpm optional
+check_bin yarn optional
+check_bin bun optional
 
 if [ -n "$WORKDIR" ]; then
   if [ ! -d "$WORKDIR" ]; then
@@ -43,9 +52,25 @@ if [ -n "$WORKDIR" ]; then
       PKG_COUNT=$(find "$WORKDIR/node_modules" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
       echo "APP:DEPS:OK:$PKG_COUNT packages installed"
     else
-      echo "APP:DEPS:MISSING:node_modules missing (install required)"
+      SUB_NM=$(find "$WORKDIR" -maxdepth 2 -mindepth 2 -type d -name "node_modules" 2>/dev/null | head -n 1 || true)
+      if [ -n "$SUB_NM" ]; then
+        PKG_COUNT=$(find "$SUB_NM" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        SUB_NAME=$(basename "$(dirname "$SUB_NM")")
+        echo "APP:DEPS:OK:$PKG_COUNT packages installed ($SUB_NAME/node_modules)"
+      elif ! grep -qE '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$WORKDIR/package.json" 2>/dev/null; then
+        echo "APP:DEPS:OK:no external npm packages required"
+      else
+        echo "APP:DEPS:MISSING:node_modules not found in root (run npm install if needed)"
+      fi
     fi
   else
-    echo "APP:DEPS:NONE:no package.json found"
+    SUB_NM=$(find "$WORKDIR" -maxdepth 2 -mindepth 2 -type d -name "node_modules" 2>/dev/null | head -n 1 || true)
+    if [ -n "$SUB_NM" ]; then
+      PKG_COUNT=$(find "$SUB_NM" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+      SUB_NAME=$(basename "$(dirname "$SUB_NM")")
+      echo "APP:DEPS:OK:$PKG_COUNT packages installed ($SUB_NAME/node_modules)"
+    else
+      echo "APP:DEPS:NONE:no package.json found"
+    fi
   fi
 fi

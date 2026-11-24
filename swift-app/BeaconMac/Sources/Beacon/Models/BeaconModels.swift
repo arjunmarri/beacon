@@ -164,6 +164,14 @@ public struct DependencyToolStatus: Identifiable, Sendable {
     public let name: String
     public let available: Bool
     public let detail: String
+    public let isOptional: Bool
+
+    public init(name: String, available: Bool, detail: String, isOptional: Bool = false) {
+        self.name = name
+        self.available = available
+        self.detail = detail
+        self.isOptional = isOptional
+    }
 }
 
 public struct TerminalOutputLine: Identifiable, Sendable {

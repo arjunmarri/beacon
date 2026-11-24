@@ -43,6 +43,23 @@ public final class OllamaService: Sendable {
             )
         }
 
+        let host = tagsURL.host?.lowercased() ?? "127.0.0.1"
+        let port = tagsURL.port ?? 11434
+        let ollamaListening = await Task.detached(priority: .utility) {
+            LocalProcessService.isLoopbackPortListening(host: host, port: port)
+        }.value
+
+        guard ollamaListening else {
+            return OllamaHealthResult(
+                connected: false,
+                latencyMs: nil,
+                models: [],
+                activeModel: preferredModel,
+                vramUsedGB: 0,
+                error: "Ollama daemon not reachable at \(endpoint)."
+            )
+        }
+
         let start = CFAbsoluteTimeGetCurrent()
         do {
             let (data, response) = try await session.data(from: tagsURL)

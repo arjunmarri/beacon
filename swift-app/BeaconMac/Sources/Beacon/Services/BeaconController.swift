@@ -187,15 +187,15 @@ public final class BeaconController {
     // MARK: - Multi-App CRUD, Probe, Dependency Audit & Clone/Build/Deploy
 
     public func upsertManagedApp(_ app: ManagedApp) async {
-        let trimmedURL = app.monitorURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard LocalProcessService.isValidLocalAppURL(trimmedURL) else {
+        let normalizedURL = LocalProcessService.normalizeLocalAppURL(app.monitorURL)
+        guard LocalProcessService.isValidLocalAppURL(normalizedURL) else {
             bannerError = "Monitor URL for \(app.name) must use a local host (localhost, 127.0.0.1, ::1, *.localhost, or *.local)."
             return
         }
 
         var normalized = app
-        normalized.monitorURL = trimmedURL
-        normalized.port = LocalProcessService.extractPort(from: trimmedURL, fallback: app.port)
+        normalized.monitorURL = normalizedURL
+        normalized.port = LocalProcessService.extractPort(from: normalizedURL, fallback: app.port)
 
         bannerError = nil
         if let idx = config.managedApps.firstIndex(where: { $0.id == normalized.id }) {
@@ -286,9 +286,22 @@ public final class BeaconController {
         let audit = await deploymentService.checkDependencies(for: nil)
         if !audit.tools.isEmpty {
             systemTools = audit.tools
-        }
-        for line in audit.result.stdoutLines {
-            appendTerminal(appName: "system", text: line)
+            let installed = audit.tools
+                .filter(\.available)
+                .map { "\($0.name) (\($0.detail))" }
+            let missingRequired = audit.tools
+                .filter { !$0.available && !$0.isOptional }
+                .map(\.name)
+            if !installed.isEmpty {
+                appendTerminal(appName: "system", text: "Runtime tools ready: \(installed.joined(separator: ", "))")
+            }
+            if !missingRequired.isEmpty {
+                appendTerminal(
+                    appName: "system",
+                    text: "Missing required tools: \(missingRequired.joined(separator: ", "))",
+                    isError: true
+                )
+            }
         }
         for line in audit.result.stderrLines {
             appendTerminal(appName: "system", text: line, isError: true)
@@ -304,8 +317,8 @@ public final class BeaconController {
         if !audit.tools.isEmpty {
             systemTools = audit.tools
         }
-        for line in audit.result.stdoutLines {
-            appendTerminal(appName: app.name, text: line)
+        if !audit.appSummary.isEmpty {
+            appendTerminal(appName: app.name, text: audit.appSummary)
         }
         for line in audit.result.stderrLines {
             appendTerminal(appName: app.name, text: line, isError: true)

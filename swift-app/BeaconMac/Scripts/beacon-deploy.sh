@@ -21,7 +21,13 @@ INSTALL_CMD="${5:-auto}"
 BUILD_CMD="${6:-}"
 START_CMD="${7:-}"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
+  if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+fi
 
 echo "[beacon-deploy] Checking required developer tools..."
 for bin in git node; do
@@ -129,13 +135,20 @@ SERVER_LOG="$HOME/beaconmac/server.log"
 
 if [ -n "$START_CMD" ]; then
   echo "[beacon-deploy] Starting app on port $PORT: $START_CMD"
-  PORT="$PORT" nohup /bin/zsh -lc "$START_CMD" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup /bin/zsh -lc "$START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
 else
   echo "[beacon-deploy] Starting Vite/Node dev server on port $PORT..."
-  PORT="$PORT" nohup npm run dev -- --port "$PORT" >>"$APP_LOG" 2>&1 &
+  PORT="$PORT" nohup npm run dev -- --port "$PORT" </dev/null >>"$APP_LOG" 2>&1 &
 fi
 
 NEW_PID=$!
+disown "$NEW_PID" 2>/dev/null || true
+sleep 1
+if ! kill -0 "$NEW_PID" 2>/dev/null; then
+  echo "[beacon-deploy] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
+  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  exit 15
+fi
 SUMMARY="[beacon-deploy] Deployed commit $CURRENT_SHA on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $SUMMARY" >> "$SERVER_LOG"
