@@ -418,8 +418,98 @@ public struct AppUpdateState: Sendable {
     public var lastError: String?
 }
 
+public enum BuiltInNodeAppMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case staticFolder = "static"
+    case localProxy = "proxy"
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .staticFolder: return "Static / Built App Folder"
+        case .localProxy: return "Local Port Proxy (127.0.0.1)"
+        }
+    }
+}
+
+public struct BuiltInMountedApp: Identifiable, Codable, Hashable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var slug: String
+    public var mode: BuiltInNodeAppMode
+    public var folderPath: String
+    public var proxyPort: Int?
+    public var spaFallback: Bool
+    public var addedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        slug: String,
+        mode: BuiltInNodeAppMode = .staticFolder,
+        folderPath: String = "",
+        proxyPort: Int? = nil,
+        spaFallback: Bool = true,
+        addedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.slug = slug
+        self.mode = mode
+        self.folderPath = folderPath
+        self.proxyPort = proxyPort
+        self.spaFallback = spaFallback
+        self.addedAt = addedAt
+    }
+}
+
+public struct BuiltInServerConfig: Codable, Sendable {
+    public var port: Int = 4173
+    public var autoStart: Bool = false
+    public var activeRootAppID: UUID? = nil
+    public var mountedApps: [BuiltInMountedApp] = []
+
+    public init(
+        port: Int = 4173,
+        autoStart: Bool = false,
+        activeRootAppID: UUID? = nil,
+        mountedApps: [BuiltInMountedApp] = []
+    ) {
+        self.port = port
+        self.autoStart = autoStart
+        self.activeRootAppID = activeRootAppID
+        self.mountedApps = mountedApps
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedPort = try container.decodeIfPresent(Int.self, forKey: .port) ?? 4173
+        self.port = (1024...65535).contains(decodedPort) ? decodedPort : 4173
+        self.autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
+        self.activeRootAppID = try container.decodeIfPresent(UUID.self, forKey: .activeRootAppID)
+        self.mountedApps = try container.decodeIfPresent([BuiltInMountedApp].self, forKey: .mountedApps) ?? []
+    }
+}
+
+public struct BuiltInServerState: Sendable {
+    public var light: TrafficLightColor = .amber
+    public var statusLabel: String = "Stopped"
+    public var isRunning: Bool = false
+    public var pid: Int?
+    public var port: Int = 4173
+    public var nodeVersion: String?
+    public var uptimeSec: Int?
+    public var lastCheckedAt: Date?
+    public var lastError: String?
+
+    public var baseURL: String {
+        "http://127.0.0.1:\(port)"
+    }
+}
+
 public struct BeaconConfig: Codable, Sendable {
     public var managedApps: [ManagedApp]
+    public var builtInServer: BuiltInServerConfig
     public var startupSchedule: StartupScheduleConfig
     public var maxRestarts: Int
     public var gitPollIntervalSec: Int
@@ -437,6 +527,7 @@ public struct BeaconConfig: Codable, Sendable {
 
     public init(
         managedApps: [ManagedApp],
+        builtInServer: BuiltInServerConfig = BuiltInServerConfig(),
         startupSchedule: StartupScheduleConfig,
         maxRestarts: Int,
         gitPollIntervalSec: Int,
@@ -452,6 +543,7 @@ public struct BeaconConfig: Codable, Sendable {
         updateFeedRepo: String = AppUpdateService.pinnedRepo
     ) {
         self.managedApps = managedApps
+        self.builtInServer = builtInServer
         self.startupSchedule = startupSchedule
         self.maxRestarts = maxRestarts
         self.gitPollIntervalSec = gitPollIntervalSec
@@ -470,6 +562,7 @@ public struct BeaconConfig: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.managedApps = try container.decodeIfPresent([ManagedApp].self, forKey: .managedApps) ?? []
+        self.builtInServer = try container.decodeIfPresent(BuiltInServerConfig.self, forKey: .builtInServer) ?? BuiltInServerConfig()
         self.startupSchedule = try container.decodeIfPresent(StartupScheduleConfig.self, forKey: .startupSchedule) ?? StartupScheduleConfig()
         self.maxRestarts = try container.decodeIfPresent(Int.self, forKey: .maxRestarts) ?? 10
         self.gitPollIntervalSec = try container.decodeIfPresent(Int.self, forKey: .gitPollIntervalSec) ?? 60
@@ -490,6 +583,7 @@ public struct BeaconConfig: Codable, Sendable {
     public static var defaults: BeaconConfig {
         BeaconConfig(
             managedApps: [],
+            builtInServer: BuiltInServerConfig(),
             startupSchedule: StartupScheduleConfig(),
             maxRestarts: 10,
             gitPollIntervalSec: 60,

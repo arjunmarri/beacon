@@ -217,6 +217,17 @@ public final class AppDeploymentService: Sendable {
         )
     }
 
+    public func runBuiltInNodeServerAction(
+        _ action: String,
+        port: Int,
+        registryPath: String
+    ) async -> ScriptExecutionResult {
+        await runUnixScript(
+            named: "beacon-node-server.sh",
+            arguments: [action, String(port), registryPath]
+        )
+    }
+
     private func runUnixScript(named scriptName: String, arguments: [String]) async -> ScriptExecutionResult {
         let primaryDir = EmbeddedScripts.targetScriptsDirectoryURL()
 

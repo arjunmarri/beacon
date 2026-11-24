@@ -223,6 +223,12 @@ struct MultiAppSectionView: View {
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
+                Button("Load in Node Host") {
+                    Task { await controller.loadManagedAppIntoBuiltInServer(app) }
+                }
+                .disabled(controller.busyAction != nil)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
                 Spacer()
 
                 Toggle("Startup", isOn: Binding(

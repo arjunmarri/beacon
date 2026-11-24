@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -13,6 +14,7 @@ public final class BeaconController {
     public var ollama = OllamaState()
     public var claude = ClaudeState()
     public var launchd = LaunchdDaemonState()
+    public var builtInServer = BuiltInServerState()
     public var update = AppUpdateState()
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
@@ -35,6 +37,7 @@ public final class BeaconController {
 
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
+    private let builtInServerService: BuiltInNodeServerService
     private let serverLogSearchService = ServerLogSearchService()
     private let aiTroubleshootingService = LogTroubleshootingService()
     private let updateService = AppUpdateService()
@@ -57,8 +60,10 @@ public final class BeaconController {
 
     public init() {
         let loaded = flatFileStore.loadConfig()
+        self.builtInServerService = BuiltInNodeServerService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
         self.config = loaded
         self.config.startupSchedule.launchAtLogin = startupService.isLaunchAtLoginEnabled
+        self.builtInServer.port = loaded.builtInServer.port
         self.ollama.endpoint = loaded.ollamaEndpoint
         self.ollama.activeModel = loaded.ollamaActiveModel
         self.logs = flatFileStore.loadRecentLogs()
@@ -68,6 +73,7 @@ public final class BeaconController {
             self.appStates[app.id] = ManagedAppRuntimeState()
         }
 
+        self.builtInServerService.writeRegistry(from: loaded.builtInServer)
         self.launchd.plistPath = startupService.launchdPlistTildePath
         self.launchd.serverLogPath = startupService.serverLogTildePath
         self.scriptsInstalled = EmbeddedScripts.autoInstallIfNotSandboxed()
@@ -119,6 +125,10 @@ public final class BeaconController {
             await refreshLaunchdStatus()
         }
         await probeAllManagedApps(logTransitions: true)
+        await probeBuiltInNodeServer(logTransitions: false)
+        if config.builtInServer.autoStart && !builtInServer.isRunning {
+            await startBuiltInNodeServer()
+        }
         await probeOllama(logResult: true)
 
         if let savedGitToken = keychain.read(.githubToken), !savedGitToken.isEmpty {
@@ -157,6 +167,10 @@ public final class BeaconController {
                 self.tickCount += 1
 
                 await self.probeAllManagedApps(logTransitions: true)
+
+                if self.tickCount % 3 == 0 {
+                    await self.probeBuiltInNodeServer(logTransitions: true)
+                }
 
                 if self.tickCount % 5 == 0 {
                     await self.probeOllama(logResult: false)
@@ -925,9 +939,244 @@ public final class BeaconController {
         busyAction = "refresh-all"
         defer { busyAction = nil }
         await probeAllManagedApps(logTransitions: true)
+        await probeBuiltInNodeServer(logTransitions: true)
         await probeOllama(logResult: true)
         if keychain.read(.claudeAPIKey) != nil {
             await probeClaude(logResult: true)
+        }
+    }
+
+    // MARK: - Built-In Node.js App Host Server
+
+    public func probeBuiltInNodeServer(logTransitions: Bool = false) async {
+        let port = config.builtInServer.port
+        builtInServer.port = port
+        let wasRunning = builtInServer.isRunning
+
+        if let health = await builtInServerService.probeHealth(port: port), health.ok {
+            builtInServer.isRunning = true
+            builtInServer.light = .green
+            builtInServer.statusLabel = "Running :\(port)"
+            builtInServer.pid = health.pid
+            builtInServer.nodeVersion = health.nodeVersion
+            builtInServer.uptimeSec = health.uptimeSec
+            builtInServer.lastError = nil
+            builtInServer.lastCheckedAt = Date()
+            if logTransitions && !wasRunning {
+                log(.system, .info, "Built-in Node.js server is online at http://127.0.0.1:\(port) (\(health.nodeVersion ?? "Node.js"))")
+            }
+        } else {
+            builtInServer.isRunning = false
+            builtInServer.light = .amber
+            builtInServer.statusLabel = "Stopped"
+            builtInServer.pid = nil
+            builtInServer.uptimeSec = nil
+            builtInServer.lastCheckedAt = Date()
+            if logTransitions && wasRunning {
+                log(.system, .warn, "Built-in Node.js server on port \(port) stopped responding")
+            }
+        }
+    }
+
+    public func startBuiltInNodeServer(restart: Bool = false) async {
+        let port = (1024...65535).contains(config.builtInServer.port) ? config.builtInServer.port : 4173
+        config.builtInServer.port = port
+        builtInServer.port = port
+        builtInServerService.writeRegistry(from: config.builtInServer)
+        flatFileStore.saveConfig(config)
+
+        let action = restart ? "restart" : "start"
+        busyAction = "builtin-node-\(action)"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "node-host", text: "$ beacon-node-server.sh \(action) \(port)")
+        let res = await deploymentService.runBuiltInNodeServerAction(
+            action,
+            port: port,
+            registryPath: builtInServerService.registryURL.path
+        )
+        for line in res.stdoutLines { appendTerminal(appName: "node-host", text: line) }
+        for line in res.stderrLines { appendTerminal(appName: "node-host", text: line, isError: true) }
+
+        if res.ok {
+            builtInServer.lastError = nil
+            await probeBuiltInNodeServer(logTransitions: false)
+            log(.system, .info, "Built-in Node.js server running at http://127.0.0.1:\(port)")
+        } else {
+            builtInServer.isRunning = false
+            builtInServer.light = .red
+            builtInServer.statusLabel = "Start Failed"
+            builtInServer.lastError = res.summary
+            bannerError = res.summary
+            log(.system, .error, "Built-in Node.js server failed to start: \(res.summary)")
+        }
+    }
+
+    public func stopBuiltInNodeServer() async {
+        let port = config.builtInServer.port
+        busyAction = "builtin-node-stop"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "node-host", text: "$ beacon-node-server.sh stop \(port)")
+        let res = await deploymentService.runBuiltInNodeServerAction(
+            "stop",
+            port: port,
+            registryPath: builtInServerService.registryURL.path
+        )
+        for line in res.stdoutLines { appendTerminal(appName: "node-host", text: line) }
+        for line in res.stderrLines { appendTerminal(appName: "node-host", text: line, isError: true) }
+
+        builtInServer.isRunning = false
+        builtInServer.light = .amber
+        builtInServer.statusLabel = "Stopped"
+        builtInServer.pid = nil
+        builtInServer.uptimeSec = nil
+        log(.system, .info, "Stopped built-in Node.js server on port \(port)")
+    }
+
+    public func updateBuiltInNodeServerSettings(port: Int, autoStart: Bool) async {
+        let clampedPort = (1024...65535).contains(port) ? port : 4173
+        let portChanged = clampedPort != config.builtInServer.port
+        let wasRunning = builtInServer.isRunning
+
+        if portChanged && wasRunning {
+            await stopBuiltInNodeServer()
+        }
+
+        config.builtInServer.port = clampedPort
+        config.builtInServer.autoStart = autoStart
+        builtInServer.port = clampedPort
+        flatFileStore.saveConfig(config)
+        builtInServerService.writeRegistry(from: config.builtInServer)
+
+        if portChanged && wasRunning {
+            await startBuiltInNodeServer(restart: true)
+        }
+    }
+
+    @discardableResult
+    public func loadAppIntoBuiltInServer(
+        name: String,
+        mode: BuiltInNodeAppMode,
+        folderPath: String = "",
+        proxyPort: Int? = nil,
+        spaFallback: Bool = true,
+        makeActiveRoot: Bool = true,
+        autoStartServer: Bool = true
+    ) async -> BuiltInMountedApp {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmedName.isEmpty ? "Loaded App" : trimmedName
+        let trimmedFolder = folderPath.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Reuse existing entry if same folder or proxy port is already mounted
+        if let existingIdx = config.builtInServer.mountedApps.firstIndex(where: { existing in
+            existing.mode == mode && (
+                (mode == .staticFolder && !trimmedFolder.isEmpty && existing.folderPath == trimmedFolder) ||
+                (mode == .localProxy && proxyPort != nil && existing.proxyPort == proxyPort)
+            )
+        }) {
+            config.builtInServer.mountedApps[existingIdx].name = finalName
+            config.builtInServer.mountedApps[existingIdx].spaFallback = spaFallback
+            let updated = config.builtInServer.mountedApps[existingIdx]
+            if makeActiveRoot {
+                config.builtInServer.activeRootAppID = updated.id
+            }
+            flatFileStore.saveConfig(config)
+            builtInServerService.writeRegistry(from: config.builtInServer)
+            log(.system, .info, "Updated \"\(updated.name)\" in built-in Node.js server (/\(updated.slug))")
+            if autoStartServer && !builtInServer.isRunning {
+                await startBuiltInNodeServer()
+            }
+            return updated
+        }
+
+        let existingSlugs = Set(config.builtInServer.mountedApps.map(\.slug))
+        let slug = BuiltInNodeServerService.makeSlug(from: finalName, existingSlugs: existingSlugs)
+        let mounted = BuiltInMountedApp(
+            name: finalName,
+            slug: slug,
+            mode: mode,
+            folderPath: trimmedFolder,
+            proxyPort: mode == .localProxy ? proxyPort : nil,
+            spaFallback: spaFallback
+        )
+        config.builtInServer.mountedApps.append(mounted)
+        if makeActiveRoot || config.builtInServer.activeRootAppID == nil {
+            config.builtInServer.activeRootAppID = mounted.id
+        }
+        flatFileStore.saveConfig(config)
+        builtInServerService.writeRegistry(from: config.builtInServer)
+
+        let targetDesc = mode == .localProxy
+            ? "proxy → 127.0.0.1:\(proxyPort ?? 0)"
+            : BuiltInNodeServerService.describeServeRoot(for: trimmedFolder)
+        log(.system, .info, "Loaded \"\(mounted.name)\" into built-in Node.js server (\(targetDesc)) at /apps/\(mounted.slug)/")
+
+        if autoStartServer && !builtInServer.isRunning {
+            await startBuiltInNodeServer()
+        }
+        return mounted
+    }
+
+    public func loadManagedAppIntoBuiltInServer(_ app: ManagedApp, mode: BuiltInNodeAppMode? = nil) async {
+        let chosenMode: BuiltInNodeAppMode
+        if let mode {
+            chosenMode = mode
+        } else {
+            let folderDesc = BuiltInNodeServerService.describeServeRoot(for: app.localPath)
+            let hasBuiltStatic = folderDesc.contains("index.html")
+            let state = runtimeState(for: app.id)
+            chosenMode = (state.isHealthy || !hasBuiltStatic) ? .localProxy : .staticFolder
+        }
+
+        await loadAppIntoBuiltInServer(
+            name: app.name,
+            mode: chosenMode,
+            folderPath: app.localPath,
+            proxyPort: app.port,
+            spaFallback: true,
+            makeActiveRoot: true,
+            autoStartServer: true
+        )
+    }
+
+    public func setBuiltInRootApp(_ appID: UUID?) {
+        config.builtInServer.activeRootAppID = appID
+        flatFileStore.saveConfig(config)
+        builtInServerService.writeRegistry(from: config.builtInServer)
+        if let appID, let match = config.builtInServer.mountedApps.first(where: { $0.id == appID }) {
+            log(.system, .info, "Set \"\(match.name)\" as active root app at \(builtInServer.baseURL)/")
+        } else {
+            log(.system, .info, "Switched built-in Node.js root \(builtInServer.baseURL)/ back to App Launcher")
+        }
+    }
+
+    public func removeBuiltInMountedApp(_ app: BuiltInMountedApp) {
+        config.builtInServer.mountedApps.removeAll { $0.id == app.id }
+        if config.builtInServer.activeRootAppID == app.id {
+            config.builtInServer.activeRootAppID = config.builtInServer.mountedApps.first?.id
+        }
+        flatFileStore.saveConfig(config)
+        builtInServerService.writeRegistry(from: config.builtInServer)
+        log(.system, .info, "Unloaded \"\(app.name)\" from built-in Node.js server")
+    }
+
+    public func openBuiltInAppInBrowser(_ app: BuiltInMountedApp? = nil, openLauncher: Bool = false) {
+        let base = builtInServer.baseURL
+        let urlString: String
+        if openLauncher {
+            urlString = "\(base)/_beacon/"
+        } else if let app {
+            if config.builtInServer.activeRootAppID == app.id {
+                urlString = "\(base)/"
+            } else {
+                urlString = "\(base)/apps/\(app.slug)/"
+            }
+        } else {
+            urlString = "\(base)/"
+        }
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -1062,14 +1311,55 @@ public final class BeaconController {
         }
     }
 
-    public func exportActivityLog() {
+    @discardableResult
+    public func exportSessionLogs(
+        format: LogExportFormat,
+        filteredActivityLogs: [LogEntry]? = nil,
+        scopeDescription: String? = nil
+    ) -> Bool {
+        let isFiltered = filteredActivityLogs != nil
+        let bundle = LogExportService.buildBundle(
+            from: self,
+            activityLogs: filteredActivityLogs,
+            terminalLines: terminalLines,
+            scopeDescription: scopeDescription
+                ?? (isFiltered
+                    ? "Filtered Activity Logs + Current Session Deployment Output"
+                    : "All Current Session Logs (System, Git, Services & Deployment Output)")
+        )
+
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "beaconmac-activity.log"
-        if panel.runModal() == .OK, let dest = panel.url {
-            try? FileManager.default.removeItem(at: dest)
-            try? FileManager.default.copyItem(at: flatFileStore.logFileURL, to: dest)
-            log(.system, .info, "Exported flat-file activity log to \(dest.lastPathComponent)")
+        panel.title = "Export BeaconMac Session Logs"
+        panel.message = "Save current session logs (system, Git, service events, and deployment output) as \(format.displayName)."
+        panel.prompt = "Export"
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.allowedContentTypes = [format.utType]
+        panel.nameFieldStringValue = LogExportService.suggestedFilename(format: format, filtered: isFiltered)
+
+        guard panel.runModal() == .OK, let dest = panel.url else {
+            return false
         }
+
+        do {
+            let data = try LogExportService.render(bundle: bundle, format: format)
+            try data.write(to: dest, options: .atomic)
+            log(
+                .system,
+                .info,
+                "Exported \(format.fileExtension.uppercased()) session logs (\(bundle.metadata.counts.totalActivityLogs) activity, \(bundle.metadata.counts.deploymentOutputLines) deployment lines) to \(dest.lastPathComponent)"
+            )
+            return true
+        } catch {
+            let msg = "Failed to export session logs: \(SecretMasker.redact(error.localizedDescription))"
+            bannerError = msg
+            log(.system, .error, msg)
+            return false
+        }
+    }
+
+    public func exportActivityLog() {
+        exportSessionLogs(format: .txt)
     }
 
     public func clearLogs() {

@@ -6,9 +6,14 @@ struct ActivityLogView: View {
     @State private var selectedSource: LogSource? = nil
     @State private var searchQuery: String = ""
     @State private var copiedLogs = false
+    @State private var exportedLogs = false
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let terminalBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
+
+    private var hasActiveFilter: Bool {
+        selectedSource != nil || !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var filteredLogs: [LogEntry] {
         controller.logs.reversed().filter { entry in
@@ -30,6 +35,34 @@ struct ActivityLogView: View {
 
     private var formattedFilteredLogs: String {
         filteredLogs.reversed().map(formatEntry).joined(separator: "\n")
+    }
+
+    private func triggerExport(format: LogExportFormat, filteredOnly: Bool) {
+        let chronologicalFiltered = filteredOnly ? Array(filteredLogs.reversed()) : nil
+        var scopeParts: [String] = []
+        if let selectedSource {
+            scopeParts.append("source=\(selectedSource.rawValue)")
+        }
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            scopeParts.append("query=\"\(trimmedQuery)\"")
+        }
+        let scopeDesc = filteredOnly
+            ? "Filtered Activity Logs (\(scopeParts.joined(separator: ", "))) + Deployment Output"
+            : nil
+
+        let ok = controller.exportSessionLogs(
+            format: format,
+            filteredActivityLogs: chronologicalFiltered,
+            scopeDescription: scopeDesc
+        )
+        if ok {
+            exportedLogs = true
+            Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                exportedLogs = false
+            }
+        }
     }
 
     var body: some View {
@@ -77,10 +110,56 @@ struct ActivityLogView: View {
                 .disabled(filteredLogs.isEmpty)
                 .buttonStyle(BeaconPrimaryButtonStyle())
 
-                Button("Export .log") {
-                    controller.exportActivityLog()
+                Menu {
+                    Button {
+                        triggerExport(format: .txt, filteredOnly: false)
+                    } label: {
+                        Label("Export All Session Logs (.txt)", systemImage: "doc.plaintext")
+                    }
+
+                    Button {
+                        triggerExport(format: .json, filteredOnly: false)
+                    } label: {
+                        Label("Export All Session Logs (.json)", systemImage: "curlybraces")
+                    }
+
+                    if hasActiveFilter {
+                        Divider()
+
+                        Button {
+                            triggerExport(format: .txt, filteredOnly: true)
+                        } label: {
+                            Label("Export Filtered View (.txt)", systemImage: "line.3.horizontal.decrease.circle")
+                        }
+
+                        Button {
+                            triggerExport(format: .json, filteredOnly: true)
+                        } label: {
+                            Label("Export Filtered View (.json)", systemImage: "line.3.horizontal.decrease.circle")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: exportedLogs ? "checkmark" : "square.and.arrow.up")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(exportedLogs ? "Exported ✓" : "Export Logs")
+                            .font(.system(size: 12, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.1)))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
                 }
-                .buttonStyle(BeaconSecondaryButtonStyle())
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .disabled(controller.logs.isEmpty && controller.terminalLines.isEmpty)
+                .help("Save all current session logs (system, Git, and deployment output) as .txt or .json")
 
                 Button("Clear") {
                     controller.clearLogs()
@@ -131,6 +210,13 @@ struct ActivityLogView: View {
                                 Button("Copy All Filtered Logs") {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(formattedFilteredLogs, forType: .string)
+                                }
+                                Divider()
+                                Button("Export All Session Logs (.txt)") {
+                                    triggerExport(format: .txt, filteredOnly: false)
+                                }
+                                Button("Export All Session Logs (.json)") {
+                                    triggerExport(format: .json, filteredOnly: false)
                                 }
                                 Divider()
                                 Button("Ask AI About This Entry") {

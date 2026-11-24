@@ -105,7 +105,7 @@ struct ContentView: View {
                                 Text("One-Time macOS App Sandbox Script Setup Required")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(.white)
-                                Text("Install BeaconMac's 7 helper scripts into \(EmbeddedScripts.targetScriptsDirectoryURL().lastPathComponent) to enable Clone & Deploy, Check Deps, Restart, and launchd.")
+                                Text("Install BeaconMac's \(EmbeddedScripts.requiredScriptNames.count) helper scripts into \(EmbeddedScripts.targetScriptsDirectoryURL().lastPathComponent) to enable Clone & Deploy, Built-In Node.js Server, Check Deps, Restart, and launchd.")
                                     .font(.system(size: 11.5))
                                     .foregroundStyle(.white.opacity(0.82))
                             }
@@ -127,6 +127,7 @@ struct ContentView: View {
                     }
 
                     MultiAppSectionView(controller: controller)
+                    BuiltInNodeServerView(controller: controller)
                     ServiceCardsView(controller: controller)
                     TerminalPanelView(controller: controller)
                     StartupScheduleView(controller: controller)
