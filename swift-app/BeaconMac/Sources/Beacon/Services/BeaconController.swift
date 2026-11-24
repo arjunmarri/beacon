@@ -20,6 +20,8 @@ public final class BeaconController {
     public var aiHelpContext: AILogContext?
     public var aiHelpResult: AITroubleshootingResult?
     public var isAnalyzingLogs: Bool = false
+    public var showingDependencyInstaller: Bool = false
+    public var dependencyInstallerAppID: UUID?
     public var logs: [LogEntry] = []
     public var logFileBytes: Int64 = 0
     public var busyAction: String?
@@ -334,9 +336,15 @@ public final class BeaconController {
         log(.terminal, audit.result.ok ? .info : .warn, "[\(app.name)] Dependency check: \(audit.appSummary)")
     }
 
+    public func openDependencyInstaller(for app: ManagedApp? = nil) {
+        dependencyInstallerAppID = app?.id ?? config.managedApps.first?.id
+        showingDependencyInstaller = true
+    }
+
     public func installPrerequisitesAndDependencies(
         for app: ManagedApp?,
-        requestedTools: [String]
+        requestedTools: [String],
+        strategy: DependencyInstallStrategy = .auto
     ) async -> ScriptExecutionResult {
         busyAction = "install-deps-\(app?.id.uuidString ?? "system")"
         defer { busyAction = nil }
@@ -344,11 +352,12 @@ public final class BeaconController {
         let targetLabel = app?.name ?? "system"
         let dirArg = app?.localPath ?? ""
         let toolsDesc = requestedTools.isEmpty ? "auto" : requestedTools.joined(separator: ",")
-        appendTerminal(appName: targetLabel, text: "$ beacon-check-deps.sh --install \"\(dirArg)\" \(toolsDesc)")
+        appendTerminal(appName: targetLabel, text: "$ beacon-check-deps.sh --install \"\(dirArg)\" \(toolsDesc) \(strategy.rawValue)")
 
         let res = await deploymentService.installPrerequisitesAndDependencies(
             workingDir: dirArg.isEmpty ? nil : dirArg,
-            requestedTools: requestedTools
+            requestedTools: requestedTools,
+            strategy: strategy
         )
 
         for line in res.stdoutLines {
@@ -359,10 +368,10 @@ public final class BeaconController {
         }
 
         if res.ok {
-            log(.terminal, .info, "[\(targetLabel)] Installed prerequisites/dependencies (\(toolsDesc))")
+            log(.terminal, .info, "[\(targetLabel)] Installed dependencies (\(toolsDesc), mode: \(strategy.rawValue))")
         } else {
             bannerError = "[\(targetLabel)] \(res.summary)"
-            log(.terminal, .error, "[\(targetLabel)] Prerequisite install failed: \(res.summary)")
+            log(.terminal, .error, "[\(targetLabel)] Dependency install failed: \(res.summary)")
         }
 
         await auditSystemDependencies()
@@ -941,20 +950,24 @@ public final class BeaconController {
         config.notifyOnDeploy = notifyOnDeploy
         config.notifyOnOllamaDown = notifyOnOllamaDown
         if let autoCheckForUpdates { config.autoCheckForUpdates = autoCheckForUpdates }
-        if let autoInstallUpdates { config.autoInstallUpdates = autoInstallUpdates }
+        _ = autoInstallUpdates
+        config.autoInstallUpdates = false
+        config.updateFeedRepo = AppUpdateService.pinnedRepo
         ollama.endpoint = config.ollamaEndpoint
         flatFileStore.saveConfig(config)
         log(.system, .info, "Saved flat-file configuration to \(flatFileStore.configFileURL.lastPathComponent)")
         await probeOllama(logResult: false)
     }
 
-    // MARK: - Automatic Self-Updates
+    // MARK: - Verified Self-Updates
 
-    public func updateAutoUpdatePreferences(autoCheck: Bool, autoInstall: Bool) {
+    public func updateAutoUpdatePreferences(autoCheck: Bool, autoInstall: Bool = false) {
         config.autoCheckForUpdates = autoCheck
-        config.autoInstallUpdates = autoInstall
+        // Silent background binary swaps are disabled; users must explicitly trigger verified installs.
+        config.autoInstallUpdates = false
+        _ = autoInstall
         flatFileStore.saveConfig(config)
-        log(.system, .info, "Auto-update settings updated (auto-check: \(autoCheck), auto-install: \(autoInstall))")
+        log(.system, .info, "Update check preference saved (auto-check: \(autoCheck))")
     }
 
     public func checkForUpdates(userInitiated: Bool) async {
@@ -967,7 +980,7 @@ public final class BeaconController {
 
         do {
             let release = try await updateService.checkLatestRelease(
-                repo: config.updateFeedRepo,
+                repo: AppUpdateService.pinnedRepo,
                 githubToken: keychain.read(.githubToken)
             )
             update.lastCheckedAt = Date()
@@ -976,13 +989,8 @@ public final class BeaconController {
             let cmp = AppUpdateService.compareSemVer(release.version, update.currentVersion)
             if cmp == .orderedDescending {
                 update.status = .updateAvailable
-                update.statusMessage = "BeaconMac v\(release.version) is available (installed: v\(update.currentVersion))"
-                log(.system, .info, "Update available: BeaconMac v\(release.version) (current: v\(update.currentVersion))")
-
-                if config.autoInstallUpdates && !EmbeddedScripts.isSandboxed && release.dmgDownloadURL != nil {
-                    log(.system, .info, "Automatic update installation enabled — installing BeaconMac v\(release.version)...")
-                    await installAvailableUpdate()
-                }
+                update.statusMessage = "BeaconMac v\(release.version) is available — click Install to verify & update (installed: v\(update.currentVersion))"
+                log(.system, .info, "Update available: BeaconMac v\(release.version) (current: v\(update.currentVersion)). Click Install to verify SHA-256, Developer ID signature, and Gatekeeper before updating.")
             } else {
                 update.status = .upToDate
                 update.statusMessage = "BeaconMac v\(update.currentVersion) is up to date"
@@ -1013,8 +1021,8 @@ public final class BeaconController {
         update.status = .downloading
         update.downloadProgress = 0.08
         update.lastError = nil
-        update.statusMessage = "Downloading BeaconMac v\(release.version)…"
-        log(.system, .info, "Starting self-update to BeaconMac v\(release.version)...")
+        update.statusMessage = "Verifying & downloading BeaconMac v\(release.version)…"
+        log(.system, .info, "Starting verified self-update to BeaconMac v\(release.version)...")
 
         let outcome = await updateService.downloadAndInstall(release: release) { [weak self] progress, message in
             Task { @MainActor [weak self] in
@@ -1040,14 +1048,18 @@ public final class BeaconController {
             update.lastError = outcome.detail
             update.statusMessage = outcome.detail
             bannerError = outcome.detail
-            log(.system, .error, "Self-update failed: \(outcome.detail)")
+            log(.system, .error, "Self-update rejected: \(outcome.detail)")
         }
     }
 
     public func openLatestReleasePage() {
-        let url = update.latestRelease?.htmlReleaseURL
-            ?? URL(string: "https://github.com/\(AppUpdateService.sanitizeRepo(config.updateFeedRepo))/releases")!
-        NSWorkspace.shared.open(url)
+        let fallback = URL(string: "https://github.com/\(AppUpdateService.pinnedRepo)/releases")!
+        if let candidate = update.latestRelease?.htmlReleaseURL,
+           AppUpdateService.isAllowedReleasePageURL(candidate) {
+            NSWorkspace.shared.open(candidate)
+        } else {
+            NSWorkspace.shared.open(fallback)
+        }
     }
 
     public func exportActivityLog() {

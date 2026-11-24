@@ -15,7 +15,8 @@ let package = Package(
             path: "Sources/Beacon",
             exclude: [
                 "Resources/Info.plist",
-                "Resources/Beacon.entitlements"
+                "Resources/Beacon.entitlements",
+                "Resources/Beacon-DMG.entitlements"
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

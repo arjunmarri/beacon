@@ -53,6 +53,11 @@ struct MenuBarStatusView: View {
                 }
             }
 
+            Button("Install Dependencies…") {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                controller.openDependencyInstaller()
+            }
+
             Button("Check All Services") {
                 Task { await controller.refreshAllServices() }
             }

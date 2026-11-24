@@ -22,11 +22,13 @@ Thank you for contributing to **BeaconMac**!
 
 ## Coding Guidelines
 - Target **Swift 5.10+** and **macOS 14+** using the Observation framework (`@Observable`) and Swift Concurrency (`async`/`await`, `Sendable`).
-- Keep all macOS App Store **App Sandbox** constraints intact (`com.apple.security.app-sandbox = true`). Never add direct unsigned subprocess execution outside `NSUserUnixTask`.
+- Preserve both distribution entitlements (`Resources/Beacon.entitlements` with `com.apple.security.app-sandbox = true` for Mac App Store builds, and `Resources/Beacon-DMG.entitlements` with Hardened Runtime for Direct Developer ID DMG builds). Inside App Sandbox, always execute host scripts through `NSUserUnixTask` using temporary `FileHandle`s (never `Pipe()`).
+- Whenever you modify any script under `swift-app/BeaconMac/Scripts/beacon-*.sh`, keep the matching embedded copy in `Sources/Beacon/Services/EmbeddedScripts.swift` synchronized.
+- Never weaken `AppUpdateService` verification (pinned `arjunmarri/beacon` feed, strict release asset/redirect allowlist, pre-mount SHA-256 verification, `SecStaticCodeCheckValidity` Team ID pinning, `codesign --verify --deep --strict`, Gatekeeper `spctl`, and preserved `com.apple.quarantine`).
 - Never write API keys, Personal Access Tokens, or passwords to `config.json`, `UserDefaults`, or `activity.log` — always use `KeychainStore` and `SecretMasker.redact`.
-- Validate all local monitoring endpoints to loopback hosts (`localhost` / `127.0.0.1`) only.
+- Validate all local monitoring endpoints to local loopback hosts (`localhost`, `127.0.0.1`, `::1`, `*.localhost`, `*.local`) only.
 
 ## Submitting Changes
 1. Create a feature branch (`git checkout -b feat/my-improvement`).
-2. Verify the project builds cleanly in Xcode with **App Sandbox** enabled.
+2. Verify the project builds cleanly in Xcode with **App Sandbox** enabled and via `swift build`.
 3. Open a Pull Request against `main` at https://github.com/arjunmarri/beacon.

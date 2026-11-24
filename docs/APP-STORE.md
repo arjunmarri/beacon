@@ -1,6 +1,21 @@
-# BeaconMac — Native SwiftUI macOS App (Apple App Store Ready)
+# BeaconMac — Mac App Store & Direct Developer ID Distribution Guide
 
-A 100% native Swift 5.10 + SwiftUI macOS 14+ application built for **Mac App Store** distribution (App Sandbox enabled, zero Electron/Node runtime overhead, macOS Keychain secret storage, `SMAppService` Launch at Login, and flat-file logging).
+A 100% native Swift 5.10 + SwiftUI macOS 14+ application supporting both **Mac App Store** (`Beacon.entitlements`, App Sandbox enabled) and **Direct Developer ID DMG** (`Beacon-DMG.entitlements`, Hardened Runtime + Apple Notarization) distribution.
+
+---
+
+## Entitlements Overview
+
+BeaconMac maintains two explicit entitlements files so every build path is signed with deliberate permissions:
+
+| Distribution Channel | Entitlements File | App Sandbox | Self-Updater |
+| :--- | :--- | :--- | :--- |
+| **Mac App Store** | `Sources/Beacon/Resources/Beacon.entitlements` | Enabled (`true`) | Managed by App Store (links to release page) |
+| **Direct Developer ID DMG** | `Sources/Beacon/Resources/Beacon-DMG.entitlements` | Disabled (`false`) + Hardened Runtime | Verified in-place updater (SHA-256 + Team ID + `codesign` + `spctl`) |
+
+*(Set `BEACONMAC_SANDBOX_DMG=1` when running `Scripts/build-dmg.sh` if you prefer to ship a sandboxed DMG using `Beacon.entitlements`.)*
+
+---
 
 ## Step 1: Generate & Open `BeaconMac.xcodeproj`
 
@@ -11,7 +26,7 @@ cd swift-app/BeaconMac
 chmod +x Scripts/*.sh
 ./Scripts/generate-xcode-project.sh
 ```
-This creates `BeaconMac.xcodeproj` and opens it in Xcode with **App Sandbox**, **Hardened Runtime**, `ServiceManagement.framework`, `Info.plist`, and **Mac App Store** entitlements pre-configured.
+This creates `BeaconMac.xcodeproj` and opens it in Xcode with **App Sandbox**, **Hardened Runtime**, `ServiceManagement.framework`, `Security.framework`, `IOKit.framework`, `Info.plist`, and **Mac App Store** entitlements (`Beacon.entitlements`) pre-configured.
 
 ### Option B — Quick Local Run via Swift Package Manager
 ```bash
@@ -22,23 +37,22 @@ swift run
 
 ---
 
-## Step 2: Install App Sandbox Hook Scripts (Clone, Deps, Build, Deploy, Startup)
-Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, or `bun`. BeaconMac uses Apple's official **`NSUserUnixTask`** API. Install all 6 hook scripts in one command:
+## Step 2: Install App Sandbox Hook Scripts (Mac App Store Builds)
+Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, or `launchctl`. BeaconMac uses Apple's official **`NSUserUnixTask`** API with all 7 helper scripts embedded inside the app:
 
-```bash
-cd swift-app/BeaconMac
-./Scripts/install-sandbox-scripts.sh com.beaconmac.app
-```
-*(Replace `com.beaconmac.app` with your final Bundle Identifier.)*
+- **Inside BeaconMac (1-Click):** Click **Install Hook Scripts** in the setup banner to write all 7 scripts into `~/Library/Application Scripts/<your-bundle-id>/` via macOS's `NSOpenPanel`.
+- **Or via Terminal (One Command):**
+  ```bash
+  cd swift-app/BeaconMac
+  ./Scripts/install-sandbox-scripts.sh com.beaconmac.app
+  ```
+  *(Replace `com.beaconmac.app` with your final Bundle Identifier.)*
 
-This copies `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, and `beacon-startup.sh` into:
-```text
-~/Library/Application Scripts/<your-bundle-id>/
-```
+This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, and `beacon-startup.sh`. Non-sandboxed launches (`swift run` and Direct Developer ID DMGs) auto-install these scripts automatically on boot.
 
 ---
 
-## Step 3: Configure Signing & Bundle ID in Xcode
+## Step 3: Configure Signing & Bundle ID in Xcode (Mac App Store)
 1. Select the **BeaconMac** project in Xcode → **BeaconMac** target → **Signing & Capabilities**.
 2. Choose your **Apple Developer Program Team** (required for App Store Connect).
 3. Change **Bundle Identifier** from `com.beaconmac.app` to your own unique reverse-DNS identifier (e.g. `com.yourname.beaconmac`).
@@ -51,6 +65,21 @@ This copies `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `be
 2. Click **Product → Archive**.
 3. When Organizer opens, select the archive and click **Distribute App → App Store Connect → Upload**.
 4. In **App Store Connect**, complete app metadata, privacy disclosures (no tracking; API keys stored locally in Keychain), and submit for App Review.
+
+---
+
+## Step 5: Direct Developer ID DMG Signing & Notarization (GitHub Actions / Local)
+For direct `.dmg` releases outside the Mac App Store, `.github/workflows/release-dmg.yml` requires all six Developer ID & notarization secrets in **Repository Settings → Secrets and variables → Actions** and fails fast if any are missing:
+- `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGN_IDENTITY`
+- `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_SPECIFIC_PASSWORD`
+
+To build, sign, notarize, staple, and Gatekeeper-verify a release DMG locally:
+```bash
+REQUIRE_SIGNING=1 \
+APPLE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+APPLE_NOTARY_PROFILE="BeaconMacNotary" \
+./swift-app/BeaconMac/Scripts/build-dmg.sh
+```
 
 ---
 

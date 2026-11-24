@@ -174,6 +174,69 @@ public struct DependencyToolStatus: Identifiable, Sendable {
     }
 }
 
+public enum DependencyProjectType: String, CaseIterable, Identifiable, Sendable {
+    case nodejsNpm = "Node.js (npm)"
+    case nodejsPnpm = "Node.js + pnpm"
+    case nodejsYarn = "Node.js + Yarn"
+    case bun = "Bun"
+    case jsAll = "Full JS / TS (Node, pnpm, Yarn, Bun)"
+    case python = "Python (python3 + uv)"
+    case golang = "Go"
+    case custom = "Custom Selection"
+
+    public var id: String { rawValue }
+
+    public var subtitle: String {
+        switch self {
+        case .nodejsNpm: return "Node.js LTS, npm, and Git"
+        case .nodejsPnpm: return "Node.js LTS, pnpm, and Git"
+        case .nodejsYarn: return "Node.js LTS, Yarn, and Git"
+        case .bun: return "Bun runtime/bundler and Git"
+        case .jsAll: return "Node.js, pnpm, Yarn, Bun, and Git"
+        case .python: return "Python 3, uv package manager, and Git"
+        case .golang: return "Go toolchain and Git"
+        case .custom: return "Choose individual tools below"
+        }
+    }
+
+    public var requiredTools: [String] {
+        switch self {
+        case .nodejsNpm: return ["git", "node"]
+        case .nodejsPnpm: return ["git", "node", "pnpm"]
+        case .nodejsYarn: return ["git", "node", "yarn"]
+        case .bun: return ["git", "bun"]
+        case .jsAll: return ["git", "node", "pnpm", "yarn", "bun"]
+        case .python: return ["git", "python3", "uv"]
+        case .golang: return ["git", "go"]
+        case .custom: return []
+        }
+    }
+
+    public static func defaultType(for preset: AppStackPreset?) -> DependencyProjectType {
+        switch preset {
+        case .vite, .nextjs: return .nodejsPnpm
+        case .nodeServer: return .nodejsNpm
+        case .custom, .none: return .nodejsNpm
+        }
+    }
+}
+
+public enum DependencyInstallStrategy: String, CaseIterable, Identifiable, Sendable {
+    case auto = "auto"
+    case homebrew = "homebrew"
+    case direct = "direct"
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .auto: return "Auto (Homebrew, fallback to Direct Download)"
+        case .homebrew: return "Homebrew (silent)"
+        case .direct: return "Direct Official Download (no Homebrew)"
+        }
+    }
+}
+
 public struct TerminalOutputLine: Identifiable, Sendable {
     public let id: String
     public let timestamp: Date
@@ -316,8 +379,30 @@ public struct AppUpdateRelease: Sendable, Equatable {
     public let tagName: String
     public let releaseNotes: String
     public let dmgDownloadURL: URL?
+    public let sha256: String?
+    public let sha256DownloadURL: URL?
     public let htmlReleaseURL: URL
     public let publishedAt: String?
+
+    public init(
+        version: String,
+        tagName: String,
+        releaseNotes: String,
+        dmgDownloadURL: URL?,
+        sha256: String? = nil,
+        sha256DownloadURL: URL? = nil,
+        htmlReleaseURL: URL,
+        publishedAt: String?
+    ) {
+        self.version = version
+        self.tagName = tagName
+        self.releaseNotes = releaseNotes
+        self.dmgDownloadURL = dmgDownloadURL
+        self.sha256 = sha256
+        self.sha256DownloadURL = sha256DownloadURL
+        self.htmlReleaseURL = htmlReleaseURL
+        self.publishedAt = publishedAt
+    }
 }
 
 public struct AppUpdateState: Sendable {
@@ -345,6 +430,7 @@ public struct BeaconConfig: Codable, Sendable {
     public var notifyOnOllamaDown: Bool
     public var autoCheckForUpdates: Bool
     public var autoInstallUpdates: Bool
+    /// Pinned to the official BeaconMac release repository; cannot be overridden via config.json.
     public var updateFeedRepo: String
 
     public init(
@@ -361,7 +447,7 @@ public struct BeaconConfig: Codable, Sendable {
         notifyOnOllamaDown: Bool,
         autoCheckForUpdates: Bool = true,
         autoInstallUpdates: Bool = false,
-        updateFeedRepo: String = AppUpdateService.defaultRepo
+        updateFeedRepo: String = AppUpdateService.pinnedRepo
     ) {
         self.managedApps = managedApps
         self.startupSchedule = startupSchedule
@@ -376,7 +462,7 @@ public struct BeaconConfig: Codable, Sendable {
         self.notifyOnOllamaDown = notifyOnOllamaDown
         self.autoCheckForUpdates = autoCheckForUpdates
         self.autoInstallUpdates = autoInstallUpdates
-        self.updateFeedRepo = updateFeedRepo
+        self.updateFeedRepo = AppUpdateService.pinnedRepo
     }
 
     public init(from decoder: Decoder) throws {
@@ -394,7 +480,9 @@ public struct BeaconConfig: Codable, Sendable {
         self.notifyOnOllamaDown = try container.decodeIfPresent(Bool.self, forKey: .notifyOnOllamaDown) ?? true
         self.autoCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoCheckForUpdates) ?? true
         self.autoInstallUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? false
-        self.updateFeedRepo = try container.decodeIfPresent(String.self, forKey: .updateFeedRepo) ?? AppUpdateService.defaultRepo
+        // Always ignore any mutable updateFeedRepo value from config.json to prevent update feed hijacking.
+        _ = try? container.decodeIfPresent(String.self, forKey: .updateFeedRepo)
+        self.updateFeedRepo = AppUpdateService.pinnedRepo
     }
 
     public static var defaults: BeaconConfig {
@@ -412,7 +500,7 @@ public struct BeaconConfig: Codable, Sendable {
             notifyOnOllamaDown: true,
             autoCheckForUpdates: true,
             autoInstallUpdates: false,
-            updateFeedRepo: AppUpdateService.defaultRepo
+            updateFeedRepo: AppUpdateService.pinnedRepo
         )
     }
 }

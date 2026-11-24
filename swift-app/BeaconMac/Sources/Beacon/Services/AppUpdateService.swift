@@ -1,17 +1,21 @@
 import AppKit
+import CryptoKit
 import Foundation
+import Security
 
-/// Handles automatic update checks against GitHub Releases (with `releases/releases.json`
-/// fallback), verified HTTPS `.dmg` downloads, and seamless macOS self-updates.
+/// Handles verified update checks against the pinned BeaconMac GitHub Releases feed,
+/// SHA-256 checksum validation, Apple Developer ID code-signature & Team ID pinning,
+/// Gatekeeper (`spctl`) verification, and safe bundle replacement without stripping quarantine.
 public final class AppUpdateService: Sendable {
-    public static let defaultRepo = "arjunmarri/beacon"
+    /// Hard-coded release repository. Never read dynamically from mutable config files.
+    public static let pinnedRepo = "arjunmarri/beacon"
+    public static let defaultRepo = pinnedRepo
 
-    private static let allowedDownloadHosts: Set<String> = [
-        "github.com",
-        "api.github.com",
+    /// GitHub's signed release asset CDN hosts permitted ONLY as HTTPS redirect targets
+    /// from validated `github.com/arjunmarri/beacon/releases/download/...` URLs.
+    private static let allowedRedirectHosts: Set<String> = [
         "objects.githubusercontent.com",
-        "release-assets.githubusercontent.com",
-        "raw.githubusercontent.com"
+        "release-assets.githubusercontent.com"
     ]
 
     public init() {}
@@ -32,23 +36,77 @@ public final class AppUpdateService: Sendable {
         return "2"
     }
 
+    /// Strict allowlist for downloadable release artifacts (`.dmg` and `.sha256`).
+    /// Accepts ONLY official release download paths for `pinnedRepo` over HTTPS.
+    /// Rejects `raw.githubusercontent.com`, arbitrary `*.githubusercontent.com` hosts,
+    /// and any repository other than `arjunmarri/beacon`.
     public static func isAllowedDownloadURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
               let host = url.host?.lowercased() else {
             return false
         }
-        return allowedDownloadHosts.contains(host) || host.hasSuffix(".githubusercontent.com")
+
+        let normalizedPath = url.standardized.path
+        guard !normalizedPath.contains("..") else { return false }
+
+        if host == "github.com" {
+            return normalizedPath.hasPrefix("/\(pinnedRepo)/releases/download/")
+        }
+        if host == "api.github.com" {
+            return normalizedPath.hasPrefix("/repos/\(pinnedRepo)/releases/assets/")
+        }
+        return false
+    }
+
+    /// Validates HTTP redirect targets during release artifact downloads.
+    fileprivate static func isAllowedRedirectURL(_ url: URL) -> Bool {
+        if isAllowedDownloadURL(url) {
+            return true
+        }
+        guard url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
+              let host = url.host?.lowercased() else {
+            return false
+        }
+        return allowedRedirectHosts.contains(host)
+    }
+
+    public static func isAllowedReleasePageURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
+              url.host?.lowercased() == "github.com" else {
+            return false
+        }
+        let path = url.standardized.path
+        return path == "/\(pinnedRepo)/releases" || path.hasPrefix("/\(pinnedRepo)/releases/")
     }
 
     public static func sanitizeRepo(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-/"))
-        guard trimmed.contains("/"),
-              trimmed.split(separator: "/").count == 2,
-              trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
-            return defaultRepo
+        // Always return the pinned repository to prevent feed redirection.
+        _ = raw
+        return pinnedRepo
+    }
+
+    /// Extracts a valid 64-character lowercase hexadecimal SHA-256 digest from raw text or a `.sha256` file.
+    public static func parseSHA256Hex(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let firstToken = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0.isWhitespace })
+            .first
+            .map(String.init)?
+            .lowercased() ?? ""
+        guard firstToken.count == 64,
+              firstToken.unicodeScalars.allSatisfy({
+                  ($0 >= "0" && $0 <= "9") || ($0 >= "a" && $0 <= "f")
+              }) else {
+            return nil
         }
-        return trimmed
+        return firstToken
     }
 
     /// Compares semantic versions numerically (e.g., "1.10.0" > "1.2.0").
@@ -74,8 +132,9 @@ public final class AppUpdateService: Sendable {
         return .orderedSame
     }
 
-    public func checkLatestRelease(repo rawRepo: String, githubToken: String?) async throws -> AppUpdateRelease {
-        let repo = Self.sanitizeRepo(rawRepo)
+    public func checkLatestRelease(repo rawRepo: String = pinnedRepo, githubToken: String?) async throws -> AppUpdateRelease {
+        _ = rawRepo
+        let repo = Self.pinnedRepo
         if let ghRelease = try? await fetchFromGitHubReleasesAPI(repo: repo, githubToken: githubToken) {
             return ghRelease
         }
@@ -118,13 +177,32 @@ public final class AppUpdateService: Sendable {
         let dmgURL: URL? = dmgAsset.flatMap { URL(string: $0.browser_download_url) }.flatMap {
             Self.isAllowedDownloadURL($0) ? $0 : nil
         }
-        let htmlURL = URL(string: decoded.html_url) ?? URL(string: "https://github.com/\(repo)/releases")!
+
+        let shaAsset: GHAsset? = {
+            guard let assets = decoded.assets else { return nil }
+            if let dmgName = dmgAsset?.name.lowercased(),
+               let exact = assets.first(where: { $0.name.lowercased() == "\(dmgName).sha256" }) {
+                return exact
+            }
+            return assets.first(where: { $0.name.lowercased().hasSuffix(".dmg.sha256") })
+        }()
+
+        let shaURL: URL? = shaAsset.flatMap { URL(string: $0.browser_download_url) }.flatMap {
+            Self.isAllowedDownloadURL($0) ? $0 : nil
+        }
+
+        let fallbackReleasePage = URL(string: "https://github.com/\(repo)/releases")!
+        let htmlURL: URL = URL(string: decoded.html_url).flatMap {
+            Self.isAllowedReleasePageURL($0) ? $0 : nil
+        } ?? fallbackReleasePage
 
         return AppUpdateRelease(
             version: cleanVersion,
             tagName: decoded.tag_name,
             releaseNotes: (decoded.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             dmgDownloadURL: dmgURL,
+            sha256: nil,
+            sha256DownloadURL: shaURL,
             htmlReleaseURL: htmlURL,
             publishedAt: decoded.published_at
         )
@@ -146,6 +224,7 @@ public final class AppUpdateService: Sendable {
             let version: String
             let date: String?
             let githubDownloadUrl: String?
+            let sha256: String?
             let notes: [String]?
         }
         struct Manifest: Decodable {
@@ -159,15 +238,22 @@ public final class AppUpdateService: Sendable {
         let dmgURL = match?.githubDownloadUrl.flatMap(URL.init(string:)).flatMap {
             Self.isAllowedDownloadURL($0) ? $0 : nil
         }
+        let shaURL: URL? = dmgURL.flatMap { URL(string: "\($0.absoluteString).sha256") }.flatMap {
+            Self.isAllowedDownloadURL($0) ? $0 : nil
+        }
         let notesText = (match?.notes ?? []).map { "• \($0)" }.joined(separator: "\n")
-        let htmlURL = URL(string: "https://github.com/\(repo)/releases/tag/v\(version)")
-            ?? URL(string: "https://github.com/\(repo)/releases")!
+        let fallbackReleasePage = URL(string: "https://github.com/\(repo)/releases")!
+        let htmlURL = URL(string: "https://github.com/\(repo)/releases/tag/v\(version)").flatMap {
+            Self.isAllowedReleasePageURL($0) ? $0 : nil
+        } ?? fallbackReleasePage
 
         return AppUpdateRelease(
             version: version,
             tagName: "v\(version)",
             releaseNotes: notesText,
             dmgDownloadURL: dmgURL,
+            sha256: Self.parseSHA256Hex(match?.sha256),
+            sha256DownloadURL: shaURL,
             htmlReleaseURL: htmlURL,
             publishedAt: match?.date
         )
@@ -179,37 +265,78 @@ public final class AppUpdateService: Sendable {
         public let detail: String
     }
 
-    /// Downloads the release DMG and either installs & relaunches BeaconMac.app automatically
-    /// (for non-sandboxed `.app` installs) or hands off safely (for `swift run` / Mac App Store Sandbox).
+    /// Downloads the release DMG, verifies its published SHA-256 digest before mounting,
+    /// verifies the staged app bundle's Apple Developer ID signature, matching Team ID,
+    /// bundle identifier, and Gatekeeper/notarization status (`SecStaticCodeCheckValidity`,
+    /// `codesign --verify --deep --strict`, and `spctl --assess`), and swaps the bundle
+    /// without removing `com.apple.quarantine`.
     public func downloadAndInstall(
         release: AppUpdateRelease,
         onProgress: @escaping @Sendable (Double, String) -> Void
     ) async -> InstallOutcome {
-        // Inside Mac App Store App Sandbox, binaries cannot overwrite themselves; open the verified release URL.
+        // Inside Mac App Store App Sandbox, binaries cannot overwrite themselves; open the verified release page.
         if EmbeddedScripts.isSandboxed {
-            let urlToOpen = release.dmgDownloadURL ?? release.htmlReleaseURL
+            let urlToOpen = Self.isAllowedReleasePageURL(release.htmlReleaseURL)
+                ? release.htmlReleaseURL
+                : URL(string: "https://github.com/\(Self.pinnedRepo)/releases")!
             await MainActor.run {
                 NSWorkspace.shared.open(urlToOpen)
             }
             return InstallOutcome(
                 ok: true,
                 willRelaunch: false,
-                detail: "Opened BeaconMac v\(release.version) download in your browser (App Sandbox prevents self-overwriting)."
+                detail: "Opened BeaconMac v\(release.version) release page in your browser (App Sandbox prevents self-overwriting)."
             )
         }
 
         guard let dmgURL = release.dmgDownloadURL, Self.isAllowedDownloadURL(dmgURL) else {
+            let safePage = Self.isAllowedReleasePageURL(release.htmlReleaseURL)
+                ? release.htmlReleaseURL
+                : URL(string: "https://github.com/\(Self.pinnedRepo)/releases")!
             await MainActor.run {
-                NSWorkspace.shared.open(release.htmlReleaseURL)
+                NSWorkspace.shared.open(safePage)
             }
             return InstallOutcome(
                 ok: true,
                 willRelaunch: false,
-                detail: "No compiled .dmg asset attached to v\(release.version) yet; opened GitHub release page."
+                detail: "No verified .dmg release asset attached to v\(release.version) yet; opened GitHub release page."
             )
         }
 
-        onProgress(0.15, "Downloading BeaconMac v\(release.version) DMG…")
+        // If running from a `.app` bundle, require the currently running app to carry a real
+        // Apple Developer ID Team ID so we can cryptographically pin the replacement bundle to the same publisher.
+        let currentBundleURL = Bundle.main.bundleURL
+        let isRunningAppBundle = currentBundleURL.pathExtension.lowercased() == "app"
+        var pinnedBundleID: String?
+        var pinnedTeamID: String?
+
+        if isRunningAppBundle {
+            let runningIdentity = Self.extractCodeSigningIdentity(at: currentBundleURL)
+            guard let bundleID = runningIdentity.bundleID,
+                  let teamID = runningIdentity.teamID,
+                  Self.isSafeIdentifierToken(bundleID),
+                  Self.isSafeTeamID(teamID) else {
+                return InstallOutcome(
+                    ok: false,
+                    willRelaunch: false,
+                    detail: "Automatic self-update disabled: this local build is not Developer ID–signed (no Team ID to verify updates against). Download signed releases manually from GitHub."
+                )
+            }
+            pinnedBundleID = bundleID
+            pinnedTeamID = teamID
+        }
+
+        onProgress(0.10, "Fetching SHA-256 checksum for v\(release.version)…")
+
+        guard let expectedSHA256 = await resolveExpectedSHA256(for: release) else {
+            return InstallOutcome(
+                ok: false,
+                willRelaunch: false,
+                detail: "Update rejected: release v\(release.version) does not include a valid published .sha256 checksum."
+            )
+        }
+
+        onProgress(0.20, "Downloading BeaconMac v\(release.version) DMG…")
 
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("beaconmac-update-\(UUID().uuidString)", isDirectory: true)
@@ -217,16 +344,13 @@ public final class AppUpdateService: Sendable {
 
         do {
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            var request = URLRequest(url: dmgURL, timeoutInterval: 180)
-            request.setValue("BeaconMac/\(Self.currentAppVersion())", forHTTPHeaderField: "User-Agent")
-
-            let (downloadedTmp, response) = try await URLSession.shared.download(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let (downloadedTmp, httpStatus) = try await downloadVerifiedAsset(from: dmgURL, timeout: 180)
+            guard (200..<300).contains(httpStatus) else {
                 try? FileManager.default.removeItem(at: tempDir)
                 return InstallOutcome(
                     ok: false,
                     willRelaunch: false,
-                    detail: "Download failed for v\(release.version) (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0))."
+                    detail: "Download failed for v\(release.version) (HTTP \(httpStatus))."
                 )
             }
 
@@ -243,25 +367,41 @@ public final class AppUpdateService: Sendable {
             )
         }
 
-        onProgress(0.65, "Verifying & mounting BeaconMac v\(release.version) DMG…")
+        onProgress(0.55, "Verifying SHA-256 checksum…")
 
-        // If running via `swift run` (not a `.app` bundle), mount/open the DMG in Finder cleanly.
-        let currentBundleURL = Bundle.main.bundleURL
-        guard currentBundleURL.pathExtension.lowercased() == "app" else {
-            await MainActor.run {
-                NSWorkspace.shared.open(localDMG)
-            }
-            onProgress(1.0, "Opened BeaconMac v\(release.version) DMG")
+        guard let actualSHA256 = Self.computeFileSHA256(at: localDMG) else {
+            try? FileManager.default.removeItem(at: tempDir)
             return InstallOutcome(
-                ok: true,
+                ok: false,
                 willRelaunch: false,
-                detail: "Downloaded and opened BeaconMac-\(release.version)-universal.dmg (running from swift run; drag BeaconMac.app to Applications)."
+                detail: "Update rejected: could not compute SHA-256 hash of downloaded DMG."
             )
         }
 
-        // Running from a real `.app` bundle outside App Sandbox:
-        // Mount DMG, locate BeaconMac.app, stage it, and spawn a short detached post-exit updater
-        // that swaps the bundle cleanly once this PID exits and relaunches the updated app.
+        guard actualSHA256 == expectedSHA256 else {
+            try? FileManager.default.removeItem(at: tempDir)
+            return InstallOutcome(
+                ok: false,
+                willRelaunch: false,
+                detail: "Update rejected: DMG SHA-256 mismatch (expected \(expectedSHA256.prefix(12))…, got \(actualSHA256.prefix(12))…)."
+            )
+        }
+
+        // If running via `swift run` (not a `.app` bundle), hand off the SHA-256-verified DMG to Finder.
+        guard isRunningAppBundle, let expectedBundleID = pinnedBundleID, let expectedTeamID = pinnedTeamID else {
+            await MainActor.run {
+                NSWorkspace.shared.open(localDMG)
+            }
+            onProgress(1.0, "Verified & opened BeaconMac v\(release.version) DMG")
+            return InstallOutcome(
+                ok: true,
+                willRelaunch: false,
+                detail: "Verified SHA-256 and opened BeaconMac-\(release.version)-universal.dmg (running from swift run; drag BeaconMac.app to Applications)."
+            )
+        }
+
+        onProgress(0.70, "Mounting DMG & staging BeaconMac.app…")
+
         let mountPoint = tempDir.appendingPathComponent("mount", isDirectory: true)
         let stagedApp = tempDir.appendingPathComponent("BeaconMac.app", isDirectory: true)
 
@@ -271,12 +411,24 @@ public final class AppUpdateService: Sendable {
             return InstallOutcome(ok: false, willRelaunch: false, detail: stageResult.detail)
         }
 
-        onProgress(0.92, "Installing v\(release.version) & preparing relaunch…")
+        onProgress(0.84, "Verifying Developer ID signature, Team ID & Gatekeeper…")
+
+        let verifyResult = await verifyStagedApp(
+            at: stagedApp,
+            expectedBundleID: expectedBundleID,
+            expectedTeamID: expectedTeamID
+        )
+        guard verifyResult.ok else {
+            try? FileManager.default.removeItem(at: tempDir)
+            return InstallOutcome(ok: false, willRelaunch: false, detail: verifyResult.detail)
+        }
+
+        onProgress(0.94, "Installing verified v\(release.version) & preparing relaunch…")
 
         let targetAppPath = currentBundleURL.path
         let currentPID = ProcessInfo.processInfo.processIdentifier
 
-        // Write a minimal self-cleaning shell helper to swap the bundle after our process terminates.
+        // Minimal post-exit helper that swaps the verified bundle without touching com.apple.quarantine.
         let helperScriptURL = tempDir.appendingPathComponent("apply-update.sh")
         let helperBody = """
         #!/bin/bash
@@ -300,7 +452,6 @@ public final class AppUpdateService: Sendable {
         fi
         if /usr/bin/ditto "$STAGED_APP" "$TARGET_APP"; then
           rm -rf "$BACKUP_APP"
-          /usr/bin/xattr -dr com.apple.quarantine "$TARGET_APP" 2>/dev/null || true
           /usr/bin/open -n "$TARGET_APP"
         else
           if [ -d "$BACKUP_APP" ]; then
@@ -312,7 +463,7 @@ public final class AppUpdateService: Sendable {
 
         do {
             try helperBody.write(to: helperScriptURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperScriptURL.path)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperScriptURL.path)
 
             let updater = Process()
             updater.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -321,11 +472,11 @@ public final class AppUpdateService: Sendable {
             updater.standardError = FileHandle.nullDevice
             try updater.run()
 
-            onProgress(1.0, "Relaunching into BeaconMac v\(release.version)…")
+            onProgress(1.0, "Relaunching into verified BeaconMac v\(release.version)…")
             return InstallOutcome(
                 ok: true,
                 willRelaunch: true,
-                detail: "Installed BeaconMac v\(release.version). Relaunching now…"
+                detail: "Verified SHA-256, Developer ID signature (Team \(expectedTeamID)), and Gatekeeper for v\(release.version). Relaunching…"
             )
         } catch {
             try? FileManager.default.removeItem(at: tempDir)
@@ -334,6 +485,222 @@ public final class AppUpdateService: Sendable {
                 willRelaunch: false,
                 detail: "Failed to launch installer helper: \(SecretMasker.redact(error.localizedDescription))"
             )
+        }
+    }
+
+    // MARK: - Strict Download & Cryptographic Verification Helpers
+
+    private func resolveExpectedSHA256(for release: AppUpdateRelease) async -> String? {
+        if let shaURL = release.sha256DownloadURL, Self.isAllowedDownloadURL(shaURL) {
+            if let (data, status) = try? await fetchVerifiedAssetData(from: shaURL, timeout: 30),
+               (200..<300).contains(status),
+               let text = String(data: data, encoding: .utf8),
+               let parsed = Self.parseSHA256Hex(text) {
+                return parsed
+            }
+        }
+        return Self.parseSHA256Hex(release.sha256)
+    }
+
+    private func fetchVerifiedAssetData(from url: URL, timeout: TimeInterval) async throws -> (Data, Int) {
+        guard Self.isAllowedDownloadURL(url) else {
+            throw URLError(.unsupportedURL)
+        }
+        let delegate = ReleaseAssetRedirectDelegate()
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue("BeaconMac/\(Self.currentAppVersion())", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await session.data(for: request)
+        guard let finalURL = response.url, Self.isAllowedRedirectURL(finalURL) else {
+            throw URLError(.userAuthenticationRequired)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return (data, status)
+    }
+
+    private func downloadVerifiedAsset(from url: URL, timeout: TimeInterval) async throws -> (URL, Int) {
+        guard Self.isAllowedDownloadURL(url) else {
+            throw URLError(.unsupportedURL)
+        }
+        let delegate = ReleaseAssetRedirectDelegate()
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue("BeaconMac/\(Self.currentAppVersion())", forHTTPHeaderField: "User-Agent")
+        let (downloadedURL, response) = try await session.download(for: request)
+        guard let finalURL = response.url, Self.isAllowedRedirectURL(finalURL) else {
+            try? FileManager.default.removeItem(at: downloadedURL)
+            throw URLError(.userAuthenticationRequired)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return (downloadedURL, status)
+    }
+
+    public static func computeFileSHA256(at fileURL: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while true {
+            guard let chunk = try? handle.read(upToCount: 1_048_576), !chunk.isEmpty else {
+                break
+            }
+            hasher.update(data: chunk)
+        }
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func isSafeIdentifierToken(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 128 else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
+        return value.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
+    private static func isSafeTeamID(_ value: String) -> Bool {
+        guard value.count == 10 else { return false }
+        return value.unicodeScalars.allSatisfy {
+            ($0 >= "A" && $0 <= "Z") || ($0 >= "0" && $0 <= "9")
+        }
+    }
+
+    private static func extractCodeSigningIdentity(at appURL: URL) -> (bundleID: String?, teamID: String?) {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(appURL as CFURL, SecCSFlags(), &staticCode) == errSecSuccess,
+              let code = staticCode else {
+            return (nil, nil)
+        }
+        var infoCF: CFDictionary?
+        let status = SecCodeCopySigningInformation(
+            code,
+            SecCSFlags(rawValue: UInt32(kSecCSSigningInformation)),
+            &infoCF
+        )
+        guard status == errSecSuccess, let info = infoCF as? [String: Any] else {
+            return (nil, nil)
+        }
+        let signedID = info[kSecCodeInfoIdentifier as String] as? String
+        let bundleID = signedID ?? Bundle(url: appURL)?.bundleIdentifier
+        let teamID = info[kSecCodeInfoTeamIdentifier as String] as? String
+        return (bundleID, teamID)
+    }
+
+    private func verifyStagedApp(
+        at stagedAppURL: URL,
+        expectedBundleID: String,
+        expectedTeamID: String
+    ) async -> (ok: Bool, detail: String) {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                // 1. Check bundle identifier matches the currently running app
+                guard let stagedBundleID = Bundle(url: stagedAppURL)?.bundleIdentifier,
+                      stagedBundleID == expectedBundleID else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: staged bundle identifier does not match \(expectedBundleID)."
+                    ))
+                    return
+                }
+
+                // 2. Verify Developer ID code signature, anchor, and pinned Team ID via Security.framework
+                var staticCode: SecStaticCode?
+                let createStatus = SecStaticCodeCreateWithPath(stagedAppURL as CFURL, SecCSFlags(), &staticCode)
+                guard createStatus == errSecSuccess, let code = staticCode else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: could not inspect code signature (OSStatus \(createStatus))."
+                    ))
+                    return
+                }
+
+                let requirementString = """
+                identifier "\(expectedBundleID)" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = "\(expectedTeamID)"
+                """
+                var requirement: SecRequirement?
+                let reqStatus = SecRequirementCreateWithString(requirementString as CFString, SecCSFlags(), &requirement)
+                guard reqStatus == errSecSuccess, let compiledRequirement = requirement else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: failed to build code-signing verification requirement (OSStatus \(reqStatus))."
+                    ))
+                    return
+                }
+
+                let validityFlags = SecCSFlags(
+                    rawValue: UInt32(kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
+                )
+                let validityStatus = SecStaticCodeCheckValidity(code, validityFlags, compiledRequirement)
+                guard validityStatus == errSecSuccess else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: code signature or Team ID (\(expectedTeamID)) verification failed (OSStatus \(validityStatus))."
+                    ))
+                    return
+                }
+
+                let stagedIdentity = Self.extractCodeSigningIdentity(at: stagedAppURL)
+                guard stagedIdentity.teamID == expectedTeamID, stagedIdentity.bundleID == expectedBundleID else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: staged bundle signing identity does not match Team \(expectedTeamID)."
+                    ))
+                    return
+                }
+
+                // 3. Verify deep strict signature with codesign
+                let codesignCheck = Self.runTool(
+                    executable: "/usr/bin/codesign",
+                    arguments: ["--verify", "--deep", "--strict", "--verbose=2", stagedAppURL.path]
+                )
+                guard codesignCheck.exitCode == 0 else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: codesign --verify --deep --strict failed (\(codesignCheck.output))."
+                    ))
+                    return
+                }
+
+                // 4. Verify Gatekeeper / notarization assessment with spctl
+                let spctlCheck = Self.runTool(
+                    executable: "/usr/sbin/spctl",
+                    arguments: ["--assess", "--type", "execute", "--verbose", stagedAppURL.path]
+                )
+                guard spctlCheck.exitCode == 0 else {
+                    continuation.resume(returning: (
+                        false,
+                        "Update rejected: Gatekeeper notarization assessment (spctl) failed (\(spctlCheck.output))."
+                    ))
+                    return
+                }
+
+                continuation.resume(returning: (true, "Verified Developer ID signature, Team ID, and Gatekeeper approval."))
+            }
+        }
+    }
+
+    private static func runTool(executable: String, arguments: [String]) -> (exitCode: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            let text = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return (process.terminationStatus, text.isEmpty ? "exit \(process.terminationStatus)" : text)
+        } catch {
+            return (-1, SecretMasker.redact(error.localizedDescription))
         }
     }
 
@@ -367,7 +734,7 @@ public final class AppUpdateService: Sendable {
                     }
 
                     let contents = (try? FileManager.default.contentsOfDirectory(atPath: mountPath)) ?? []
-                    guard let appName = contents.first(where: { $0.hasSuffix(".app") }) else {
+                    guard let appName = contents.first(where: { $0 == "BeaconMac.app" }) ?? contents.first(where: { $0.hasSuffix(".app") }) else {
                         continuation.resume(returning: (false, "Update DMG did not contain a .app bundle."))
                         return
                     }
@@ -391,6 +758,25 @@ public final class AppUpdateService: Sendable {
                     continuation.resume(returning: (false, SecretMasker.redact(error.localizedDescription)))
                 }
             }
+        }
+    }
+}
+
+/// Ensures HTTP redirects during GitHub release asset downloads stay strictly on
+/// GitHub's official release asset hosts (`objects.githubusercontent.com` /
+/// `release-assets.githubusercontent.com` / pinned `github.com/arjunmarri/beacon/...`).
+private final class ReleaseAssetRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        if let targetURL = request.url, AppUpdateService.isAllowedRedirectURL(targetURL) {
+            completionHandler(request)
+        } else {
+            completionHandler(nil)
         }
     }
 }

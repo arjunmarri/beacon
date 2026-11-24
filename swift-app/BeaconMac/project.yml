@@ -23,6 +23,7 @@ targets:
         excludes:
           - Resources/Info.plist
           - Resources/Beacon.entitlements
+          - Resources/Beacon-DMG.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.beaconmac.app

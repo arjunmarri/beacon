@@ -21,6 +21,67 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate Developer ID Signing & Notarization Secrets
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          MISSING=()
+          [ -z "$APPLE_CERTIFICATE_P12_BASE64" ] && MISSING+=("APPLE_CERTIFICATE_P12_BASE64")
+          [ -z "$APPLE_CERTIFICATE_PASSWORD" ] && MISSING+=("APPLE_CERTIFICATE_PASSWORD")
+          [ -z "$APPLE_SIGN_IDENTITY" ] && MISSING+=("APPLE_SIGN_IDENTITY")
+          [ -z "$APPLE_ID" ] && MISSING+=("APPLE_ID")
+          [ -z "$APPLE_TEAM_ID" ] && MISSING+=("APPLE_TEAM_ID")
+          [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] && MISSING+=("APPLE_APP_SPECIFIC_PASSWORD")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Missing required Apple Developer ID signing / notarization GitHub Actions secrets: ${MISSING[*]}"
+            echo "Refusing to build an unsigned or ad-hoc signed release DMG."
+            echo "Configure these repository secrets in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Import Developer ID Certificate into Ephemeral Keychain
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/beaconmac-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          echo -n "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          rm -f "$CERT_PATH"
+
+          if ! security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "$APPLE_SIGN_IDENTITY"; then
+            echo "::error::Signing identity '$APPLE_SIGN_IDENTITY' not found in imported certificate."
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -49,12 +110,18 @@ jobs:
               f.write("\n")
           PY
 
-      - name: Build Universal BeaconMac.app & DMG
+      - name: Build, Sign & Notarize Universal BeaconMac.app & DMG
+        env:
+          REQUIRE_SIGNING: "1"
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           chmod +x swift-app/BeaconMac/Scripts/*.sh
           ./swift-app/BeaconMac/Scripts/build-dmg.sh
 
-      - name: Upload DMG build artifact
+      - name: Upload Signed & Notarized DMG Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BeaconMac-${{ steps.version.outputs.version }}-universal-dmg
@@ -62,7 +129,7 @@ jobs:
             releases/${{ steps.version.outputs.dmg_name }}
             releases/${{ steps.version.outputs.dmg_name }}.sha256
 
-      - name: Publish GitHub Release with DMG
+      - name: Publish GitHub Release with DMG & SHA-256
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
@@ -72,3 +139,9 @@ jobs:
           files: |
             releases/${{ steps.version.outputs.dmg_name }}
             releases/${{ steps.version.outputs.dmg_name }}.sha256
+
+      - name: Clean up Ephemeral Keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/beaconmac-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12"

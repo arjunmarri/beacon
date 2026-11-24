@@ -9,9 +9,7 @@ This guide walks through installing BeaconMac on macOS, storing API keys and sec
 ### System Requirements
 - **macOS 14 (Sonoma) or later** (Apple Silicon or Intel)
 - **Xcode 15.4+** (or Swift 5.10 toolchain) if building from source
-- Local developer tools installed via Homebrew, NVM, Volta, or Xcode Command Line Tools:
-  - `git`
-  - `node` and at least one package manager (`npm`, `pnpm`, `yarn`, or `bun`)
+- Developer runtimes (`git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, `python3`, `uv`, `go`) — **can be installed silently right inside BeaconMac** using the **Install Dependencies** button!
 
 ### Build & Launch BeaconMac
 ```bash
@@ -21,20 +19,28 @@ chmod +x Scripts/*.sh
 ```
 *(Or run directly without generating an Xcode project: `swift run`)*
 
-### Install App-Sandbox Hook Scripts (Required for Clone, Build, Deploy & `launchd`)
-Because BeaconMac is built for the **Mac App Store** with `com.apple.security.app-sandbox = true`, macOS blocks sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, or `launchctl`. Instead, BeaconMac uses Apple's approved **`NSUserUnixTask`** API pointing to `~/Library/Application Scripts/<your-bundle-id>/`.
+### Install Missing Tools Silently Inside BeaconMac (`Install Dependencies`)
+You don't need to leave BeaconMac to install missing runtimes or package managers:
+1. Click **Install Dependencies** in BeaconMac's top bar, Managed Local Apps header, any app row, or the Menu Bar.
+2. Choose your **Project Type** — e.g. **Node.js (npm)**, **Node.js + pnpm**, **Node.js + Yarn**, **Bun**, **Full JS / TS**, **Python (python3 + uv)**, **Go**, or **Custom Selection**.
+3. Pick your **Silent Install Method**: **Auto (Homebrew, fallback to Direct Download)**, **Homebrew (silent)**, or **Direct Official Download (no Homebrew)** (downloads SHA-256–verified Node.js LTS tarballs, standalone `pnpm`, `yarn`, `bun`, and `uv` non-interactively).
+4. Optionally pick a managed app folder to sync `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, or `Cargo.toml` packages in the same pass, then click **Install**.
 
-Install all 7 hook scripts in one command:
-```bash
-cd swift-app/BeaconMac
-./Scripts/install-sandbox-scripts.sh com.beaconmac.app
-```
+### Install App-Sandbox Hook Scripts (Mac App Store Builds Only)
+Direct Developer ID DMGs and `swift run` auto-install all 7 embedded scripts on launch. For **Mac App Store** builds (`com.apple.security.app-sandbox = true`), BeaconMac uses Apple's approved **`NSUserUnixTask`** API pointing to `~/Library/Application Scripts/<your-bundle-id>/`.
+
+- **1-Click In-App:** Click **Install Hook Scripts** in the banner at the top of BeaconMac.
+- **Or via Terminal:**
+  ```bash
+  cd swift-app/BeaconMac
+  ./Scripts/install-sandbox-scripts.sh com.beaconmac.app
+  ```
 > **Custom Bundle ID:** If you changed the Bundle Identifier in Xcode (for example to `com.yourorg.beaconmac`), pass your custom Bundle ID as the argument:
 > ```bash
 > ./Scripts/install-sandbox-scripts.sh com.yourorg.beaconmac
 > ```
 
-After launching BeaconMac, click **Audit Tools** in the top bar (or **Check System Tools** in the Managed Local Apps card) to confirm `git`, `node`, `npm`, `pnpm`, `yarn`, and `bun` are detected.
+After launching BeaconMac, click **Audit Tools** in the top bar (or **Check System Tools** in the Managed Local Apps card) to confirm `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, `python3`, `uv`, and `go` are detected.
 
 ---
 
@@ -239,12 +245,15 @@ Expand **Global Settings & Alerts** at the bottom of BeaconMac to configure:
 
 ---
 
-## 7. Troubleshooting
+## 7. Troubleshooting & AI Help
 
+- **One-Click AI Help & Log Copy:** Every log view (**Integrated Terminal Output**, **Server Log Search**, **Activity Log**, **Install Dependencies**, and failing app cards) includes **Copy** buttons (`Copied ✓`) and an **AI Help** button that redacts secrets and analyzes errors using your connected **Local Ollama** model or **Claude API** (or copies a ready-to-paste troubleshooting prompt).
 - **"Missing beacon-deploy.sh / beacon-launchd.sh" error:**
-  Run `./Scripts/install-sandbox-scripts.sh <your-bundle-id>` and verify the Bundle Identifier matches the one configured in Xcode (`com.beaconmac.app` by default).
-- **"`node` or `git` not found" during deploy or `launchd` boot:**
-  `launchd` runs with a minimal default `PATH`. BeaconMac's scripts automatically prepend `/opt/homebrew/bin`, `/usr/local/bin`, and the latest NVM Node version. If you use Volta, fnm, or asdf, symlink `node` into `/usr/local/bin` or add your shim path to the `PATH` key in the `.plist`.
+  Click **Install Hook Scripts** inside BeaconMac or run `./Scripts/install-sandbox-scripts.sh <your-bundle-id>` and verify the Bundle Identifier matches the one configured in Xcode (`com.beaconmac.app` by default).
+- **"`node`, `pnpm`, `yarn`, `bun`, or `git` not found" during deploy or `launchd` boot:**
+  Click **Install Dependencies** inside BeaconMac to install missing tools silently via Homebrew or direct download. BeaconMac's scripts automatically prepend `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.local/node/bin`, `~/Library/pnpm`, `~/.bun/bin`, and the latest NVM Node version.
+- **Local app running on `localhost:<port>` shows Unreachable:**
+  BeaconMac bypasses system HTTP proxies and checks both IPv4 (`127.0.0.1`) and IPv6 (`::1`) loopback automatically (including local HTTPS fallback). Confirm your local server is listening on the configured port via `lsof -iTCP:<port> -sTCP:LISTEN`.
 - **Port already in use:**
   Click **Stop** on the app row (runs `beacon-stop.sh <port>` via `lsof -tiTCP:<port>`) or run `lsof -i :<port>` in Terminal to inspect conflicting processes.
 - **Monitor URL rejected:**

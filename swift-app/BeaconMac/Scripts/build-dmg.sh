@@ -1,18 +1,31 @@
 #!/bin/bash
 # Builds a Universal (Apple Silicon + Intel) BeaconMac.app bundle on macOS and packages
-# it into a drag-to-Applications compressed DMG: releases/BeaconMac-<version>-universal.dmg
+# it into a signed, notarized, drag-to-Applications compressed DMG:
+#   releases/BeaconMac-<version>-universal.dmg
 #
 # Usage (run on macOS 14+ with Xcode 15.4+):
 #   ./swift-app/BeaconMac/Scripts/build-dmg.sh
 #
-# Optional signing & notarization environment variables:
+# Required for public releases / CI (enforced when REQUIRE_SIGNING=1 or CI=true):
 #   APPLE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-#   APPLE_NOTARY_PROFILE="BeaconMacNotary"   # created via `xcrun notarytool store-credentials`
+#   And EITHER:
+#     APPLE_NOTARY_PROFILE="BeaconMacNotary"   # created via `xcrun notarytool store-credentials`
+#   OR:
+#     APPLE_ID="you@example.com"
+#     APPLE_TEAM_ID="ABCDE12345"
+#     APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+#
+# Entitlements selection:
+#   Default (Direct Developer ID DMG): Sources/Beacon/Resources/Beacon-DMG.entitlements
+#     (Hardened Runtime, com.apple.security.app-sandbox = false — explicitly documented for
+#      direct DMG distribution so local toolchains and verified self-updates work.)
+#   Optional Sandboxed DMG (BEACONMAC_SANDBOX_DMG=1): Sources/Beacon/Resources/Beacon.entitlements
+#     (com.apple.security.app-sandbox = true, matching Mac App Store builds.)
 set -euo pipefail
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "ERROR: Building a real macOS .app and .dmg requires macOS (Darwin) with Xcode/Swift and hdiutil." >&2
-  echo "Tip: Push a Git tag (e.g. git tag v1.0.0 && git push origin v1.0.0) to let GitHub Actions (macos-14) build and publish the DMG automatically." >&2
+  echo "Tip: Push a Git tag (e.g. git tag v1.1.0 && git push origin v1.1.0) to let GitHub Actions (macos-14) build, sign, notarize, and publish the DMG automatically." >&2
   exit 1
 fi
 
@@ -29,6 +42,49 @@ BUNDLE_ID="${BEACONMAC_BUNDLE_ID:-com.beaconmac.app}"
 DMG_NAME="BeaconMac-${VERSION}-universal.dmg"
 DMG_PATH="$RELEASES_DIR/$DMG_NAME"
 
+# Select entitlements explicitly — NEVER sign without --entitlements
+if [ "${BEACONMAC_SANDBOX_DMG:-0}" = "1" ]; then
+  ENTITLEMENTS_REL="Sources/Beacon/Resources/Beacon.entitlements"
+  ENABLE_SANDBOX_FLAG="YES"
+else
+  ENTITLEMENTS_REL="Sources/Beacon/Resources/Beacon-DMG.entitlements"
+  ENABLE_SANDBOX_FLAG="NO"
+fi
+ENTITLEMENTS_PATH="$SWIFT_DIR/$ENTITLEMENTS_REL"
+
+if [ ! -f "$ENTITLEMENTS_PATH" ]; then
+  echo "ERROR: Missing entitlements file at $ENTITLEMENTS_PATH" >&2
+  exit 1
+fi
+
+# Enforce Developer ID signing & notarization in CI or whenever REQUIRE_SIGNING=1
+REQUIRE_SIGNING="${REQUIRE_SIGNING:-0}"
+if [ "${CI:-false}" = "true" ]; then
+  REQUIRE_SIGNING="1"
+fi
+
+HAS_NOTARY_PROFILE=0
+HAS_NOTARY_CREDS=0
+if [ -n "${APPLE_NOTARY_PROFILE:-}" ]; then
+  HAS_NOTARY_PROFILE=1
+fi
+if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
+  HAS_NOTARY_CREDS=1
+fi
+
+if [ "$REQUIRE_SIGNING" = "1" ]; then
+  if [ -z "${APPLE_SIGN_IDENTITY:-}" ]; then
+    echo "ERROR: APPLE_SIGN_IDENTITY is required for release builds (REQUIRE_SIGNING=1 / CI=true)." >&2
+    echo "Refusing to ship an ad-hoc signed DMG. Configure Developer ID Application signing credentials." >&2
+    exit 1
+  fi
+  if [ "$HAS_NOTARY_PROFILE" -eq 0 ] && [ "$HAS_NOTARY_CREDS" -eq 0 ]; then
+    echo "ERROR: Apple notarization credentials are required for release builds (REQUIRE_SIGNING=1 / CI=true)." >&2
+    echo "Set APPLE_NOTARY_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD." >&2
+    exit 1
+  fi
+fi
+
 BUILD_ROOT="$SWIFT_DIR/.dmg-build"
 STAGE_DIR="$BUILD_ROOT/dmg-stage"
 APP_BUNDLE="$STAGE_DIR/BeaconMac.app"
@@ -37,10 +93,13 @@ rm -rf "$BUILD_ROOT"
 mkdir -p "$STAGE_DIR" "$RELEASES_DIR"
 
 echo "==> Building BeaconMac v${VERSION} (build ${BUILD_NUM}) Universal binary (arm64 + x86_64)..."
+echo "    Entitlements: $ENTITLEMENTS_REL (App Sandbox: $ENABLE_SANDBOX_FLAG)"
 cd "$SWIFT_DIR"
 
 if command -v xcodegen >/dev/null 2>&1 && command -v xcodebuild >/dev/null 2>&1; then
   xcodegen generate --spec project.yml
+  # Build unsigned first because bundled scripts are copied into Contents/Resources/Scripts
+  # before the final verified codesign pass with --entitlements and --options runtime.
   xcodebuild \
     -project BeaconMac.xcodeproj \
     -scheme BeaconMac \
@@ -52,8 +111,10 @@ if command -v xcodegen >/dev/null 2>&1 && command -v xcodebuild >/dev/null 2>&1;
     MARKETING_VERSION="$VERSION" \
     CURRENT_PROJECT_VERSION="$BUILD_NUM" \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
-    CODE_SIGN_IDENTITY="${APPLE_SIGN_IDENTITY:--}" \
-    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS_REL" \
+    ENABLE_HARDENED_RUNTIME=YES \
+    ENABLE_APP_SANDBOX="$ENABLE_SANDBOX_FLAG" \
+    CODE_SIGNING_ALLOWED=NO \
     clean build
 
   BUILT_APP="$BUILD_ROOT/DerivedData/Build/Products/Release/BeaconMac.app"
@@ -76,22 +137,30 @@ else
     "$SWIFT_DIR/Sources/Beacon/Resources/Info.plist" > "$APP_BUNDLE/Contents/Info.plist"
 fi
 
-# Bundle helper scripts inside BeaconMac.app/Contents/Resources/Scripts for easy one-click access
+# Bundle helper scripts inside BeaconMac.app/Contents/Resources/Scripts BEFORE code signing
 mkdir -p "$APP_BUNDLE/Contents/Resources/Scripts"
 cp "$SWIFT_DIR/Scripts/"*.sh "$APP_BUNDLE/Contents/Resources/Scripts/"
 chmod +x "$APP_BUNDLE/Contents/Resources/Scripts/"*.sh
 
-# Code signing (Developer ID if provided, otherwise ad-hoc local sign)
+# Code signing — ALWAYS pass --entitlements and --options runtime on every signing path
 if [ -n "${APPLE_SIGN_IDENTITY:-}" ]; then
-  echo "==> Signing BeaconMac.app with: $APPLE_SIGN_IDENTITY"
+  echo "==> Signing BeaconMac.app with Developer ID: $APPLE_SIGN_IDENTITY"
   codesign --force --deep --options runtime --timestamp \
-    --entitlements "$SWIFT_DIR/Sources/Beacon/Resources/Beacon.entitlements" \
+    --entitlements "$ENTITLEMENTS_PATH" \
     --sign "$APPLE_SIGN_IDENTITY" \
     "$APP_BUNDLE"
 else
-  echo "==> Applying ad-hoc signature (set APPLE_SIGN_IDENTITY for Developer ID distribution)..."
-  codesign --force --deep --sign - "$APP_BUNDLE"
+  echo "WARNING: Applying local dev ad-hoc signature with entitlements ($ENTITLEMENTS_REL)."
+  echo "         Do NOT distribute this DMG publicly; set APPLE_SIGN_IDENTITY and notary credentials for releases."
+  codesign --force --deep --options runtime \
+    --entitlements "$ENTITLEMENTS_PATH" \
+    --sign - \
+    "$APP_BUNDLE"
 fi
+
+echo "==> Verifying BeaconMac.app signature & entitlements..."
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+codesign -d --entitlements :- "$APP_BUNDLE" >/dev/null
 
 # Create standard drag-to-Applications DMG staging layout
 ln -s /Applications "$STAGE_DIR/Applications"
@@ -108,15 +177,40 @@ hdiutil create \
   "$DMG_PATH"
 
 if [ -n "${APPLE_SIGN_IDENTITY:-}" ]; then
+  echo "==> Signing DMG with Developer ID..."
   codesign --force --timestamp --sign "$APPLE_SIGN_IDENTITY" "$DMG_PATH"
-  if [ -n "${APPLE_NOTARY_PROFILE:-}" ]; then
-    echo "==> Notarizing $DMG_NAME via Apple notarytool..."
+  codesign --verify --verbose=2 "$DMG_PATH"
+
+  if [ "$HAS_NOTARY_PROFILE" -eq 1 ]; then
+    echo "==> Notarizing $DMG_NAME via Apple notarytool (keychain profile)..."
     xcrun notarytool submit "$DMG_PATH" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
+  elif [ "$HAS_NOTARY_CREDS" -eq 1 ]; then
+    echo "==> Notarizing $DMG_NAME via Apple notarytool (Apple ID credentials)..."
+    xcrun notarytool submit "$DMG_PATH" \
+      --apple-id "$APPLE_ID" \
+      --team-id "$APPLE_TEAM_ID" \
+      --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+      --wait
+  fi
+
+  if [ "$HAS_NOTARY_PROFILE" -eq 1 ] || [ "$HAS_NOTARY_CREDS" -eq 1 ]; then
+    echo "==> Stapling & validating notarization ticket..."
     xcrun stapler staple "$DMG_PATH"
+    xcrun stapler validate "$DMG_PATH"
+
+    echo "==> Verifying Gatekeeper (spctl) on packaged BeaconMac.app..."
+    VERIFY_MOUNT="$BUILD_ROOT/verify-mount"
+    mkdir -p "$VERIFY_MOUNT"
+    hdiutil attach -nobrowse -readonly -mountpoint "$VERIFY_MOUNT" "$DMG_PATH" >/dev/null
+    trap 'hdiutil detach "$VERIFY_MOUNT" -quiet 2>/dev/null || true' EXIT
+    codesign --verify --deep --strict --verbose=2 "$VERIFY_MOUNT/BeaconMac.app"
+    spctl -a -t exec -vv "$VERIFY_MOUNT/BeaconMac.app"
+    hdiutil detach "$VERIFY_MOUNT" -quiet
+    trap - EXIT
   fi
 fi
 
-# Generate SHA-256 checksum and record file size in releases/releases.json
+# Generate SHA-256 checksum AFTER signing & stapling so it matches the exact shipped bytes
 SHA256=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
 SIZE_BYTES=$(stat -f%z "$DMG_PATH")
 echo "${SHA256}  ${DMG_NAME}" > "${DMG_PATH}.sha256"

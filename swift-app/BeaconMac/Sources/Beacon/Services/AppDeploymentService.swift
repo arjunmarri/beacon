@@ -104,7 +104,8 @@ public final class AppDeploymentService: Sendable {
 
     public func installPrerequisitesAndDependencies(
         workingDir: String?,
-        requestedTools: [String]
+        requestedTools: [String],
+        strategy: DependencyInstallStrategy = .auto
     ) async -> ScriptExecutionResult {
         let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git"]
         let safeTools = requestedTools
@@ -114,7 +115,7 @@ public final class AppDeploymentService: Sendable {
         let dirArg = workingDir?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return await runUnixScript(
             named: "beacon-check-deps.sh",
-            arguments: ["--install", dirArg, toolsArg]
+            arguments: ["--install", dirArg, toolsArg, strategy.rawValue]
         )
     }
 

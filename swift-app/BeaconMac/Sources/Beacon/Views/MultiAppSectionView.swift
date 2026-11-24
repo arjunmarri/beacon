@@ -5,8 +5,6 @@ struct MultiAppSectionView: View {
 
     @State private var showingAddSheet = false
     @State private var editingApp: ManagedApp?
-    @State private var showingPrerequisiteInstaller = false
-    @State private var installerTargetAppID: UUID?
 
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let rowBackground = Color(red: 0.048, green: 0.056, blue: 0.070)
@@ -30,9 +28,8 @@ struct MultiAppSectionView: View {
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
-                Button("Install Prerequisites") {
-                    installerTargetAppID = controller.config.managedApps.first?.id
-                    showingPrerequisiteInstaller = true
+                Button("Install Dependencies") {
+                    controller.openDependencyInstaller()
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
@@ -102,9 +99,6 @@ struct MultiAppSectionView: View {
         }
         .sheet(item: $editingApp) { app in
             AppEditorSheet(controller: controller, existingApp: app)
-        }
-        .sheet(isPresented: $showingPrerequisiteInstaller) {
-            PrerequisiteInstallerSheet(controller: controller, selectedAppID: installerTargetAppID)
         }
     }
 
@@ -196,9 +190,8 @@ struct MultiAppSectionView: View {
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
-                Button("Install Deps") {
-                    installerTargetAppID = app.id
-                    showingPrerequisiteInstaller = true
+                Button("Install Dependencies") {
+                    controller.openDependencyInstaller(for: app)
                 }
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconSecondaryButtonStyle())

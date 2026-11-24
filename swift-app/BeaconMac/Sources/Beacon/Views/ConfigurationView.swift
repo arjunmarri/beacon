@@ -136,13 +136,12 @@ struct ConfigurationView: View {
                     HStack(spacing: 16) {
                         Toggle("Automatically check for updates", isOn: $autoCheckForUpdates)
                             .onChange(of: autoCheckForUpdates) { _, newVal in
-                                controller.updateAutoUpdatePreferences(autoCheck: newVal, autoInstall: autoInstallUpdates)
+                                controller.updateAutoUpdatePreferences(autoCheck: newVal, autoInstall: false)
                             }
 
-                        Toggle("Automatically download & install DMG updates", isOn: $autoInstallUpdates)
-                            .onChange(of: autoInstallUpdates) { _, newVal in
-                                controller.updateAutoUpdatePreferences(autoCheck: autoCheckForUpdates, autoInstall: newVal)
-                            }
+                        Text("Installs verify SHA-256, Developer ID Team ID & Gatekeeper")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary.opacity(0.85))
                         Spacer()
                         Button("Save Configuration") {
                             let poll = Int(gitPollIntervalText) ?? controller.config.gitPollIntervalSec
@@ -157,7 +156,7 @@ struct ConfigurationView: View {
                                     notifyOnDeploy: notifyOnDeploy,
                                     notifyOnOllamaDown: notifyOnOllamaDown,
                                     autoCheckForUpdates: autoCheckForUpdates,
-                                    autoInstallUpdates: autoInstallUpdates
+                                    autoInstallUpdates: false
                                 )
                                 expanded = false
                             }

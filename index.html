@@ -949,8 +949,9 @@
 
         <p>
           A lightweight native macOS multi-app deployer and traffic-light monitor built in SwiftUI.
-          Clone remote Git repositories, verify Vite &amp; Node.js dependencies, build and deploy
-          multiple local apps, manage background startup natively via Apple <code>launchd</code>
+          Clone remote Git repositories, silently install missing Node.js, pnpm, Yarn, Bun, or
+          Python dependencies by project type, build and deploy multiple local apps, troubleshoot
+          logs with AI Help, manage background startup natively via Apple <code>launchd</code>
           with live <code>tail -f</code> logs and IOKit / <code>caffeinate -s</code> sleep
           prevention, and monitor Ollama LLMs and Claude API health — backed by macOS Keychain.
         </p>
@@ -998,10 +999,10 @@
           14 toolchain. Push a version tag to trigger the included GitHub Actions
           (<code>macos-14</code>) workflow — this button will automatically serve the signed
           <code>.dmg</code> once published — or build locally on your Mac:
-          <pre id="notice-commands"># Auto-build &amp; publish DMG via GitHub Actions (macos-14):
+          <pre id="notice-commands"># Auto-build, sign &amp; notarize DMG via GitHub Actions (macos-14):
 git tag v1.1.0 &amp;&amp; git push origin v1.1.0
 
-# Or build releases/BeaconMac-1.1.0-universal.dmg directly on your Mac:
+# Or build releases/BeaconMac-1.1.0-universal.dmg locally on your Mac:
 ./swift-app/BeaconMac/Scripts/build-dmg.sh</pre>
         </div>
 
@@ -1315,6 +1316,29 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
                 macOS <strong>Menu Bar</strong> and select <strong>Check for Updates…</strong> (you
                 can also trigger a manual check or adjust automatic update preferences from the app
                 menubar and Settings).
+              </p>
+            </div>
+          </details>
+          <details class="faq-item">
+            <summary>
+              <span>How can I install missing tools like pnpm, Bun, or Yarn and troubleshoot logs?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                Click <strong>Install Dependencies</strong> in BeaconMac's top bar, Managed Local
+                Apps header, or Menu Bar, pick your project type (such as <strong>Node.js + pnpm</strong>,
+                <strong>Node.js + Yarn</strong>, <strong>Bun</strong>, or <strong>Python (python3 + uv)</strong>),
+                and BeaconMac silently installs missing tools via Homebrew or verified direct
+                official downloads (including SHA-256–verified Node.js LTS tarballs, <code>get.pnpm.io</code>,
+                and <code>bun.sh</code>) without leaving the app.
+              </p>
+              <p>
+                Every log panel also includes one-click <strong>Copy</strong> and <strong>AI Help</strong>
+                buttons to analyze redacted errors directly with your connected Local Ollama or
+                Claude API.
               </p>
             </div>
           </details>

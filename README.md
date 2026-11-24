@@ -1,8 +1,8 @@
 # BeaconMac
 
-**BeaconMac** is an open-source, lightweight native macOS **multi-app local deployer and traffic-light monitor** built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** distribution.
+**BeaconMac** is an open-source, lightweight native macOS **multi-app local deployer and traffic-light monitor** built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** and **signed, notarized Universal DMG** distribution.
 
-Add any number of locally deployed **Vite, Node.js, Next.js, or custom apps** — BeaconMac clones each remote Git repository, checks system tools (`git`, `node`, `npm`, `pnpm`, `yarn`, `bun`) and required project libraries (`package.json` / `node_modules`), builds and deploys locally, streams live output to its **integrated Terminal console** (plus one-click `Terminal.app` launch), manages background startup natively via **Apple `launchd`** (`~/Library/LaunchAgents`) + **`SMAppService`**, prevents Mac sleep via **IOKit Power Management** and **`caffeinate -s`**, and monitors **Ollama** local LLMs and **Claude API** health — all backed by encrypted **macOS Keychain** storage and local **flat-file logs** (zero database, zero login screen).
+Add any number of locally deployed **Vite, Node.js, Next.js, or custom apps** — BeaconMac clones each remote Git repository, audits and **silently installs missing dependencies** (`node`, `pnpm`, `yarn`, `bun`, `python3`, `uv`, `go`, `git`) by project type via Homebrew or verified direct official downloads, builds and deploys locally, streams live output to its **integrated Terminal console** (with one-click copy, **Server Log Search**, and **AI Help** log troubleshooting via local Ollama or Claude API), manages background startup natively via **Apple `launchd`** (`~/Library/LaunchAgents`) + **`SMAppService`**, prevents Mac sleep via **IOKit Power Management** and **`caffeinate -s`**, verifies self-updates cryptographically (SHA-256, Developer ID Team ID pinning, `codesign`, and Gatekeeper `spctl`), and monitors **Ollama** local LLMs and **Claude API** health — all backed by encrypted **macOS Keychain** storage and local **flat-file logs** (zero database, zero login screen).
 
 ---
 
@@ -51,7 +51,7 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
     │   ├── beacon-launchd.sh            # Native macOS launchd install/load/unload/status
     │   ├── beacon-startup.sh            # launchd supervisor -> ~/beaconmac/server.log + caffeinate -s
     │   ├── beacon-deploy.sh             # Clone/pull -> check deps -> install -> build -> deploy
-    │   ├── beacon-check-deps.sh         # Audits git/node/npm/pnpm/yarn/bun & node_modules
+    │   ├── beacon-check-deps.sh         # Audits & silently installs runtimes (Homebrew/direct) & project deps
     │   ├── beacon-restart.sh            # Restarts a managed local app on its port
     │   ├── beacon-stop.sh               # Stops a managed local app by port
     │   └── beacon-git-pull.sh           # Standalone git fetch/pull helper
@@ -61,29 +61,37 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
         ├── Services/
         │   ├── AlertService.swift
         │   ├── AppDeploymentService.swift
+        │   ├── AppUpdateService.swift
         │   ├── BeaconController.swift
         │   ├── ClaudeService.swift
+        │   ├── EmbeddedScripts.swift
         │   ├── FlatFileStore.swift
         │   ├── GitDeployService.swift
         │   ├── KeychainStore.swift
         │   ├── LocalProcessService.swift
+        │   ├── LogTroubleshootingService.swift
         │   ├── OllamaService.swift
+        │   ├── ServerLogSearchService.swift
         │   ├── SleepPreventionService.swift
         │   ├── StartupSchedulerService.swift
         │   └── TerminalIntegrationService.swift
         ├── Views/
+        │   ├── AILogHelpSheet.swift
         │   ├── ActivityLogView.swift
         │   ├── AppEditorSheet.swift
         │   ├── ConfigurationView.swift
         │   ├── ContentView.swift
         │   ├── MenuBarStatusView.swift
         │   ├── MultiAppSectionView.swift
+        │   ├── PrerequisiteInstallerSheet.swift
+        │   ├── ServerLogSearchView.swift
         │   ├── ServiceCardsView.swift
         │   ├── StartupScheduleView.swift
         │   ├── TerminalPanelView.swift
         │   └── TrafficLightLampView.swift
         └── Resources/
-            ├── Beacon.entitlements
+            ├── Beacon.entitlements          # Mac App Store (App Sandbox enabled)
+            ├── Beacon-DMG.entitlements      # Direct Developer ID DMG (Hardened Runtime, unsandboxed)
             └── Info.plist
 ```
 
@@ -93,22 +101,42 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
 
 BeaconMac maintains semantic versions via `version.json`, `releases/releases.json`, and `CHANGELOG.md`.
 
-### Option A — Automated macOS DMG Build via GitHub Actions (Recommended)
-Push any version tag (`v1.0.0`, `v1.0.1`, etc.) to GitHub. `.github/workflows/release-dmg.yml` runs on Apple's `macos-14` runner, builds a Universal (`arm64` + `x86_64`) `BeaconMac.app`, packages `BeaconMac-<version>-universal.dmg` + `.sha256`, and publishes a GitHub Release that the website automatically detects and serves directly at `/download/dmg`:
+### Distribution Entitlements
+- **Mac App Store (`Sources/Beacon/Resources/Beacon.entitlements`)**: Ships with `com.apple.security.app-sandbox = true` and uses `NSUserUnixTask` hook scripts in `~/Library/Application Scripts/<bundle-id>/`.
+- **Direct Developer ID DMG (`Sources/Beacon/Resources/Beacon-DMG.entitlements`)**: Ships intentionally unsandboxed (`com.apple.security.app-sandbox = false`) with **Hardened Runtime** enabled so direct DMG users can run local toolchains (`git`, `node`, `npm`, `launchctl`) directly and use the verified self-updater (which checks SHA-256, Developer ID Team ID pinning, `codesign --verify --deep --strict`, and Gatekeeper `spctl`). Set `BEACONMAC_SANDBOX_DMG=1` if you want to package a sandboxed DMG instead.
+
+### Option A — Automated Signed & Notarized DMG via GitHub Actions (Recommended)
+Configure these repository secrets under **Settings → Secrets and variables → Actions** before tagging a public release (the workflow intentionally fails if any signing or notarization secret is missing):
+
+- `APPLE_CERTIFICATE_P12_BASE64` — Base64-encoded Developer ID Application `.p12` certificate
+- `APPLE_CERTIFICATE_PASSWORD` — Export password for the `.p12` file
+- `APPLE_SIGN_IDENTITY` — Exact signing identity (e.g. `Developer ID Application: Your Name (TEAMID)`)
+- `APPLE_ID` — Apple Developer account email used for `notarytool`
+- `APPLE_TEAM_ID` — 10-character Apple Developer Team ID
+- `APPLE_APP_SPECIFIC_PASSWORD` — App-specific password generated at appleid.apple.com
+
+Push any version tag (`v1.1.0`, `v1.1.1`, etc.) to GitHub. `.github/workflows/release-dmg.yml` runs on `macos-14`, builds a Universal (`arm64` + `x86_64`) `BeaconMac.app`, signs it with Hardened Runtime + `Beacon-DMG.entitlements`, notarizes & staples the DMG via `notarytool`/`stapler`, verifies `codesign` & `spctl`, computes the final `.sha256`, and publishes the GitHub Release:
 
 ```bash
-./swift-app/BeaconMac/Scripts/bump-version.sh 1.0.1 "Short summary of changes"
+./swift-app/BeaconMac/Scripts/bump-version.sh 1.1.1 "Short summary of changes"
 git add version.json releases/releases.json swift-app/BeaconMac/project.yml CHANGELOG.md
-git commit -m "Release v1.0.1"
-git tag v1.0.1 && git push origin main --tags
+git commit -m "Release v1.1.1"
+git tag v1.1.1 && git push origin main --tags
 ```
 
 ### Option B — Build the `.dmg` Locally on Your Mac
 ```bash
 chmod +x swift-app/BeaconMac/Scripts/*.sh
+# For a signed, notarized release DMG:
+REQUIRE_SIGNING=1 \
+APPLE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+APPLE_NOTARY_PROFILE="BeaconMacNotary" \
+./swift-app/BeaconMac/Scripts/build-dmg.sh
+
+# Or for local-only development testing (ad-hoc signed with entitlements — not for distribution):
 ./swift-app/BeaconMac/Scripts/build-dmg.sh
 ```
-This outputs `releases/BeaconMac-<version>-universal.dmg` and updates `releases/releases.json` with the exact SHA-256 checksum and byte size. The web server automatically serves any `.dmg` file present in `releases/`.
+This outputs `releases/BeaconMac-<version>-universal.dmg` + `.sha256` and updates `releases/releases.json` with the exact post-stapling SHA-256 checksum and byte size. The web server automatically serves any `.dmg` file present in `releases/`.
 
 ---
 

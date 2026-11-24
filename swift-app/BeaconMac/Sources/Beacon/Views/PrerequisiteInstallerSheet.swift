@@ -6,26 +6,29 @@ struct PrerequisiteInstallerSheet: View {
     @State var selectedAppID: UUID?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedTools: Set<String> = []
+    @State private var selectedProjectType: DependencyProjectType = .nodejsPnpm
+    @State private var installStrategy: DependencyInstallStrategy = .auto
+    @State private var selectedTools: Set<String> = Set(DependencyProjectType.nodejsPnpm.requiredTools)
     @State private var installOutput: [String] = []
     @State private var isInstalling = false
     @State private var lastStatus: String?
     @State private var lastSucceeded: Bool = true
     @State private var copiedOutput = false
+    @State private var didInitializePreset = false
 
     private let canvasBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
     private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
     private let terminalBackground = Color(red: 0.031, green: 0.037, blue: 0.047)
 
     private let installableTools: [(id: String, label: String, subtitle: String)] = [
-        ("node", "Node.js + npm", "JavaScript runtime & npm"),
-        ("bun", "Bun", "Fast JS/TS runtime & bundler"),
-        ("pnpm", "pnpm", "Fast workspace package manager"),
-        ("yarn", "Yarn", "Classic / Berry JS package manager"),
-        ("python3", "Python 3 + pip", "For requirements.txt / pyproject.toml"),
-        ("uv", "uv", "Fast Python package manager"),
-        ("go", "Go", "For go.mod projects"),
-        ("git", "Git", "Repository clone & sync")
+        ("node", "Node.js + npm", "Homebrew or official Node.js LTS tarball"),
+        ("pnpm", "pnpm", "Homebrew, Corepack, or get.pnpm.io"),
+        ("yarn", "Yarn", "Homebrew, Corepack, or npm"),
+        ("bun", "Bun", "Homebrew or bun.sh direct installer"),
+        ("python3", "Python 3 + pip", "Homebrew Python for requirements.txt"),
+        ("uv", "uv", "Homebrew or astral.sh direct installer"),
+        ("go", "Go", "Homebrew Go toolchain"),
+        ("git", "Git", "Homebrew or Xcode Command Line Tools")
     ]
 
     private var selectedApp: ManagedApp? {
@@ -33,14 +36,20 @@ struct PrerequisiteInstallerSheet: View {
         return controller.config.managedApps.first { $0.id == selectedAppID }
     }
 
+    private var missingSelectedTools: [String] {
+        selectedTools.sorted().filter { toolID in
+            !(controller.systemTools.first(where: { $0.name == toolID })?.available ?? false)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Install Prerequisites & Project Dependencies")
+                    Text("Install Dependencies")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Auto-detects package.json, lockfiles (npm/pnpm/yarn/bun), requirements.txt, pyproject.toml, go.mod, Cargo.toml, and installs missing runtimes & packages in-app.")
+                    Text("Select your project type to silently install missing tools (Node.js, pnpm, Yarn, Bun, Python, uv, Go) via Homebrew or direct official download.")
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                 }
@@ -53,15 +62,54 @@ struct PrerequisiteInstallerSheet: View {
                 .buttonStyle(BeaconSecondaryButtonStyle())
             }
 
-            // Target project selector
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Project Requirements Source")
-                    .font(.system(size: 11.5, weight: .semibold))
+            // 1. Project Type & Install Method Selector
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Project Type")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Project Type", selection: $selectedProjectType) {
+                            ForEach(DependencyProjectType.allCases) { projectType in
+                                Text(projectType.rawValue).tag(projectType)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .onChange(of: selectedProjectType) { _, newType in
+                            applyProjectType(newType)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Silent Install Method")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Silent Install Method", selection: $installStrategy) {
+                            ForEach(DependencyInstallStrategy.allCases) { strategy in
+                                Text(strategy.label).tag(strategy)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Text(selectedProjectType.subtitle)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
+                Divider().overlay(Color.white.opacity(0.06))
+
                 HStack(spacing: 10) {
+                    Text("Project Folder (optional):")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+
                     Picker("Target App", selection: $selectedAppID) {
-                        Text("System Prerequisites Only (no project folder)").tag(UUID?.none)
+                        Text("Tools Only (no project folder)").tag(UUID?.none)
                         ForEach(controller.config.managedApps) { app in
                             Text("\(app.name) — \(app.localPath.isEmpty ? "no folder set" : app.localPath)")
                                 .tag(UUID?.some(app.id))
@@ -84,7 +132,7 @@ struct PrerequisiteInstallerSheet: View {
 
                 if let app = selectedApp, !app.localPath.isEmpty {
                     let state = controller.runtimeState(for: app.id)
-                    Text("Detected status: \(state.dependencySummary)")
+                    Text("Detected project status: \(state.dependencySummary)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.cyan.opacity(0.9))
                 }
@@ -94,16 +142,29 @@ struct PrerequisiteInstallerSheet: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // Runtime tools checkboxes
+            // 2. Tools Status & Overrides
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("System Runtimes & Package Managers (optional overrides — project lockfiles are auto-detected too)")
+                    Text("Tools Included in Selection")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.secondary)
+
+                    if !missingSelectedTools.isEmpty {
+                        Text("· \(missingSelectedTools.count) missing (\(missingSelectedTools.joined(separator: ", ")))")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.orange.opacity(0.95))
+                    } else if !selectedTools.isEmpty {
+                        Text("· All selected tools already installed")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.green.opacity(0.9))
+                    }
+
                     Spacer()
+
                     Button("Refresh Detected") {
                         Task { await controller.auditSystemDependencies() }
                     }
+                    .disabled(isInstalling)
                     .buttonStyle(BeaconSecondaryButtonStyle())
                 }
 
@@ -122,12 +183,15 @@ struct PrerequisiteInstallerSheet: View {
                                     } else {
                                         selectedTools.remove(tool.id)
                                     }
+                                    if selectedProjectType != .custom && selectedTools != Set(selectedProjectType.requiredTools) {
+                                        selectedProjectType = .custom
+                                    }
                                 }
                             )) {
                                 VStack(alignment: .leading, spacing: 1) {
                                     HStack(spacing: 6) {
                                         Circle()
-                                            .fill(isInstalled ? Color.green : Color.gray.opacity(0.5))
+                                            .fill(isInstalled ? Color.green : (isChecked ? Color.orange : Color.gray.opacity(0.45)))
                                             .frame(width: 6, height: 6)
                                         Text(tool.label)
                                             .font(.system(size: 12, weight: .medium))
@@ -137,6 +201,10 @@ struct PrerequisiteInstallerSheet: View {
                                                 .font(.system(size: 10.5, design: .monospaced))
                                                 .foregroundStyle(.green.opacity(0.85))
                                                 .lineLimit(1)
+                                        } else if isChecked {
+                                            Text("Will install")
+                                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                                .foregroundStyle(.orange.opacity(0.95))
                                         }
                                     }
                                     Text(tool.subtitle)
@@ -150,7 +218,7 @@ struct PrerequisiteInstallerSheet: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(terminalBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(isChecked ? Color.cyan.opacity(0.4) : Color.white.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(isChecked ? Color.cyan.opacity(0.42) : Color.white.opacity(0.06)))
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                     }
                 }
@@ -160,9 +228,9 @@ struct PrerequisiteInstallerSheet: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // Action row
+            // 3. Action row
             HStack(spacing: 10) {
-                Button(isInstalling ? "Installing Prerequisites…" : installButtonLabel) {
+                Button(isInstalling ? "Installing Silently…" : installButtonLabel) {
                     runInstall()
                 }
                 .disabled(isInstalling || (selectedApp == nil && selectedTools.isEmpty))
@@ -197,7 +265,7 @@ struct PrerequisiteInstallerSheet: View {
                         let appName = selectedApp?.name
                         dismiss()
                         controller.openAIHelp(
-                            title: "Prerequisite Installer Output",
+                            title: "Dependency Installer Output",
                             logText: dump,
                             appName: appName
                         )
@@ -206,11 +274,11 @@ struct PrerequisiteInstallerSheet: View {
                 }
             }
 
-            // Live output log
+            // 4. Silent installation log
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 3) {
                     if installOutput.isEmpty {
-                        Text("Installation logs stream here and into BeaconMac's Integrated Terminal Output. Uses Homebrew when available plus official installers (npm / corepack / bun.sh / pip3).")
+                        Text("Runs silently in the background with zero terminal popups (NONINTERACTIVE=1). Missing tools install automatically via Homebrew or verified direct official downloads, and output is also mirrored to Integrated Terminal Output.")
                             .font(.system(size: 11.5, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .padding(10)
@@ -228,23 +296,43 @@ struct PrerequisiteInstallerSheet: View {
                 }
                 .padding(.vertical, 6)
             }
-            .frame(minHeight: 155, maxHeight: .infinity)
+            .frame(minHeight: 145, maxHeight: .infinity)
             .background(terminalBackground)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .padding(20)
-        .frame(minWidth: 740, minHeight: 590)
+        .frame(minWidth: 780, minHeight: 640)
         .background(canvasBackground)
+        .onAppear {
+            if !didInitializePreset {
+                didInitializePreset = true
+                let inferred = DependencyProjectType.defaultType(for: selectedApp?.stackPreset)
+                selectedProjectType = inferred
+                selectedTools = Set(inferred.requiredTools)
+            }
+            if controller.systemTools.isEmpty {
+                Task { await controller.auditSystemDependencies() }
+            }
+        }
     }
 
     private var installButtonLabel: String {
         if let app = selectedApp {
-            return selectedTools.isEmpty
-                ? "Auto-Detect & Install All Deps for \(app.name)"
-                : "Install Selected Tools & \(app.name) Deps"
+            if missingSelectedTools.isEmpty {
+                return "Install \(app.name) Dependencies"
+            }
+            return "Install \(missingSelectedTools.count) Missing Tool(s) & \(app.name) Deps"
         }
-        return "Install Selected System Tools"
+        if missingSelectedTools.isEmpty {
+            return "Verify Selected Dependencies"
+        }
+        return "Install \(missingSelectedTools.count) Missing Tool(s) Silently"
+    }
+
+    private func applyProjectType(_ type: DependencyProjectType) {
+        guard type != .custom else { return }
+        selectedTools = Set(type.requiredTools)
     }
 
     private func runInstall() {
@@ -253,18 +341,20 @@ struct PrerequisiteInstallerSheet: View {
         installOutput = []
         let app = selectedApp
         let tools = Array(selectedTools).sorted()
+        let strategy = installStrategy
 
         Task {
             let res = await controller.installPrerequisitesAndDependencies(
                 for: app,
-                requestedTools: tools
+                requestedTools: tools,
+                strategy: strategy
             )
             installOutput = res.stdoutLines + res.stderrLines.map { "[stderr] \($0)" }
             if installOutput.isEmpty {
                 installOutput = [res.summary]
             }
             lastSucceeded = res.ok
-            lastStatus = res.ok ? "Installation completed." : res.summary
+            lastStatus = res.ok ? "Dependencies installed silently." : res.summary
             isInstalling = false
         }
     }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Direct Developer ID DMG distribution entitlements (Hardened Runtime enabled via codesign).
+      App Sandbox is explicitly false here so direct DMG installs can run local toolchains
+      (git, node, npm, launchctl) directly and perform verified self-updates.
+      Mac App Store builds use Beacon.entitlements (com.apple.security.app-sandbox = true).
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

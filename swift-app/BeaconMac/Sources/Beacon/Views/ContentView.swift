@@ -26,6 +26,12 @@ struct ContentView: View {
                 .disabled(controller.update.status == .checking || controller.update.status == .downloading || controller.update.status == .installing)
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
+                Button("Install Dependencies") {
+                    controller.openDependencyInstaller()
+                }
+                .disabled(controller.busyAction != nil)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+
                 Button("Audit Tools") {
                     Task { await controller.auditSystemDependencies() }
                 }
@@ -146,6 +152,12 @@ struct ContentView: View {
         .background(obsidianCanvas)
         .sheet(item: $controller.aiHelpContext) { context in
             AILogHelpSheet(controller: controller, context: context)
+        }
+        .sheet(isPresented: $controller.showingDependencyInstaller) {
+            PrerequisiteInstallerSheet(
+                controller: controller,
+                selectedAppID: controller.dependencyInstallerAppID
+            )
         }
     }
 }
