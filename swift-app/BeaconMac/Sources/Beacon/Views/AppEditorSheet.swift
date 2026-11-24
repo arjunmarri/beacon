@@ -7,17 +7,18 @@ struct AppEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String = ""
-    @State private var stackPreset: AppStackPreset = .vite
+    @State private var stackPreset: AppStackPreset = .auto
     @State private var repoURL: String = ""
     @State private var branch: String = "main"
     @State private var localPath: String = ""
     @State private var monitorURL: String = "http://localhost:5173"
     @State private var installCommand: String = "auto"
-    @State private var buildCommand: String = "npm run build"
-    @State private var startCommand: String = "npm run dev -- --port 5173"
+    @State private var buildCommand: String = "auto"
+    @State private var startCommand: String = "auto"
     @State private var autoRestart: Bool = true
     @State private var autoDeploy: Bool = true
     @State private var runOnStartup: Bool = false
+    @State private var detectedScriptsNote: String?
 
     private let bg = Color(red: 0.055, green: 0.067, blue: 0.086)
     private let inputBg = Color(red: 0.035, green: 0.043, blue: 0.055)
@@ -51,6 +52,7 @@ struct AppEditorSheet: View {
                                         if localPath.isEmpty {
                                             localPath = "\(NSHomeDirectory())/BeaconApps/\(repoName)"
                                         }
+                                        detectScriptsFromPackageJSON(silentIfMissing: true)
                                     }
                                 }
                             )) {
@@ -113,6 +115,7 @@ struct AppEditorSheet: View {
                                 panel.canCreateDirectories = true
                                 if panel.runModal() == .OK, let url = panel.url {
                                     localPath = url.path
+                                    detectScriptsFromPackageJSON(silentIfMissing: true)
                                 }
                             }
                             .buttonStyle(BeaconSecondaryButtonStyle())
@@ -123,9 +126,35 @@ struct AppEditorSheet: View {
 
                     Divider().overlay(Color.white.opacity(0.08))
 
+                    HStack {
+                        Text("Build & Run Commands")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            detectScriptsFromPackageJSON(silentIfMissing: false)
+                        } label: {
+                            Label("Detect from package.json", systemImage: "wand.and.stars")
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+                        .disabled(localPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    if let note = detectedScriptsNote {
+                        Text(note)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.65))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white.opacity(0.04))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.08)))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+
                     field("Dependency Install Command (auto = detect npm/pnpm/yarn/bun)", placeholder: "auto", text: $installCommand)
-                    field("Build Command (blank to skip build)", placeholder: "npm run build", text: $buildCommand)
-                    field("Start Command", placeholder: "npm run dev -- --port 5173", text: $startCommand)
+                    field("Build Command (auto = run build only if script exists; blank = skip)", placeholder: "auto", text: $buildCommand)
+                    field("Start Command (auto = detect dev/start/serve script)", placeholder: "auto", text: $startCommand)
 
                     Divider().overlay(Color.white.opacity(0.08))
 
@@ -173,7 +202,7 @@ struct AppEditorSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 620, height: 590)
+        .frame(width: 620, height: 630)
         .background(bg)
         .onAppear {
             if let app = existingApp {
@@ -191,6 +220,76 @@ struct AppEditorSheet: View {
                 runOnStartup = app.runOnStartup
             }
         }
+    }
+
+    private func detectScriptsFromPackageJSON(silentIfMissing: Bool) {
+        let dir = localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !dir.isEmpty else { return }
+        let pkgURL = URL(fileURLWithPath: dir).appendingPathComponent("package.json")
+        guard FileManager.default.fileExists(atPath: pkgURL.path) else {
+            if !silentIfMissing {
+                detectedScriptsNote = "No package.json found at \(dir) yet. Using \"auto\" will detect scripts right after cloning."
+            }
+            return
+        }
+        guard let data = try? Data(contentsOf: pkgURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            if !silentIfMissing {
+                detectedScriptsNote = "Could not parse package.json at \(dir)."
+            }
+            return
+        }
+
+        let fm = FileManager.default
+        let pm: String
+        if fm.fileExists(atPath: URL(fileURLWithPath: dir).appendingPathComponent("pnpm-lock.yaml").path) {
+            pm = "pnpm"
+        } else if fm.fileExists(atPath: URL(fileURLWithPath: dir).appendingPathComponent("yarn.lock").path) {
+            pm = "yarn"
+        } else if fm.fileExists(atPath: URL(fileURLWithPath: dir).appendingPathComponent("bun.lock").path)
+                    || fm.fileExists(atPath: URL(fileURLWithPath: dir).appendingPathComponent("bun.lockb").path) {
+            pm = "bun"
+        } else {
+            pm = "npm"
+        }
+
+        let scripts = json["scripts"] as? [String: String] ?? [:]
+        let scriptNames = scripts.keys.sorted()
+        let port = LocalProcessService.extractPort(from: monitorURL, fallback: 5173)
+
+        installCommand = "auto"
+
+        if scripts["build"] != nil {
+            buildCommand = "\(pm) run build"
+        } else {
+            buildCommand = ""
+        }
+
+        if let devScript = scripts["dev"] {
+            if devScript.localizedCaseInsensitiveContains("vite")
+                || devScript.localizedCaseInsensitiveContains("astro")
+                || devScript.localizedCaseInsensitiveContains("nuxt") {
+                startCommand = "\(pm) run dev -- --port \(port)"
+            } else if devScript.localizedCaseInsensitiveContains("next") {
+                startCommand = "\(pm) run dev -- -p \(port)"
+            } else {
+                startCommand = "\(pm) run dev"
+            }
+        } else if scripts["start"] != nil {
+            startCommand = "\(pm) start"
+        } else if scripts["serve"] != nil {
+            startCommand = "\(pm) run serve"
+        } else if scripts["preview"] != nil {
+            startCommand = "\(pm) run preview"
+        } else if let mainFile = json["main"] as? String, !mainFile.isEmpty {
+            startCommand = "node \(mainFile)"
+        } else {
+            startCommand = "auto"
+        }
+
+        let list = scriptNames.isEmpty ? "none" : scriptNames.joined(separator: ", ")
+        let buildSummary = scripts["build"] != nil ? "build enabled" : "build skipped (no \"build\" script)"
+        detectedScriptsNote = "Detected \(pm) scripts [\(list)] — \(buildSummary)."
     }
 
     private func field(_ label: String, placeholder: String, text: Binding<String>) -> some View {

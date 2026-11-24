@@ -44,6 +44,7 @@ public struct LogEntry: Identifiable, Codable, Sendable {
 }
 
 public enum AppStackPreset: String, Codable, CaseIterable, Identifiable, Sendable {
+    case auto = "Auto-Detect"
     case vite = "Vite + Node"
     case nodeServer = "Node.js Server"
     case nextjs = "Next.js"
@@ -55,15 +56,17 @@ public enum AppStackPreset: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var defaultBuildCommand: String {
         switch self {
-        case .vite: return "npm run build"
+        case .auto: return "auto"
+        case .vite: return "auto"
         case .nodeServer: return ""
-        case .nextjs: return "npm run build"
+        case .nextjs: return "auto"
         case .custom: return ""
         }
     }
 
     public func defaultStartCommand(port: Int) -> String {
         switch self {
+        case .auto: return "auto"
         case .vite: return "npm run dev -- --port \(port)"
         case .nodeServer: return "npm start"
         case .nextjs: return "npm run dev -- -p \(port)"
@@ -91,15 +94,15 @@ public struct ManagedApp: Identifiable, Codable, Hashable, Sendable {
     public init(
         id: UUID = UUID(),
         name: String,
-        stackPreset: AppStackPreset = .vite,
+        stackPreset: AppStackPreset = .auto,
         repoURL: String = "",
         branch: String = "main",
         localPath: String = "",
         monitorURL: String = "http://localhost:5173",
         port: Int = 5173,
         installCommand: String = "auto",
-        buildCommand: String = "npm run build",
-        startCommand: String = "npm run dev -- --port 5173",
+        buildCommand: String = "auto",
+        startCommand: String = "auto",
         autoRestart: Bool = true,
         autoDeploy: Bool = true,
         runOnStartup: Bool = false
@@ -215,8 +218,7 @@ public enum DependencyProjectType: String, CaseIterable, Identifiable, Sendable 
     public static func defaultType(for preset: AppStackPreset?) -> DependencyProjectType {
         switch preset {
         case .vite, .nextjs: return .nodejsPnpm
-        case .nodeServer: return .nodejsNpm
-        case .custom, .none: return .nodejsNpm
+        case .auto, .nodeServer, .custom, .none: return .nodejsNpm
         }
     }
 }
