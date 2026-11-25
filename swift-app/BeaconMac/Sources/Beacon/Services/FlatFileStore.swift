@@ -102,7 +102,7 @@ public final class FlatFileStore {
 
     private func parseLine(_ line: String, index: Int) -> LogEntry {
         // Format: <ISO8601> [LEVEL] [SOURCE] Message
-        let pattern = #"^(\S+)\s+\[(INFO|WARN|ERROR)\]\s+\[(VITE|GIT|OLLAMA|CLAUDE|TERMINAL|STARTUP|EMAIL|SYSTEM)\]\s+(.*)$"#
+        let pattern = #"^(\S+)\s+\[(INFO|WARN|ERROR)\]\s+\[(VITE|GIT|OLLAMA|CLAUDE|TERMINAL|STARTUP|ALERTS|EMAIL|SYSTEM)\]\s+(.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)),
               match.numberOfRanges == 5,
@@ -115,7 +115,8 @@ public final class FlatFileStore {
 
         let timestamp = isoFormatter.date(from: String(line[tsRange])) ?? Date()
         let level = LogLevel(rawValue: String(line[lvlRange]).lowercased()) ?? .info
-        let source = LogSource(rawValue: String(line[srcRange]).lowercased()) ?? .system
+        let rawSource = String(line[srcRange]).lowercased()
+        let source = rawSource == "email" ? .alerts : (LogSource(rawValue: rawSource) ?? .system)
         let message = String(line[msgRange])
         return LogEntry(id: "\(line[tsRange])-\(index)", timestamp: timestamp, source: source, level: level, message: message)
     }

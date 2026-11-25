@@ -154,15 +154,6 @@ struct ActivityLogView: View {
                 .disabled(filteredLogs.isEmpty)
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
-                Button("AI Help") {
-                    controller.openAIHelp(
-                        title: "Real-Time Activity Log",
-                        logText: formattedFilteredLogs
-                    )
-                }
-                .disabled(filteredLogs.isEmpty)
-                .buttonStyle(BeaconPrimaryButtonStyle())
-
                 Menu {
                     Button {
                         triggerExport(format: .txt, filteredOnly: false)
@@ -315,13 +306,6 @@ struct ActivityLogView: View {
                                     Button("Export All Session Logs (.json)") {
                                         triggerExport(format: .json, filteredOnly: false)
                                     }
-                                    Divider()
-                                    Button("Ask AI About This Entry") {
-                                        controller.openAIHelp(
-                                            title: "Activity Log (\(entry.source.label))",
-                                            logText: formatEntry(entry)
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -406,7 +390,7 @@ struct ActivityLogView: View {
             case .claude: return Color(red: 0.76, green: 0.36, blue: 0.04)
             case .terminal: return Color(red: 0.04, green: 0.52, blue: 0.48)
             case .startup: return Color(red: 0.06, green: 0.46, blue: 0.56)
-            case .email: return Color(red: 0.68, green: 0.48, blue: 0.0)
+            case .alerts: return Color(red: 0.68, green: 0.48, blue: 0.0)
             case .system: return Color(red: 0.36, green: 0.42, blue: 0.52)
             }
         }
@@ -417,7 +401,7 @@ struct ActivityLogView: View {
         case .claude: return .orange
         case .terminal: return .mint
         case .startup: return .teal
-        case .email: return .yellow
+        case .alerts: return .yellow
         case .system: return .gray
         }
     }

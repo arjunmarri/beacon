@@ -4,7 +4,6 @@ import Security
 public enum KeychainAccount: String, Sendable {
     case githubToken = "beacon.github.pat"
     case claudeAPIKey = "beacon.anthropic.apikey"
-    case smtpPassword = "beacon.smtp.password"
     case openaiAPIKey = "beacon.openai.apikey"
     case geminiAPIKey = "beacon.gemini.apikey"
     case openrouterAPIKey = "beacon.openrouter.apikey"
@@ -15,7 +14,7 @@ public enum KeychainAccount: String, Sendable {
     case supabaseAPIKey = "beacon.supabase.apikey"
 }
 
-/// Native macOS Keychain wrapper so pasted Git, AI, Cloud, and SMTP secrets
+/// Native macOS Keychain wrapper so pasted Git, AI, and Cloud secrets
 /// are stored encrypted in the user's Keychain (never in plaintext config files).
 public final class KeychainStore: Sendable {
     private let serviceName: String

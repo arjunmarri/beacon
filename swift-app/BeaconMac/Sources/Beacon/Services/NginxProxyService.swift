@@ -70,7 +70,7 @@ public final class NginxProxyService: Sendable {
 
     // MARK: - Config Generation
 
-    public func generateConfigText(from config: NginxProxyConfig) -> String {
+    public func generateConfigText(from config: NginxProxyConfig, includeStubStatus: Bool = true) -> String {
         let listenPort = Self.clampedPort(config.listenPort, fallback: 8080)
         let bindDirective = config.exposeOnLAN ? "\(listenPort)" : "127.0.0.1:\(listenPort)"
         let enabledRoutes = config.routes.filter(\.enabled)
@@ -116,6 +116,7 @@ public final class NginxProxyService: Sendable {
         lines.append("        listen \(bindDirective) default_server;")
         lines.append("        server_name localhost 127.0.0.1 _;")
         lines.append("")
+        // BeaconMac internal health probe
         lines.append("        # BeaconMac internal health probe")
         lines.append("        location = /_beacon/nginx-health {")
         lines.append("            access_log off;")
@@ -123,6 +124,17 @@ public final class NginxProxyService: Sendable {
         lines.append("            return 200 '{\"ok\":true,\"engine\":\"nginx\",\"port\":\(listenPort),\"routes\":\(enabledRoutes.count)}';")
         lines.append("        }")
         lines.append("")
+        if includeStubStatus {
+            lines.append("        # BeaconMac real-time connection stats (loopback only)")
+            lines.append("        location = /_beacon/nginx-status {")
+            lines.append("            stub_status;")
+            lines.append("            access_log off;")
+            lines.append("            allow 127.0.0.1;")
+            lines.append("            allow ::1;")
+            lines.append("            deny all;")
+            lines.append("        }")
+            lines.append("")
+        }
 
         // Path-based locations for all enabled routes
         var emittedPrefixes: Set<String> = []
@@ -239,16 +251,20 @@ public final class NginxProxyService: Sendable {
     }
 
     @discardableResult
-    public func writeConfig(from config: NginxProxyConfig) -> String {
-        let text = generateConfigText(from: config)
+    public func writeConfig(from config: NginxProxyConfig, includeStubStatus: Bool = true) -> String {
+        let text = generateConfigText(from: config, includeStubStatus: includeStubStatus)
         try? FileManager.default.createDirectory(at: configDirectoryURL, withIntermediateDirectories: true)
         try? text.data(using: .utf8)?.write(to: configFileURL, options: .atomic)
         return text
     }
 
-    // MARK: - Loopback Health Probe
+    // MARK: - Loopback Health & Real-Time Connection Stats Probes
 
     public func probeHealth(port: Int) async -> NginxHealthResponse? {
+        await probeHealthWithLatency(port: port)?.health
+    }
+
+    public func probeHealthWithLatency(port: Int) async -> (health: NginxHealthResponse, latencyMs: Int)? {
         guard (80...65535).contains(port),
               let url = URL(string: "http://127.0.0.1:\(port)/_beacon/nginx-health") else {
             return nil
@@ -259,15 +275,89 @@ public final class NginxProxyService: Sendable {
         request.timeoutInterval = 2.0
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
+        let start = CFAbsoluteTimeGetCurrent()
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let latencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - start) * 1000.0))
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let decoded = try? JSONDecoder().decode(NginxHealthResponse.self, from: data) else {
                 return nil
             }
-            return try? JSONDecoder().decode(NginxHealthResponse.self, from: data)
+            return (decoded, latencyMs)
         } catch {
             return nil
         }
+    }
+
+    public func probeStubStatus(port: Int) async -> NginxStubStatusSnapshot? {
+        guard (80...65535).contains(port),
+              let url = URL(string: "http://127.0.0.1:\(port)/_beacon/nginx-status") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 2.0
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let body = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            return Self.parseStubStatus(body, at: Date())
+        } catch {
+            return nil
+        }
+    }
+
+    /// Parses NGINX `ngx_http_stub_status_module` plaintext output:
+    /// ```
+    /// Active connections: 3
+    /// server accepts handled requests
+    ///  48 48 112
+    /// Reading: 0 Writing: 1 Waiting: 2
+    /// ```
+    public static func parseStubStatus(_ text: String, at date: Date = Date()) -> NginxStubStatusSnapshot? {
+        let lines = text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard lines.count >= 4 else { return nil }
+
+        // Line 1: Active connections: <N>
+        guard let activeStr = lines[0].split(separator: ":").last?.trimmingCharacters(in: .whitespaces),
+              let active = Int(activeStr) else {
+            return nil
+        }
+
+        // Line 3: <accepts> <handled> <requests>
+        let counters = lines[2].split(whereSeparator: \.isWhitespace).compactMap { Int($0) }
+        guard counters.count >= 3 else { return nil }
+
+        // Line 4: Reading: <R> Writing: <W> Waiting: <Wt>
+        let tokens = lines[3].split(whereSeparator: \.isWhitespace).map(String.init)
+        func valueAfter(_ key: String) -> Int? {
+            guard let idx = tokens.firstIndex(where: { $0.caseInsensitiveCompare(key) == .orderedSame }),
+                  idx + 1 < tokens.count else { return nil }
+            return Int(tokens[idx + 1])
+        }
+
+        let reading = valueAfter("Reading:") ?? 0
+        let writing = valueAfter("Writing:") ?? 0
+        let waiting = valueAfter("Waiting:") ?? 0
+
+        return NginxStubStatusSnapshot(
+            activeConnections: active,
+            accepts: counters[0],
+            handled: counters[1],
+            requests: counters[2],
+            reading: reading,
+            writing: writing,
+            waiting: waiting,
+            capturedAt: date
+        )
     }
 
     // MARK: - Local Network IPv4 Discovery

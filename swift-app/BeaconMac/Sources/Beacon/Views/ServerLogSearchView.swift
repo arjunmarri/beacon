@@ -219,27 +219,13 @@ struct ServerLogSearchView: View {
                         }
                     }
                     .buttonStyle(BeaconSecondaryButtonStyle())
-
-                    Button("AI Help") {
-                        controller.openAIHelp(
-                            title: "Server Log Search (\(result.query))",
-                            logText: "$ \(result.commandPreview)\n\n\(result.preformattedOutput)"
-                        )
-                    }
-                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
             }
 
             ServerLogPreformattedOutputView(
                 result: result,
                 background: palette.console,
-                autoScrollEnabled: autoScrollEnabled,
-                onAskAI: { entryText in
-                    controller.openAIHelp(
-                        title: "Server Log Entry (\(result.query))",
-                        logText: entryText
-                    )
-                }
+                autoScrollEnabled: autoScrollEnabled
             )
             .frame(height: height)
         }
@@ -324,7 +310,6 @@ struct ServerLogPreformattedOutputView: View {
     let result: ServerLogSearchResult
     let background: Color
     var autoScrollEnabled: Bool = true
-    var onAskAI: ((String) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredRowID: Int?
@@ -453,12 +438,6 @@ struct ServerLogPreformattedOutputView: View {
                                     Button("Copy All Matched Results") {
                                         NSPasteboard.general.clearContents()
                                         NSPasteboard.general.setString(result.preformattedOutput, forType: .string)
-                                    }
-                                    if let onAskAI {
-                                        Divider()
-                                        Button("Ask AI About This Entry") {
-                                            onAskAI(row.rawLine)
-                                        }
                                     }
                                 }
                             }
@@ -618,29 +597,13 @@ private struct ServerLogSearchModalSheet: View {
                             }
                         }
                         .buttonStyle(BeaconSecondaryButtonStyle())
-
-                        Button("AI Help") {
-                            dismiss()
-                            controller.openAIHelp(
-                                title: "Server Log Search (\(result.query))",
-                                logText: "$ \(result.commandPreview)\n\n\(result.preformattedOutput)"
-                            )
-                        }
-                        .buttonStyle(BeaconPrimaryButtonStyle())
                     }
                 }
 
                 ServerLogPreformattedOutputView(
                     result: result,
                     background: palette.console,
-                    autoScrollEnabled: autoScrollEnabled,
-                    onAskAI: { entryText in
-                        dismiss()
-                        controller.openAIHelp(
-                            title: "Server Log Entry (\(result.query))",
-                            logText: entryText
-                        )
-                    }
+                    autoScrollEnabled: autoScrollEnabled
                 )
                 .frame(minHeight: 360, maxHeight: .infinity)
             } else {

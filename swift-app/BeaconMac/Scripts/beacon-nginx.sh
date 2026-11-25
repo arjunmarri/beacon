@@ -103,6 +103,11 @@ case "$ACTION" in
       exit 0
     fi
     echo "NGINX:INSTALLED:YES:$VER"
+    if "$NGINX_BIN" -V 2>&1 | grep -q "http_stub_status_module"; then
+      echo "NGINX:STUB_STATUS:YES:http_stub_status_module"
+    else
+      echo "NGINX:STUB_STATUS:NO:unsupported"
+    fi
     RUNNING_PID=$(read_pid || true)
     if [ -n "$RUNNING_PID" ]; then
       echo "NGINX:RUNNING:YES:$RUNNING_PID"

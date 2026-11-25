@@ -45,12 +45,6 @@ struct ContentView: View {
                 .fixedSize()
                 .help("Switch between White (Light) and Dark theme in real time")
 
-                Button(controller.update.status == .checking ? "Checking…" : "Check Updates") {
-                    Task { await controller.checkForUpdates(userInitiated: true) }
-                }
-                .disabled(controller.update.status == .checking || controller.update.status == .downloading || controller.update.status == .installing)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
                 Button("Install Dependencies") {
                     controller.openDependencyInstaller()
                 }
@@ -95,35 +89,6 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
-                    if let release = controller.update.latestRelease,
-                       (controller.update.status == .updateAvailable || controller.update.status == .downloading || controller.update.status == .installing || controller.update.status == .readyToRelaunch) {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("BeaconMac v\(release.version) Available (installed: v\(controller.update.currentVersion))")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(palette.primaryText)
-                                Text(controller.update.statusMessage)
-                                    .font(.system(size: 11.5))
-                                    .foregroundStyle(palette.bodyText)
-                            }
-                            Spacer()
-                            Button("Release Notes") {
-                                controller.openLatestReleasePage()
-                            }
-                            .buttonStyle(BeaconSecondaryButtonStyle())
-
-                            Button(controller.update.status == .downloading || controller.update.status == .installing ? "Updating…" : "Update & Relaunch") {
-                                Task { await controller.installAvailableUpdate() }
-                            }
-                            .disabled(controller.update.status == .downloading || controller.update.status == .installing || controller.update.status == .readyToRelaunch)
-                            .buttonStyle(BeaconPrimaryButtonStyle())
-                        }
-                        .padding(14)
-                        .background(palette.isLight ? Color(red: 0.91, green: 0.98, blue: 0.94) : Color(red: 0.07, green: 0.19, blue: 0.15))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.green.opacity(0.38)))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-
                     if !controller.scriptsInstalled {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -154,6 +119,7 @@ struct ContentView: View {
                     MultiAppSectionView(controller: controller)
                     BuiltInNodeServerView(controller: controller)
                     NginxReverseProxyView(controller: controller)
+                    NginxHealthMonitorView(controller: controller)
                     CloudflareTunnelSectionView(controller: controller)
                     ServiceCardsView(controller: controller)
                     TerminalPanelView(controller: controller)
@@ -162,12 +128,16 @@ struct ContentView: View {
                     ActivityLogView(controller: controller)
                     ConfigurationView(controller: controller)
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Spacer()
                         Text("Designed by")
                             .foregroundStyle(palette.secondaryText)
                         Link("SoroAI", destination: URL(string: "https://soroai.com")!)
                             .foregroundStyle(palette.accentLink)
+                        Text("·")
+                            .foregroundStyle(palette.secondaryText)
+                        Text("Local-first privacy · No telemetry or third-party log sharing")
+                            .foregroundStyle(palette.secondaryText)
                         Spacer()
                     }
                     .font(.system(size: 11))
@@ -178,10 +148,6 @@ struct ContentView: View {
             .background(palette.canvas)
         }
         .background(palette.canvas)
-        .sheet(item: $controller.aiHelpContext) { context in
-            AILogHelpSheet(controller: controller, context: context)
-                .preferredColorScheme(activeScheme)
-        }
         .sheet(isPresented: $controller.showingDependencyInstaller) {
             PrerequisiteInstallerSheet(
                 controller: controller,

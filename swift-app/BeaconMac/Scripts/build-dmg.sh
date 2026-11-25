@@ -137,6 +137,22 @@ else
     "$SWIFT_DIR/Sources/Beacon/Resources/Info.plist" > "$APP_BUNDLE/Contents/Info.plist"
 fi
 
+# Ensure PrivacyInfo.xcprivacy and AppIcon.icns are bundled inside Contents/Resources BEFORE code signing
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+if [ -f "$SWIFT_DIR/Sources/Beacon/Resources/PrivacyInfo.xcprivacy" ] && [ ! -f "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy" ]; then
+  cp "$SWIFT_DIR/Sources/Beacon/Resources/PrivacyInfo.xcprivacy" "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy"
+fi
+if [ ! -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ] && command -v iconutil >/dev/null 2>&1; then
+  ICONSET_SRC="$SWIFT_DIR/Sources/Beacon/Resources/Assets.xcassets/AppIcon.appiconset"
+  if [ -d "$ICONSET_SRC" ]; then
+    TMP_ICONSET="$BUILD_ROOT/AppIcon.iconset"
+    rm -rf "$TMP_ICONSET"
+    mkdir -p "$TMP_ICONSET"
+    cp "$ICONSET_SRC/icon_"*.png "$TMP_ICONSET/" 2>/dev/null || true
+    iconutil -c icns "$TMP_ICONSET" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" || true
+  fi
+fi
+
 # Bundle helper scripts inside BeaconMac.app/Contents/Resources/Scripts BEFORE code signing
 mkdir -p "$APP_BUNDLE/Contents/Resources/Scripts"
 cp "$SWIFT_DIR/Scripts/"*.sh "$APP_BUNDLE/Contents/Resources/Scripts/"

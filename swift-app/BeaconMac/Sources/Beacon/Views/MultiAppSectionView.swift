@@ -172,33 +172,11 @@ struct MultiAppSectionView: View {
             }
 
             if let err = state.lastError, !err.isEmpty, !state.isHealthy, !isPendingOrStopped {
-                HStack(spacing: 10) {
-                    Text(err)
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.errorText)
-                        .textSelection(.enabled)
-                        .lineLimit(2)
-                    Spacer()
-                    Button("AI Help") {
-                        let recentTerminal = controller.terminalLines
-                            .filter { $0.appName == app.name || $0.appName == "system" }
-                            .suffix(40)
-                            .map { "[\($0.appName)] \($0.text)" }
-                            .joined(separator: "\n")
-                        let snapshot = """
-                        App: \(app.name)
-                        Monitor URL: \(app.monitorURL) (port \(app.port))
-                        Local Path: \(app.localPath.isEmpty ? "(none)" : app.localPath)
-                        Dependencies: \(state.dependencySummary)
-                        Probe Error: \(err)
-
-                        Recent Terminal Output:
-                        \(recentTerminal.isEmpty ? "(none)" : recentTerminal)
-                        """
-                        controller.openAIHelp(title: "\(app.name) Troubleshooter", logText: snapshot, appName: app.name)
-                    }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
-                }
+                Text(err)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.errorText)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
             }
 
             let tunnel = controller.cloudflareTunnelEntry(for: app)

@@ -263,18 +263,6 @@ struct PrerequisiteInstallerSheet: View {
                         }
                     }
                     .buttonStyle(BeaconSecondaryButtonStyle())
-
-                    Button("AI Help") {
-                        let dump = installOutput.joined(separator: "\n")
-                        let appName = selectedApp?.name
-                        dismiss()
-                        controller.openAIHelp(
-                            title: "Dependency Installer Output",
-                            logText: dump,
-                            appName: appName
-                        )
-                    }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
                 }
             }
 

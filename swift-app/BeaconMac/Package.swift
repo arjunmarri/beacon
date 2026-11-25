@@ -16,7 +16,11 @@ let package = Package(
             exclude: [
                 "Resources/Info.plist",
                 "Resources/Beacon.entitlements",
-                "Resources/Beacon-DMG.entitlements"
+                "Resources/Beacon-DMG.entitlements",
+                "Resources/Assets.xcassets"
+            ],
+            resources: [
+                .copy("Resources/PrivacyInfo.xcprivacy")
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -25,8 +29,7 @@ let package = Package(
                 .linkedFramework("UserNotifications"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("IOKit"),
-                .linkedFramework("UniformTypeIdentifiers"),
-                .linkedFramework("CryptoKit")
+                .linkedFramework("UniformTypeIdentifiers")
             ]
         )
     ]

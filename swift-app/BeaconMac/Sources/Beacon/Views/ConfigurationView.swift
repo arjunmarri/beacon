@@ -7,12 +7,9 @@ struct ConfigurationView: View {
     @State private var ollamaEndpoint: String = "http://127.0.0.1:11434"
     @State private var gitPollIntervalText: String = "60"
     @State private var maxRestartsText: String = "10"
-    @State private var recipientEmail: String = ""
     @State private var notifyOnCrash: Bool = true
     @State private var notifyOnDeploy: Bool = true
     @State private var notifyOnOllamaDown: Bool = true
-    @State private var autoCheckForUpdates: Bool = true
-    @State private var autoInstallUpdates: Bool = false
     @State private var expanded: Bool = true
 
     // Per-provider draft state (stored only in memory while editing; secrets persist solely to macOS Keychain)
@@ -92,7 +89,7 @@ struct ConfigurationView: View {
                             Text("Cloud AI APIs (ChatGPT, Gemini, Claude, OpenRouter, Groq & Custom)")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(palette.sectionHeader)
-                            Text("Connect any cloud AI API below to verify connectivity and power AI Help troubleshooting across all logs.")
+                            Text("Connect any cloud AI API below to store your key in macOS Keychain and monitor endpoint reachability.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(palette.secondaryText)
                         }
@@ -113,7 +110,7 @@ struct ConfigurationView: View {
                         Text("Cloud & Edge Platforms (Cloudflare, Vercel, Supabase)")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(palette.sectionHeader)
-                        Text("Verify API tokens in macOS Keychain. Adding a Cloudflare Account ID also unlocks Cloudflare Workers AI in AI Log Help.")
+                        Text("Verify API tokens in macOS Keychain. Adding a Cloudflare Account ID enables named Cloudflare Tunnel provisioning.")
                             .font(.system(size: 11))
                             .foregroundStyle(palette.secondaryText)
                     }
@@ -172,94 +169,62 @@ struct ConfigurationView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 7))
                     }
 
-                    GridRow {
-                        fieldLabel("Alert Email Recipient")
-                        HStack(spacing: 8) {
-                            TextField("ops@example.com", text: $recipientEmail)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(palette.primaryText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(palette.input)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
-                            Button("Test Alert") {
-                                Task { await controller.sendTestAlert() }
-                            }
-                            .buttonStyle(BeaconSecondaryButtonStyle())
-                        }
-                    }
                 }
 
-                HStack {
+                HStack(spacing: 16) {
                     Toggle("Alert on crash", isOn: $notifyOnCrash)
                     Toggle("Alert on deploy", isOn: $notifyOnDeploy)
                     Toggle("Alert on Ollama offline", isOn: $notifyOnOllamaDown)
                     Spacer()
+                    Button("Test Notification") {
+                        Task { await controller.sendTestAlert() }
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Save Configuration") {
+                        let poll = Int(gitPollIntervalText) ?? controller.config.gitPollIntervalSec
+                        let maxR = Int(maxRestartsText) ?? controller.config.maxRestarts
+                        Task {
+                            await controller.saveGlobalConfiguration(
+                                ollamaEndpoint: ollamaEndpoint,
+                                gitPollIntervalSec: poll,
+                                maxRestarts: maxR,
+                                notifyOnCrash: notifyOnCrash,
+                                notifyOnDeploy: notifyOnDeploy,
+                                notifyOnOllamaDown: notifyOnOllamaDown
+                            )
+                        }
+                    }
+                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondaryText)
 
                 Divider().overlay(palette.border)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Automatic Self-Updates (v\(controller.update.currentVersion) · build \(controller.update.currentBuild))")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(palette.sectionHeader)
-                            Text(controller.update.statusMessage)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(palette.secondaryText)
-                        }
-                        Spacer()
-                        Button(controller.update.status == .checking ? "Checking…" : "Check Now") {
-                            Task { await controller.checkForUpdates(userInitiated: true) }
-                        }
-                        .disabled(controller.update.status == .checking || controller.update.status == .downloading || controller.update.status == .installing)
-                        .buttonStyle(BeaconSecondaryButtonStyle())
-
-                        if controller.update.status == .updateAvailable, let release = controller.update.latestRelease {
-                            Button("Install v\(release.version)") {
-                                Task { await controller.installAvailableUpdate() }
-                            }
-                            .buttonStyle(BeaconPrimaryButtonStyle())
-                        }
-                    }
-
-                    HStack(spacing: 16) {
-                        Toggle("Automatically check for updates", isOn: $autoCheckForUpdates)
-                            .onChange(of: autoCheckForUpdates) { _, newVal in
-                                controller.updateAutoUpdatePreferences(autoCheck: newVal, autoInstall: false)
-                            }
-
-                        Text("Installs verify SHA-256, Developer ID Team ID & Gatekeeper")
-                            .font(.system(size: 11))
+                // MARK: - Privacy & Data Handling Placeholder
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Privacy & Data Handling")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(palette.sectionHeader)
+                    Text("BeaconMac stores all configuration and logs locally on your Mac (`~/Library/Application Support/Beacon/`) and encrypts credentials in macOS Keychain. Zero analytics, zero tracking (`NSPrivacyTracking = false`), and no local logs are transmitted to third-party AI services.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(palette.secondaryText)
+                    HStack(spacing: 8) {
+                        Text("Privacy Policy URL (Placeholder):")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(palette.secondaryText)
-                        Spacer()
-                        Button("Save Configuration") {
-                            let poll = Int(gitPollIntervalText) ?? controller.config.gitPollIntervalSec
-                            let maxR = Int(maxRestartsText) ?? controller.config.maxRestarts
-                            Task {
-                                await controller.saveGlobalConfiguration(
-                                    ollamaEndpoint: ollamaEndpoint,
-                                    gitPollIntervalSec: poll,
-                                    maxRestarts: maxR,
-                                    recipientEmail: recipientEmail,
-                                    notifyOnCrash: notifyOnCrash,
-                                    notifyOnDeploy: notifyOnDeploy,
-                                    notifyOnOllamaDown: notifyOnOllamaDown,
-                                    autoCheckForUpdates: autoCheckForUpdates,
-                                    autoInstallUpdates: false
-                                )
-                            }
-                        }
-                        .buttonStyle(BeaconPrimaryButtonStyle())
+                        Text((Bundle.main.object(forInfoDictionaryKey: "BeaconPrivacyPolicyURL") as? String) ?? "https://example.com/beaconmac/privacy")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(palette.accentLink)
+                            .textSelection(.enabled)
                     }
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.secondaryText)
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(palette.row)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding(18)
@@ -284,7 +249,7 @@ struct ConfigurationView: View {
                     Text("Anthropic Claude")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(palette.primaryText)
-                    Text("api.anthropic.com · Claude Sonnet / Opus / Haiku · powers AI Log Help")
+                    Text("api.anthropic.com · Verify Anthropic API key & model reachability")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -492,7 +457,7 @@ struct ConfigurationView: View {
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(palette.bodyText)
 
-                    if kind.supportsAIHelp {
+                    if kind.supportsModelSelection {
                         if !state.models.isEmpty {
                             Picker("Model", selection: modelBinding) {
                                 ForEach(state.models, id: \.self) { m in
@@ -610,12 +575,9 @@ struct ConfigurationView: View {
         ollamaEndpoint = controller.config.ollamaEndpoint
         gitPollIntervalText = "\(controller.config.gitPollIntervalSec)"
         maxRestartsText = "\(controller.config.maxRestarts)"
-        recipientEmail = controller.config.recipientEmail
         notifyOnCrash = controller.config.notifyOnCrash
         notifyOnDeploy = controller.config.notifyOnDeploy
         notifyOnOllamaDown = controller.config.notifyOnOllamaDown
-        autoCheckForUpdates = controller.config.autoCheckForUpdates
-        autoInstallUpdates = controller.config.autoInstallUpdates
         for kind in CloudProviderKind.allCases {
             let cfg = controller.cloudProviderConfig(for: kind)
             baseURLDrafts[kind] = cfg.baseURL

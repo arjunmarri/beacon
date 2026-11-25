@@ -100,15 +100,6 @@ struct TerminalPanelView: View {
                     .buttonStyle(BeaconSecondaryButtonStyle())
                 }
 
-                Button("AI Help") {
-                    controller.openAIHelp(
-                        title: "Integrated Terminal Output",
-                        logText: formattedDump(controller.terminalLines)
-                    )
-                }
-                .disabled(controller.terminalLines.isEmpty)
-                .buttonStyle(BeaconPrimaryButtonStyle())
-
                 Button("Clear") {
                     pausedNewLinesCount = 0
                     controller.clearTerminal()
@@ -205,14 +196,6 @@ struct TerminalPanelView: View {
                                         }
                                         Button("Copy All Output") {
                                             copyToPasteboard(formattedDump(controller.terminalLines), flag: $copiedAll)
-                                        }
-                                        Divider()
-                                        Button("Ask AI About This Line") {
-                                            controller.openAIHelp(
-                                                title: "Terminal Line (\(line.appName))",
-                                                logText: formatLine(line),
-                                                appName: line.appName
-                                            )
                                         }
                                     }
                                 }

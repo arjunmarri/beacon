@@ -18,13 +18,9 @@ public final class BeaconController {
     public var builtInServer = BuiltInServerState()
     public var nginxProxy = NginxProxyState()
     public var cloudflareTunnel = CloudflareTunnelState()
-    public var update = AppUpdateState()
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
     public var isSearchingServerLog: Bool = false
-    public var aiHelpContext: AILogContext?
-    public var aiHelpResult: AITroubleshootingResult?
-    public var isAnalyzingLogs: Bool = false
     public var showingDependencyInstaller: Bool = false
     public var dependencyInstallerAppID: UUID?
     public var logs: [LogEntry] = []
@@ -44,8 +40,6 @@ public final class BeaconController {
     private let nginxProxyService: NginxProxyService
     private let cloudflareTunnelService: CloudflareTunnelService
     private let serverLogSearchService = ServerLogSearchService()
-    private let aiTroubleshootingService = LogTroubleshootingService()
-    private let updateService = AppUpdateService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
     private let claudeService = ClaudeService()
@@ -53,7 +47,7 @@ public final class BeaconController {
     private let alertService = AlertService()
 
     private var pollingTask: Task<Void, Never>?
-    private var updateLoopTask: Task<Void, Never>?
+    private var nginxMetricsTask: Task<Void, Never>?
     private var tickCount = 0
 
     public var aggregateLight: TrafficLightColor {
@@ -103,7 +97,7 @@ public final class BeaconController {
             await bootServices()
         }
         startPollingLoop()
-        startAutoUpdateLoop()
+        startNginxLiveMetricsLoop()
     }
 
     public func runtimeState(for appID: UUID) -> ManagedAppRuntimeState {
@@ -116,24 +110,6 @@ public final class BeaconController {
 
     public func cloudProviderState(for kind: CloudProviderKind) -> CloudProviderRuntimeState {
         cloudProviderStates[kind] ?? CloudProviderRuntimeState()
-    }
-
-    public var hasAnyConnectedAIProvider: Bool {
-        if claude.isConnected || ollama.isConnected || keychain.read(.claudeAPIKey) != nil {
-            return true
-        }
-        for kind in CloudProviderKind.allCases where kind.supportsAIHelp {
-            if cloudProviderState(for: kind).isConnected || keychain.read(kind.keychainAccount) != nil {
-                if kind == .cloudflare {
-                    if !cloudProviderConfig(for: .cloudflare).accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        return true
-                    }
-                } else {
-                    return true
-                }
-            }
-        }
-        return false
     }
 
     public func setAppearanceMode(_ mode: BeaconAppearanceMode) {
@@ -255,18 +231,15 @@ public final class BeaconController {
         }
     }
 
-    private func startAutoUpdateLoop() {
-        updateLoopTask?.cancel()
-        updateLoopTask = Task { [weak self] in
-            // Short delay so initial launch stays snappy
-            try? await Task.sleep(for: .seconds(4))
+    private func startNginxLiveMetricsLoop() {
+        nginxMetricsTask?.cancel()
+        nginxMetricsTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self else { break }
-                if self.config.autoCheckForUpdates {
-                    await self.checkForUpdates(userInitiated: false)
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, !Task.isCancelled else { break }
+                if self.nginxProxy.isRunning && self.nginxProxy.metrics.livePollingEnabled {
+                    await self.pollNginxMetricsNow()
                 }
-                // Re-check every 6 hours automatically
-                try? await Task.sleep(for: .seconds(6 * 60 * 60))
             }
         }
     }
@@ -431,11 +404,9 @@ public final class BeaconController {
             if config.notifyOnCrash {
                 let note = await alertService.sendAlert(
                     title: "\(app.name) Down",
-                    body: "\(app.monitorURL) stopped responding.",
-                    recipientEmail: config.recipientEmail,
-                    emailEnabled: config.emailEnabled
+                    body: "\(app.monitorURL) stopped responding."
                 )
-                log(.email, .info, note)
+                log(.alerts, .info, note)
             }
             if app.autoRestart && !app.localPath.isEmpty && state.restartCount < config.maxRestarts {
                 await restartManagedApp(app, reason: "auto-recovery #\(state.restartCount + 1)")
@@ -540,70 +511,6 @@ public final class BeaconController {
         return res
     }
 
-    // MARK: - AI Log Troubleshooting
-
-    public func openAIHelp(title: String, logText: String, appName: String? = nil) {
-        aiHelpResult = nil
-        aiHelpContext = AILogContext(title: title, logText: logText, appName: appName)
-    }
-
-    public func buildAITroubleshootingPrompt(context: AILogContext, followUp: String? = nil) -> String {
-        aiTroubleshootingService.buildPrompt(context: context, followUp: followUp)
-    }
-
-    public func analyzeLogsWithAI(
-        context: AILogContext,
-        followUp: String?,
-        provider: AIHelpProvider
-    ) async {
-        isAnalyzingLogs = true
-        defer { isAnalyzingLogs = false }
-
-        let openaiCfg = cloudProviderConfig(for: .openai)
-        let geminiCfg = cloudProviderConfig(for: .gemini)
-        let openrouterCfg = cloudProviderConfig(for: .openrouter)
-        let groqCfg = cloudProviderConfig(for: .groq)
-        let cloudflareCfg = cloudProviderConfig(for: .cloudflare)
-        let customCfg = cloudProviderConfig(for: .customOpenAI)
-
-        let cloudBundle = AICloudCredentialsBundle(
-            openaiKey: keychain.read(.openaiAPIKey),
-            openaiModel: openaiCfg.selectedModel.isEmpty ? CloudProviderKind.openai.defaultModel : openaiCfg.selectedModel,
-            geminiKey: keychain.read(.geminiAPIKey),
-            geminiModel: geminiCfg.selectedModel.isEmpty ? CloudProviderKind.gemini.defaultModel : geminiCfg.selectedModel,
-            openrouterKey: keychain.read(.openrouterAPIKey),
-            openrouterModel: openrouterCfg.selectedModel.isEmpty ? CloudProviderKind.openrouter.defaultModel : openrouterCfg.selectedModel,
-            groqKey: keychain.read(.groqAPIKey),
-            groqModel: groqCfg.selectedModel.isEmpty ? CloudProviderKind.groq.defaultModel : groqCfg.selectedModel,
-            cloudflareToken: keychain.read(.cloudflareAPIToken),
-            cloudflareAccountID: cloudflareCfg.accountID,
-            cloudflareModel: cloudflareCfg.selectedModel.isEmpty ? CloudProviderKind.cloudflare.defaultModel : cloudflareCfg.selectedModel,
-            customKey: keychain.read(.customAIAPIKey),
-            customBaseURL: customCfg.baseURL,
-            customModel: customCfg.selectedModel.isEmpty ? CloudProviderKind.customOpenAI.defaultModel : customCfg.selectedModel
-        )
-
-        let result = await aiTroubleshootingService.analyze(
-            context: context,
-            followUp: followUp,
-            provider: provider,
-            claudeAPIKey: keychain.read(.claudeAPIKey),
-            claudeModel: claude.activeModel,
-            ollamaEndpoint: config.ollamaEndpoint,
-            ollamaModel: ollama.activeModel,
-            ollamaConnected: ollama.isConnected,
-            claudeConnected: claude.isConnected,
-            cloudBundle: cloudBundle
-        )
-
-        aiHelpResult = result
-        if result.ok {
-            log(.system, .info, "AI Help analyzed \"\(context.title)\" via \(result.providerLabel) (\(result.durationMs) ms)")
-        } else if let err = result.error {
-            log(.system, .warn, "AI Help (\(result.providerLabel)): \(err)")
-        }
-    }
-
     public func cloneBuildAndDeploy(app: ManagedApp, trigger: String = "manual") async {
         busyAction = "deploy-\(app.id.uuidString)"
         defer { busyAction = nil }
@@ -648,11 +555,9 @@ public final class BeaconController {
             if config.notifyOnDeploy {
                 let note = await alertService.sendAlert(
                     title: "Deployed \(app.name)",
-                    body: res.summary,
-                    recipientEmail: config.recipientEmail,
-                    emailEnabled: config.emailEnabled
+                    body: res.summary
                 )
-                log(.email, .info, note)
+                log(.alerts, .info, note)
             }
             try? await Task.sleep(for: .seconds(2))
             await probeManagedApp(app, logTransition: true)
@@ -1055,11 +960,9 @@ public final class BeaconController {
                 if wasConnected && config.notifyOnOllamaDown {
                     let note = await alertService.sendAlert(
                         title: "Ollama Offline",
-                        body: "Local Ollama daemon at \(config.ollamaEndpoint) stopped responding.",
-                        recipientEmail: config.recipientEmail,
-                        emailEnabled: config.emailEnabled
+                        body: "Local Ollama daemon at \(config.ollamaEndpoint) stopped responding."
                     )
-                    log(.email, .info, note)
+                    log(.alerts, .info, note)
                 }
             }
         }
@@ -1529,7 +1432,81 @@ public final class BeaconController {
     // MARK: - Inbuilt NGINX Reverse Proxy
 
     public var currentNginxConfigText: String {
-        nginxProxyService.generateConfigText(from: config.nginxProxy)
+        nginxProxyService.generateConfigText(
+            from: config.nginxProxy,
+            includeStubStatus: nginxProxy.metrics.stubStatusSupported
+        )
+    }
+
+    private func recordHealthyNginxProbe(port: Int, latencyMs: Int) async {
+        nginxProxy.metrics.probeLatencyMs = latencyMs
+        nginxProxy.metrics.consecutiveHealthyProbes += 1
+        nginxProxy.metrics.consecutiveFailedProbes = 0
+        if nginxProxy.metrics.healthySince == nil {
+            nginxProxy.metrics.healthySince = Date()
+        }
+
+        if let snap = await nginxProxyService.probeStubStatus(port: port) {
+            var rps: Double = 0
+            if let prev = nginxProxy.metrics.latestSnapshot {
+                let dt = snap.capturedAt.timeIntervalSince(prev.capturedAt)
+                if dt > 0.25 && snap.requests >= prev.requests {
+                    rps = Double(snap.requests - prev.requests) / dt
+                }
+            }
+
+            nginxProxy.metrics.stubStatusAvailable = true
+            nginxProxy.metrics.latestSnapshot = snap
+            nginxProxy.metrics.requestsPerSecond = rps
+            nginxProxy.metrics.peakActiveConnections = max(nginxProxy.metrics.peakActiveConnections, snap.activeConnections)
+            nginxProxy.metrics.peakRequestsPerSecond = max(nginxProxy.metrics.peakRequestsPerSecond, rps)
+
+            let sample = NginxConnectionSample(
+                timestamp: snap.capturedAt,
+                activeConnections: snap.activeConnections,
+                reading: snap.reading,
+                writing: snap.writing,
+                waiting: snap.waiting,
+                requestsPerSecond: rps,
+                probeLatencyMs: latencyMs
+            )
+            nginxProxy.metrics.history.append(sample)
+            if nginxProxy.metrics.history.count > 30 {
+                nginxProxy.metrics.history = Array(nginxProxy.metrics.history.suffix(30))
+            }
+        } else {
+            nginxProxy.metrics.stubStatusAvailable = false
+            nginxProxy.metrics.requestsPerSecond = 0
+        }
+    }
+
+    public func pollNginxMetricsNow() async {
+        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
+        nginxProxy.listenPort = port
+        if let probe = await nginxProxyService.probeHealthWithLatency(port: port), probe.health.ok {
+            nginxProxy.isInstalled = true
+            nginxProxy.isRunning = true
+            nginxProxy.light = .green
+            nginxProxy.statusLabel = config.nginxProxy.exposeOnLAN ? "LAN :\(port)" : "Running :\(port)"
+            nginxProxy.lastError = nil
+            nginxProxy.lastCheckedAt = Date()
+            await recordHealthyNginxProbe(port: port, latencyMs: probe.latencyMs)
+        } else {
+            await probeNginxProxy(logTransitions: false)
+        }
+    }
+
+    public func setNginxLivePolling(_ enabled: Bool) {
+        nginxProxy.metrics.livePollingEnabled = enabled
+        if enabled && nginxProxy.isRunning {
+            Task { await pollNginxMetricsNow() }
+        }
+    }
+
+    public func resetNginxMetricsHistory() {
+        nginxProxy.metrics.history = []
+        nginxProxy.metrics.peakActiveConnections = nginxProxy.metrics.latestSnapshot?.activeConnections ?? 0
+        nginxProxy.metrics.peakRequestsPerSecond = nginxProxy.metrics.requestsPerSecond
     }
 
     public func probeNginxProxy(logTransitions: Bool = false) async {
@@ -1539,7 +1516,7 @@ public final class BeaconController {
         nginxProxy.lanAddress = NginxProxyService.detectPrimaryLANIPv4()
         let wasRunning = nginxProxy.isRunning
 
-        if let health = await nginxProxyService.probeHealth(port: port), health.ok {
+        if let probe = await nginxProxyService.probeHealthWithLatency(port: port), probe.health.ok {
             nginxProxy.isInstalled = true
             nginxProxy.isRunning = true
             nginxProxy.light = .green
@@ -1554,7 +1531,11 @@ public final class BeaconController {
                 )
                 if let ver = statusProbe.version { nginxProxy.nginxVersion = ver }
                 if let pid = statusProbe.pid { nginxProxy.pid = pid }
+                if let stubSup = statusProbe.stubStatusSupported {
+                    nginxProxy.metrics.stubStatusSupported = stubSup
+                }
             }
+            await recordHealthyNginxProbe(port: port, latencyMs: probe.latencyMs)
             if logTransitions && !wasRunning {
                 log(.system, .info, "Inbuilt NGINX reverse proxy is online at \(nginxProxy.baseURL)")
             }
@@ -1571,9 +1552,19 @@ public final class BeaconController {
         if let ver = statusProbe.version {
             nginxProxy.nginxVersion = ver
         }
+        if let stubSup = statusProbe.stubStatusSupported {
+            nginxProxy.metrics.stubStatusSupported = stubSup
+        }
         nginxProxy.isRunning = false
         nginxProxy.pid = nil
         nginxProxy.lastCheckedAt = Date()
+        if wasRunning {
+            nginxProxy.metrics.consecutiveFailedProbes += 1
+        }
+        nginxProxy.metrics.healthySince = nil
+        nginxProxy.metrics.probeLatencyMs = nil
+        nginxProxy.metrics.stubStatusAvailable = false
+        nginxProxy.metrics.requestsPerSecond = 0
 
         if !installed {
             nginxProxy.light = .amber
@@ -1592,7 +1583,7 @@ public final class BeaconController {
         let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
         config.nginxProxy.listenPort = port
         nginxProxy.listenPort = port
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
         flatFileStore.saveConfig(config)
 
         let action = restart ? "restart" : "start"
@@ -1626,7 +1617,7 @@ public final class BeaconController {
 
     public func reloadNginxProxy() async {
         let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
 
         busyAction = "nginx-reload"
         defer { busyAction = nil }
@@ -1672,12 +1663,19 @@ public final class BeaconController {
         nginxProxy.light = .amber
         nginxProxy.statusLabel = nginxProxy.isInstalled ? "Stopped" : "Not Installed"
         nginxProxy.lastError = nil
+        nginxProxy.metrics.healthySince = nil
+        nginxProxy.metrics.probeLatencyMs = nil
+        nginxProxy.metrics.stubStatusAvailable = false
+        nginxProxy.metrics.requestsPerSecond = 0
+        nginxProxy.metrics.consecutiveHealthyProbes = 0
+        nginxProxy.metrics.consecutiveFailedProbes = 0
+        nginxProxy.metrics.latestSnapshot = nil
         log(.system, .info, "Stopped inbuilt NGINX reverse proxy on port \(port)")
     }
 
     public func testNginxConfig() async {
         let port = config.nginxProxy.listenPort
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
 
         busyAction = "nginx-test"
         defer { busyAction = nil }
@@ -1721,7 +1719,7 @@ public final class BeaconController {
         config.nginxProxy.autoStart = autoStart
         nginxProxy.listenPort = clampedPort
         flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
 
         if nginxProxy.isRunning {
             if bindChanged {
@@ -1769,7 +1767,7 @@ public final class BeaconController {
         }
 
         flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
 
         if autoStartOrReload {
             if nginxProxy.isRunning {
@@ -1807,7 +1805,7 @@ public final class BeaconController {
         guard let idx = config.nginxProxy.routes.firstIndex(where: { $0.id == route.id }) else { return }
         config.nginxProxy.routes[idx].enabled.toggle()
         flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
         log(.system, .info, "\(config.nginxProxy.routes[idx].enabled ? "Enabled" : "Disabled") NGINX route \"\(route.name)\"")
         if nginxProxy.isRunning {
             await reloadNginxProxy()
@@ -1817,7 +1815,7 @@ public final class BeaconController {
     public func setNginxRootRoute(_ routeID: UUID?) async {
         config.nginxProxy.activeRootRouteID = routeID
         flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
         if let routeID, let match = config.nginxProxy.routes.first(where: { $0.id == routeID }) {
             log(.system, .info, "Set \"\(match.name)\" as active NGINX root route at \(nginxProxy.baseURL)/")
         } else {
@@ -1834,7 +1832,7 @@ public final class BeaconController {
             config.nginxProxy.activeRootRouteID = config.nginxProxy.routes.first?.id
         }
         flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy)
+        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
         log(.system, .info, "Removed NGINX proxy route \"\(route.name)\"")
         if nginxProxy.isRunning {
             await reloadNginxProxy()
@@ -2328,131 +2326,20 @@ public final class BeaconController {
         ollamaEndpoint: String,
         gitPollIntervalSec: Int,
         maxRestarts: Int,
-        recipientEmail: String,
         notifyOnCrash: Bool,
         notifyOnDeploy: Bool,
-        notifyOnOllamaDown: Bool,
-        autoCheckForUpdates: Bool? = nil,
-        autoInstallUpdates: Bool? = nil
+        notifyOnOllamaDown: Bool
     ) async {
         config.ollamaEndpoint = ollamaEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         config.gitPollIntervalSec = max(15, min(3600, gitPollIntervalSec))
         config.maxRestarts = max(1, min(100, maxRestarts))
-        config.recipientEmail = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         config.notifyOnCrash = notifyOnCrash
         config.notifyOnDeploy = notifyOnDeploy
         config.notifyOnOllamaDown = notifyOnOllamaDown
-        if let autoCheckForUpdates { config.autoCheckForUpdates = autoCheckForUpdates }
-        _ = autoInstallUpdates
-        config.autoInstallUpdates = false
-        config.updateFeedRepo = AppUpdateService.pinnedRepo
         ollama.endpoint = config.ollamaEndpoint
         flatFileStore.saveConfig(config)
         log(.system, .info, "Saved flat-file configuration to \(flatFileStore.configFileURL.lastPathComponent)")
         await probeOllama(logResult: false)
-    }
-
-    // MARK: - Verified Self-Updates
-
-    public func updateAutoUpdatePreferences(autoCheck: Bool, autoInstall: Bool = false) {
-        config.autoCheckForUpdates = autoCheck
-        // Silent background binary swaps are disabled; users must explicitly trigger verified installs.
-        config.autoInstallUpdates = false
-        _ = autoInstall
-        flatFileStore.saveConfig(config)
-        log(.system, .info, "Update check preference saved (auto-check: \(autoCheck))")
-    }
-
-    public func checkForUpdates(userInitiated: Bool) async {
-        guard update.status != .checking && update.status != .downloading && update.status != .installing else {
-            return
-        }
-        update.status = .checking
-        update.lastError = nil
-        update.statusMessage = "Checking GitHub releases for updates…"
-
-        do {
-            let release = try await updateService.checkLatestRelease(
-                repo: AppUpdateService.pinnedRepo,
-                githubToken: keychain.read(.githubToken)
-            )
-            update.lastCheckedAt = Date()
-            update.latestRelease = release
-
-            let cmp = AppUpdateService.compareSemVer(release.version, update.currentVersion)
-            if cmp == .orderedDescending {
-                update.status = .updateAvailable
-                update.statusMessage = "BeaconMac v\(release.version) is available — click Install to verify & update (installed: v\(update.currentVersion))"
-                log(.system, .info, "Update available: BeaconMac v\(release.version) (current: v\(update.currentVersion)). Click Install to verify SHA-256, Developer ID signature, and Gatekeeper before updating.")
-            } else {
-                update.status = .upToDate
-                update.statusMessage = "BeaconMac v\(update.currentVersion) is up to date"
-                if userInitiated {
-                    log(.system, .info, "BeaconMac v\(update.currentVersion) is up to date (latest: v\(release.version))")
-                }
-            }
-        } catch {
-            let msg = SecretMasker.redact(error.localizedDescription)
-            update.lastCheckedAt = Date()
-            update.status = .failed
-            update.lastError = msg
-            update.statusMessage = "Update check failed"
-            if userInitiated {
-                bannerError = "Update check failed: \(msg)"
-                log(.system, .warn, "Update check failed: \(msg)")
-            }
-        }
-    }
-
-    public func installAvailableUpdate() async {
-        guard let release = update.latestRelease else {
-            await checkForUpdates(userInitiated: true)
-            return
-        }
-        guard update.status != .downloading && update.status != .installing else { return }
-
-        update.status = .downloading
-        update.downloadProgress = 0.08
-        update.lastError = nil
-        update.statusMessage = "Verifying & downloading BeaconMac v\(release.version)…"
-        log(.system, .info, "Starting verified self-update to BeaconMac v\(release.version)...")
-
-        let outcome = await updateService.downloadAndInstall(release: release) { [weak self] progress, message in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.update.downloadProgress = progress
-                self.update.status = progress >= 0.65 ? .installing : .downloading
-                self.update.statusMessage = message
-            }
-        }
-
-        if outcome.ok {
-            update.downloadProgress = 1.0
-            update.status = outcome.willRelaunch ? .readyToRelaunch : .upToDate
-            update.statusMessage = outcome.detail
-            log(.system, .info, outcome.detail)
-
-            if outcome.willRelaunch {
-                try? await Task.sleep(for: .milliseconds(450))
-                NSApplication.shared.terminate(nil)
-            }
-        } else {
-            update.status = .failed
-            update.lastError = outcome.detail
-            update.statusMessage = outcome.detail
-            bannerError = outcome.detail
-            log(.system, .error, "Self-update rejected: \(outcome.detail)")
-        }
-    }
-
-    public func openLatestReleasePage() {
-        let fallback = URL(string: "https://github.com/\(AppUpdateService.pinnedRepo)/releases")!
-        if let candidate = update.latestRelease?.htmlReleaseURL,
-           AppUpdateService.isAllowedReleasePageURL(candidate) {
-            NSWorkspace.shared.open(candidate)
-        } else {
-            NSWorkspace.shared.open(fallback)
-        }
     }
 
     @discardableResult
@@ -2515,10 +2402,8 @@ public final class BeaconController {
     public func sendTestAlert() async {
         let note = await alertService.sendAlert(
             title: "Test Notification",
-            body: "BeaconMac native macOS alerts are active.",
-            recipientEmail: config.recipientEmail,
-            emailEnabled: config.emailEnabled
+            body: "BeaconMac native macOS alerts are active."
         )
-        log(.email, .info, note)
+        log(.alerts, .info, note)
     }
 }

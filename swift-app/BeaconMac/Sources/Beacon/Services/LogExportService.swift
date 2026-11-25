@@ -168,10 +168,15 @@ public enum LogExportService {
         let gitCount = sourceLogs.filter { $0.source == .git }.count
         let deployErrorCount = sourceTerminal.filter { $0.isError }.count
 
+        let appVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let appBuild = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
         let metadata = SessionLogExportBundle.Metadata(
             exportedAt: Date(),
-            appVersion: AppUpdateService.currentAppVersion(),
-            appBuild: AppUpdateService.currentAppBuild(),
+            appVersion: (appVersion?.isEmpty == false) ? appVersion! : "1.1.0",
+            appBuild: (appBuild?.isEmpty == false) ? appBuild! : "2",
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             architecture: currentArchitecture,
             sandboxed: EmbeddedScripts.isSandboxed,

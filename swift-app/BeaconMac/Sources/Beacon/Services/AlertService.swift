@@ -17,7 +17,7 @@ public final class AlertService: Sendable {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    public func sendAlert(title: String, body: String, recipientEmail: String, emailEnabled: Bool) async -> String {
+    public func sendAlert(title: String, body: String) async -> String {
         if supportsUserNotifications {
             let content = UNMutableNotificationContent()
             content.title = "Beacon: \(title)"
@@ -27,15 +27,9 @@ public final class AlertService: Sendable {
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             try? await UNUserNotificationCenter.current().add(request)
 
-            if emailEnabled, !recipientEmail.isEmpty {
-                return "Delivered macOS notification and logged alert for \(recipientEmail): \(title)"
-            }
             return "Delivered macOS notification: \(title)"
         }
 
-        if emailEnabled, !recipientEmail.isEmpty {
-            return "Logged alert for \(recipientEmail) (system notifications require a .app bundle): \(title)"
-        }
         return "Logged alert (system notifications require a .app bundle): \(title)"
     }
 }

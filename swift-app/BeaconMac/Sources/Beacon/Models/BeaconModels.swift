@@ -13,7 +13,7 @@ public enum LogSource: String, Codable, CaseIterable, Identifiable, Sendable {
     case claude
     case terminal
     case startup
-    case email
+    case alerts
     case system
 
     public var id: String { rawValue }
@@ -368,59 +368,6 @@ public struct ClaudeState: Sendable {
     public var lastError: String?
 }
 
-public enum UpdateStatus: String, Sendable {
-    case idle
-    case checking
-    case upToDate
-    case updateAvailable
-    case downloading
-    case installing
-    case readyToRelaunch
-    case failed
-}
-
-public struct AppUpdateRelease: Sendable, Equatable {
-    public let version: String
-    public let tagName: String
-    public let releaseNotes: String
-    public let dmgDownloadURL: URL?
-    public let sha256: String?
-    public let sha256DownloadURL: URL?
-    public let htmlReleaseURL: URL
-    public let publishedAt: String?
-
-    public init(
-        version: String,
-        tagName: String,
-        releaseNotes: String,
-        dmgDownloadURL: URL?,
-        sha256: String? = nil,
-        sha256DownloadURL: URL? = nil,
-        htmlReleaseURL: URL,
-        publishedAt: String?
-    ) {
-        self.version = version
-        self.tagName = tagName
-        self.releaseNotes = releaseNotes
-        self.dmgDownloadURL = dmgDownloadURL
-        self.sha256 = sha256
-        self.sha256DownloadURL = sha256DownloadURL
-        self.htmlReleaseURL = htmlReleaseURL
-        self.publishedAt = publishedAt
-    }
-}
-
-public struct AppUpdateState: Sendable {
-    public var currentVersion: String = AppUpdateService.currentAppVersion()
-    public var currentBuild: String = AppUpdateService.currentAppBuild()
-    public var status: UpdateStatus = .idle
-    public var latestRelease: AppUpdateRelease?
-    public var lastCheckedAt: Date?
-    public var downloadProgress: Double = 0
-    public var statusMessage: String = "Automatic updates ready"
-    public var lastError: String?
-}
-
 public enum BuiltInNodeAppMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case staticFolder = "static"
     case localProxy = "proxy"
@@ -586,6 +533,96 @@ public struct NginxProxyConfig: Codable, Sendable {
     }
 }
 
+public struct NginxStubStatusSnapshot: Sendable, Equatable {
+    public let activeConnections: Int
+    public let accepts: Int
+    public let handled: Int
+    public let requests: Int
+    public let reading: Int
+    public let writing: Int
+    public let waiting: Int
+    public let capturedAt: Date
+
+    public var droppedConnections: Int {
+        max(0, accepts - handled)
+    }
+
+    public var requestsPerConnection: Double {
+        handled > 0 ? Double(requests) / Double(handled) : 0
+    }
+
+    public init(
+        activeConnections: Int,
+        accepts: Int,
+        handled: Int,
+        requests: Int,
+        reading: Int,
+        writing: Int,
+        waiting: Int,
+        capturedAt: Date = Date()
+    ) {
+        self.activeConnections = activeConnections
+        self.accepts = accepts
+        self.handled = handled
+        self.requests = requests
+        self.reading = reading
+        self.writing = writing
+        self.waiting = waiting
+        self.capturedAt = capturedAt
+    }
+}
+
+public struct NginxConnectionSample: Identifiable, Sendable {
+    public let id: UUID
+    public let timestamp: Date
+    public let activeConnections: Int
+    public let reading: Int
+    public let writing: Int
+    public let waiting: Int
+    public let requestsPerSecond: Double
+    public let probeLatencyMs: Int
+
+    public init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        activeConnections: Int,
+        reading: Int,
+        writing: Int,
+        waiting: Int,
+        requestsPerSecond: Double,
+        probeLatencyMs: Int
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.activeConnections = activeConnections
+        self.reading = reading
+        self.writing = writing
+        self.waiting = waiting
+        self.requestsPerSecond = requestsPerSecond
+        self.probeLatencyMs = probeLatencyMs
+    }
+}
+
+public struct NginxHealthMetrics: Sendable {
+    public var stubStatusSupported: Bool = true
+    public var stubStatusAvailable: Bool = false
+    public var probeLatencyMs: Int?
+    public var healthySince: Date?
+    public var consecutiveHealthyProbes: Int = 0
+    public var consecutiveFailedProbes: Int = 0
+    public var latestSnapshot: NginxStubStatusSnapshot?
+    public var requestsPerSecond: Double = 0
+    public var peakActiveConnections: Int = 0
+    public var peakRequestsPerSecond: Double = 0
+    public var history: [NginxConnectionSample] = []
+    public var livePollingEnabled: Bool = true
+
+    public var uptimeSeconds: Int {
+        guard let since = healthySince else { return 0 }
+        return max(0, Int(Date().timeIntervalSince(since)))
+    }
+}
+
 public struct NginxProxyState: Sendable {
     public var light: TrafficLightColor = .amber
     public var statusLabel: String = "Stopped"
@@ -598,6 +635,7 @@ public struct NginxProxyState: Sendable {
     public var configPath: String = ""
     public var lastCheckedAt: Date?
     public var lastError: String?
+    public var metrics = NginxHealthMetrics()
 
     public var baseURL: String {
         listenPort == 80 ? "http://localhost" : "http://localhost:\(listenPort)"
@@ -834,12 +872,12 @@ public enum CloudProviderKind: String, Codable, CaseIterable, Identifiable, Hash
 
     public var subtitle: String {
         switch self {
-        case .openai: return "api.openai.com · GPT-4o / o3 / GPT-4.1 · powers AI Log Help"
-        case .gemini: return "generativelanguage.googleapis.com · Gemini 2.5 Flash/Pro · powers AI Log Help"
-        case .openrouter: return "openrouter.ai/api/v1 · Multi-model router · powers AI Log Help"
-        case .groq: return "api.groq.com/openai/v1 · Ultra-fast Llama/Qwen · powers AI Log Help"
+        case .openai: return "api.openai.com · Verify OpenAI API key & model reachability"
+        case .gemini: return "generativelanguage.googleapis.com · Verify Gemini API key & model reachability"
+        case .openrouter: return "openrouter.ai/api/v1 · Verify OpenRouter API key & model list"
+        case .groq: return "api.groq.com/openai/v1 · Verify Groq API key & model list"
         case .customOpenAI: return "DeepSeek, xAI Grok, Together, Mistral, or Azure OpenAI-compatible endpoint"
-        case .cloudflare: return "api.cloudflare.com · Verify API token & optionally enable Workers AI log help"
+        case .cloudflare: return "api.cloudflare.com · Verify API token & configure Cloudflare Tunnels"
         case .vercel: return "api.vercel.com · Verify personal or team deployment token"
         case .supabase: return "Project REST URL + anon/service key · Verify database API reachability"
         }
@@ -886,11 +924,11 @@ public enum CloudProviderKind: String, Codable, CaseIterable, Identifiable, Hash
         self == .cloudflare
     }
 
-    public var supportsAIHelp: Bool {
+    public var supportsModelSelection: Bool {
         switch self {
-        case .openai, .gemini, .openrouter, .groq, .customOpenAI, .cloudflare:
+        case .openai, .gemini, .openrouter, .groq, .customOpenAI:
             return true
-        case .vercel, .supabase:
+        case .cloudflare, .vercel, .supabase:
             return false
         }
     }
@@ -946,15 +984,9 @@ public struct BeaconConfig: Codable, Sendable {
     public var gitPollIntervalSec: Int
     public var ollamaEndpoint: String
     public var ollamaActiveModel: String
-    public var emailEnabled: Bool
-    public var recipientEmail: String
     public var notifyOnCrash: Bool
     public var notifyOnDeploy: Bool
     public var notifyOnOllamaDown: Bool
-    public var autoCheckForUpdates: Bool
-    public var autoInstallUpdates: Bool
-    /// Pinned to the official BeaconMac release repository; cannot be overridden via config.json.
-    public var updateFeedRepo: String
 
     public init(
         managedApps: [ManagedApp],
@@ -968,14 +1000,9 @@ public struct BeaconConfig: Codable, Sendable {
         gitPollIntervalSec: Int,
         ollamaEndpoint: String,
         ollamaActiveModel: String,
-        emailEnabled: Bool,
-        recipientEmail: String,
         notifyOnCrash: Bool,
         notifyOnDeploy: Bool,
-        notifyOnOllamaDown: Bool,
-        autoCheckForUpdates: Bool = true,
-        autoInstallUpdates: Bool = false,
-        updateFeedRepo: String = AppUpdateService.pinnedRepo
+        notifyOnOllamaDown: Bool
     ) {
         self.managedApps = managedApps
         self.builtInServer = builtInServer
@@ -988,14 +1015,9 @@ public struct BeaconConfig: Codable, Sendable {
         self.gitPollIntervalSec = gitPollIntervalSec
         self.ollamaEndpoint = ollamaEndpoint
         self.ollamaActiveModel = ollamaActiveModel
-        self.emailEnabled = emailEnabled
-        self.recipientEmail = recipientEmail
         self.notifyOnCrash = notifyOnCrash
         self.notifyOnDeploy = notifyOnDeploy
         self.notifyOnOllamaDown = notifyOnOllamaDown
-        self.autoCheckForUpdates = autoCheckForUpdates
-        self.autoInstallUpdates = autoInstallUpdates
-        self.updateFeedRepo = AppUpdateService.pinnedRepo
     }
 
     public init(from decoder: Decoder) throws {
@@ -1011,16 +1033,9 @@ public struct BeaconConfig: Codable, Sendable {
         self.gitPollIntervalSec = try container.decodeIfPresent(Int.self, forKey: .gitPollIntervalSec) ?? 60
         self.ollamaEndpoint = try container.decodeIfPresent(String.self, forKey: .ollamaEndpoint) ?? "http://127.0.0.1:11434"
         self.ollamaActiveModel = try container.decodeIfPresent(String.self, forKey: .ollamaActiveModel) ?? ""
-        self.emailEnabled = try container.decodeIfPresent(Bool.self, forKey: .emailEnabled) ?? true
-        self.recipientEmail = try container.decodeIfPresent(String.self, forKey: .recipientEmail) ?? ""
         self.notifyOnCrash = try container.decodeIfPresent(Bool.self, forKey: .notifyOnCrash) ?? true
         self.notifyOnDeploy = try container.decodeIfPresent(Bool.self, forKey: .notifyOnDeploy) ?? true
         self.notifyOnOllamaDown = try container.decodeIfPresent(Bool.self, forKey: .notifyOnOllamaDown) ?? true
-        self.autoCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoCheckForUpdates) ?? true
-        self.autoInstallUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? false
-        // Always ignore any mutable updateFeedRepo value from config.json to prevent update feed hijacking.
-        _ = try? container.decodeIfPresent(String.self, forKey: .updateFeedRepo)
-        self.updateFeedRepo = AppUpdateService.pinnedRepo
     }
 
     public static var defaults: BeaconConfig {
@@ -1036,14 +1051,9 @@ public struct BeaconConfig: Codable, Sendable {
             gitPollIntervalSec: 60,
             ollamaEndpoint: "http://127.0.0.1:11434",
             ollamaActiveModel: "",
-            emailEnabled: true,
-            recipientEmail: "",
             notifyOnCrash: true,
             notifyOnDeploy: true,
-            notifyOnOllamaDown: true,
-            autoCheckForUpdates: true,
-            autoInstallUpdates: false,
-            updateFeedRepo: AppUpdateService.pinnedRepo
+            notifyOnOllamaDown: true
         )
     }
 }

@@ -239,6 +239,7 @@ public final class AppDeploymentService: Sendable {
         public let isRunning: Bool?
         public let pid: Int?
         public let version: String?
+        public let stubStatusSupported: Bool?
     }
 
     public func runNginxAction(
@@ -254,6 +255,7 @@ public final class AppDeploymentService: Sendable {
         var running: Bool?
         var pid: Int?
         var version: String?
+        var stubStatusSupported: Bool?
 
         for line in res.stdoutLines {
             let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
@@ -269,6 +271,8 @@ public final class AppDeploymentService: Sendable {
                 if parts[2] == "YES" {
                     pid = Int(parts[3].trimmingCharacters(in: .whitespacesAndNewlines))
                 }
+            case "STUB_STATUS":
+                stubStatusSupported = (parts[2] == "YES")
             default:
                 break
             }
@@ -279,7 +283,8 @@ public final class AppDeploymentService: Sendable {
             isInstalled: installed,
             isRunning: running,
             pid: pid,
-            version: version
+            version: version,
+            stubStatusSupported: stubStatusSupported
         )
     }
 
