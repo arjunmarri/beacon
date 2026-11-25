@@ -6,12 +6,10 @@ struct ServiceCardsView: View {
 
     @State private var gitTokenDraft: String = ""
     @State private var editingGitKey: Bool = false
-    @State private var claudeKeyDraft: String = ""
-    @State private var editingClaudeKey: Bool = false
     @State private var copiedOllamaTunnel: Bool = false
     @State private var inspectedOllamaTunnel: CloudflareTunnelEntry?
 
-    private let columns = [GridItem(.adaptive(minimum: 320), spacing: 16)]
+    private let columns = [GridItem(.adaptive(minimum: 340), spacing: 18)]
 
     private var palette: BeaconPalette {
         BeaconPalette(colorScheme: colorScheme)
@@ -22,10 +20,9 @@ struct ServiceCardsView: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+        LazyVGrid(columns: columns, spacing: 18) {
             gitAccountCard
             ollamaCard
-            claudeCard
         }
         .sheet(item: $inspectedOllamaTunnel) { tunnel in
             CloudflareConfigInspectorSheet(
@@ -40,10 +37,10 @@ struct ServiceCardsView: View {
     // MARK: - 1. GitHub Account & Keychain Token Card
 
     private var gitAccountCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "GitHub Account", fontSize: 15)
+                    BeaconSectionHeaderText(title: "GitHub Account", fontSize: 15.5, systemImage: "chevron.left.forwardslash.chevron.right")
                     Text(controller.git.connectedUsername.map { "@\($0) · \(controller.git.repos.count) repos" } ?? "Paste PAT to sync & auto-deploy repos")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
@@ -55,8 +52,8 @@ struct ServiceCardsView: View {
 
             if let keyHint = controller.git.keyHint, !editingGitKey {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("GitHub token (stored in macOS Keychain)")
-                        .font(.system(size: 11))
+                    Text("GitHub token (encrypted in macOS Keychain)")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(palette.secondaryText)
                     HStack {
                         Image(systemName: "key.fill")
@@ -68,34 +65,26 @@ struct ServiceCardsView: View {
                         Spacer()
                         Button("Replace") { editingGitKey = true }
                             .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(palette.accentLink)
                         Button("Clear") { controller.disconnectGitToken() }
                             .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(palette.errorText)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(palette.input)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .beaconGlassInput(cornerRadius: 9, horizontalPadding: 11, verticalPadding: 8)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Paste GitHub Personal Access Token (Keychain)")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(palette.secondaryText)
                     HStack(spacing: 8) {
                         SecureField("ghp_... or github_pat_...", text: $gitTokenDraft)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(palette.primaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(palette.input)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .beaconGlassInput(cornerRadius: 9, horizontalPadding: 10, verticalPadding: 7.5)
                         Button("Connect") {
                             let token = gitTokenDraft
                             Task {
@@ -120,9 +109,9 @@ struct ServiceCardsView: View {
                 }
             }
 
-            Divider().overlay(palette.border)
+            Divider().overlay(palette.subtleBorder)
 
-            HStack(spacing: 22) {
+            HStack(spacing: 24) {
                 metricCell(
                     title: "Accessible Repos",
                     value: controller.git.repos.isEmpty ? "—" : "\(controller.git.repos.count)"
@@ -144,28 +133,24 @@ struct ServiceCardsView: View {
                     .lineLimit(2)
             } else {
                 Text("Connected repositories populate the Quick Pick menu inside + Add Local App and enable automatic commit polling.")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(palette.secondaryText)
                     .lineLimit(2)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .frame(maxWidth: .infinity, minHeight: 268, alignment: .topLeading)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
     }
 
     // MARK: - 2. Local LLM (Ollama) Card
 
     private var ollamaCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Local LLM (Ollama)", fontSize: 15)
+                    BeaconSectionHeaderText(title: "Local LLM (Ollama)", fontSize: 15.5, systemImage: "sparkles")
                     Text(controller.ollama.endpoint)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
@@ -175,9 +160,9 @@ struct ServiceCardsView: View {
                 TrafficLightLampView(active: controller.ollama.light, label: controller.ollama.statusLabel)
             }
 
-            Divider().overlay(palette.border)
+            Divider().overlay(palette.subtleBorder)
 
-            HStack(spacing: 22) {
+            HStack(spacing: 24) {
                 metricCell(
                     title: "Latency",
                     value: controller.ollama.latencyMs.map { "\($0) ms" } ?? "—"
@@ -194,11 +179,11 @@ struct ServiceCardsView: View {
                 )
             }
 
-            Divider().overlay(palette.border)
+            Divider().overlay(palette.subtleBorder)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Active local model")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(palette.secondaryText)
                 if controller.ollama.models.isEmpty {
                     Text("Start Ollama locally on port 11434 to list models")
@@ -223,13 +208,14 @@ struct ServiceCardsView: View {
 
             let ollamaTunnel = controller.ollamaCloudflareTunnel
             if let ollamaTunnel, ollamaTunnel.isRunning || ollamaTunnel.isStarting || ollamaTunnel.lastError != nil {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 6) {
                         Circle()
                             .fill(ollamaTunnel.isRunning ? palette.successText : (ollamaTunnel.isStarting ? palette.warningText : palette.errorText))
                             .frame(width: 7, height: 7)
+                            .shadow(color: (ollamaTunnel.isRunning ? palette.successText : .clear).opacity(0.65), radius: 4)
                         if let pubURL = ollamaTunnel.publicURL, ollamaTunnel.isRunning {
-                            Text(ollamaTunnel.mode == .apiManaged ? "Cloudflare API:" : "Public URL:")
+                            Text("Public URL")
                                 .font(.system(size: 10.5, weight: .semibold))
                                 .foregroundStyle(palette.successText)
                             Text(pubURL)
@@ -253,7 +239,7 @@ struct ServiceCardsView: View {
 
                     if let pubURL = ollamaTunnel.publicURL, ollamaTunnel.isRunning {
                         HStack(spacing: 6) {
-                            Button(copiedOllamaTunnel ? "Copied" : "Copy URL") {
+                            Button(copiedOllamaTunnel ? "Copied ✓" : "Copy URL") {
                                 controller.copyTunnelURL(pubURL)
                                 copiedOllamaTunnel = true
                                 Task {
@@ -286,15 +272,18 @@ struct ServiceCardsView: View {
                         }
                     }
                 }
-                .padding(10)
+                .padding(11)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ollamaTunnel.isRunning
-                    ? (palette.isLight ? Color(red: 0.91, green: 0.98, blue: 0.94) : Color(red: 0.06, green: 0.16, blue: 0.13))
-                    : palette.row)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(
-                    ollamaTunnel.isRunning ? palette.successText.opacity(0.38) : palette.subtleBorder
-                ))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(
+                    ollamaTunnel.isRunning
+                        ? (palette.isLight ? Color(red: 0.90, green: 0.98, blue: 0.94).opacity(0.92) : Color(red: 0.05, green: 0.18, blue: 0.14).opacity(0.75))
+                        : palette.row
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(ollamaTunnel.isRunning ? palette.successText.opacity(0.42) : palette.subtleBorder, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             Spacer(minLength: 0)
@@ -317,157 +306,8 @@ struct ServiceCardsView: View {
                 .buttonStyle(BeaconSecondaryButtonStyle())
             }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
-    }
-
-    // MARK: - 3. Claude API Health Checker Card
-
-    private var claudeCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Claude API", fontSize: 15)
-                    Text("api.anthropic.com · /v1/models")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(palette.secondaryText)
-                }
-                Spacer()
-                TrafficLightLampView(active: controller.claude.light, label: controller.claude.statusLabel)
-            }
-
-            if let hint = controller.claude.keyHint, controller.claude.isConnected, !editingClaudeKey {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Claude API key (stored in macOS Keychain)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.secondaryText)
-                    HStack {
-                        Image(systemName: "key.fill")
-                            .foregroundStyle(palette.successText)
-                            .font(.system(size: 11))
-                        Text(hint)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(palette.bodyText)
-                        Spacer()
-                        Button("Replace") { editingClaudeKey = true }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(palette.accentLink)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(palette.input)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Paste Claude API key (verified via /v1/models)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.secondaryText)
-                    HStack(spacing: 8) {
-                        SecureField("sk-ant-api03-...", text: $claudeKeyDraft)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(palette.primaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(palette.input)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Button("Check") {
-                            let key = claudeKeyDraft
-                            claudeKeyDraft = ""
-                            Task {
-                                let ok = await controller.connectClaudeKey(key)
-                                if ok { editingClaudeKey = false }
-                            }
-                        }
-                        .disabled(claudeKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .buttonStyle(BeaconPrimaryButtonStyle())
-
-                        if editingClaudeKey {
-                            Button("Cancel") {
-                                editingClaudeKey = false
-                                claudeKeyDraft = ""
-                            }
-                            .buttonStyle(BeaconSecondaryButtonStyle())
-                        }
-                    }
-                }
-            }
-
-            Divider().overlay(palette.border)
-
-            HStack(spacing: 22) {
-                metricCell(
-                    title: "HTTP Status",
-                    value: controller.claude.isConnected
-                        ? "\(controller.claude.httpStatus ?? 200) OK"
-                        : (controller.claude.httpStatus.map { "HTTP \($0)" } ?? "—"),
-                    valueColor: controller.claude.isConnected
-                        ? palette.successText
-                        : (controller.claude.lastError != nil ? palette.errorText : palette.secondaryText)
-                )
-                metricCell(
-                    title: "Latency",
-                    value: controller.claude.latencyMs.map { "\($0) ms" } ?? "—"
-                )
-                metricCell(
-                    title: "Models",
-                    value: controller.claude.models.isEmpty ? "—" : "\(controller.claude.models.count)"
-                )
-            }
-
-            if let error = controller.claude.lastError {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(palette.errorText)
-                    .lineLimit(1)
-            }
-
-            if !controller.claude.models.isEmpty {
-                Picker("Claude Model", selection: Binding(
-                    get: { controller.claude.activeModel },
-                    set: { controller.claude.activeModel = $0 }
-                )) {
-                    ForEach(controller.claude.models) { model in
-                        Text("\(model.displayName) (\(model.id))").tag(model.id)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-            }
-
-            Spacer(minLength: 0)
-
-            HStack {
-                Spacer()
-                Button("Health Check") {
-                    Task { _ = await controller.probeClaude(logResult: true) }
-                }
-                .disabled(controller.claude.keyHint == nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Clear Key") {
-                    editingClaudeKey = false
-                    claudeKeyDraft = ""
-                    controller.disconnectClaudeKey()
-                }
-                .disabled(controller.claude.keyHint == nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .frame(maxWidth: .infinity, minHeight: 268, alignment: .topLeading)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
     }
 
     // MARK: - Helpers
@@ -475,10 +315,10 @@ struct ServiceCardsView: View {
     private func metricCell(title: String, value: String, valueColor: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.system(size: 11))
+                .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(palette.secondaryText)
             Text(value)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.system(size: 13.5, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(valueColor ?? palette.primaryText)
                 .lineLimit(1)

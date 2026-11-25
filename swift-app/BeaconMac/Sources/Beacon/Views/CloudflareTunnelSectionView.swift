@@ -6,10 +6,9 @@ struct CloudflareTunnelSectionView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var customPortText: String = "3000"
-    @State private var baseDomainDraft: String = ""
-    @State private var didLoadDraft = false
     @State private var copiedTunnelID: String?
     @State private var inspectedTunnel: CloudflareTunnelEntry?
+    @State private var hoveredTunnelID: String?
 
     private var palette: BeaconPalette {
         BeaconPalette(colorScheme: colorScheme)
@@ -38,38 +37,26 @@ struct CloudflareTunnelSectionView: View {
         }
     }
 
-    private func saveBaseDomain() {
-        controller.updateCloudflareTunnelSettings(
-            preferredProtocol: controller.config.cloudflareTunnel.preferredProtocol,
-            autoInstallCloudflared: controller.config.cloudflareTunnel.autoInstallCloudflared,
-            autoCopyURLOnStart: controller.config.cloudflareTunnel.autoCopyURLOnStart,
-            preferCloudflareAPI: controller.config.cloudflareTunnel.preferCloudflareAPI,
-            customBaseDomain: baseDomainDraft
-        )
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        BeaconSectionHeaderText(title: "Cloudflare Tunnels · 1-Click Internet Access", fontSize: 16)
+                        BeaconSectionHeaderText(
+                            title: "Cloudflare Tunnels · 1-Click Internet Access",
+                            fontSize: 16,
+                            systemImage: "globe"
+                        )
                         if let ver = controller.cloudflareTunnel.version {
                             Text("cloudflared \(ver)")
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(palette.secondaryText)
                         }
-                        if controller.hasCloudflareAPITokenInKeychain {
-                            Text("· Keychain Cloudflare API Ready")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(palette.successText)
-                        } else {
-                            Text("· Quick Tunnel Mode")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(palette.secondaryText)
-                        }
+                        Text("· Quick Tunnel Mode")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.secondaryText)
                     }
-                    Text("Dynamically generates a cloudflared `config.yml` using your Keychain Cloudflare API integration (creating the named tunnel & DNS CNAME automatically) or falls back to an instant `*.trycloudflare.com` Quick Tunnel.")
+                    Text("Expose any Managed Local App, Built-In Node.js Server, local Ollama instance, or custom localhost port over HTTPS via instant `*.trycloudflare.com` Quick Tunnels — no API token required.")
                         .font(.system(size: 12))
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -101,7 +88,7 @@ struct CloudflareTunnelSectionView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 6) {
                             Image(systemName: "globe")
                                 .font(.system(size: 11, weight: .semibold))
                             Text("Expose Local App")
@@ -109,24 +96,20 @@ struct CloudflareTunnelSectionView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 9, weight: .semibold))
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(red: 0.14, green: 0.44, blue: 0.92))
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .foregroundStyle(palette.isLight ? Color.white : Color(red: 0.032, green: 0.045, blue: 0.072))
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 6.5)
+                        .background(palette.accentGradient)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.42), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
-
-                let nginxTunnelLive = controller.cloudflareTunnelEntry(for: "nginx")?.isRunning == true
-                let nginxTunnelStarting = controller.cloudflareTunnelEntry(for: "nginx")?.isStarting == true
-                Button(nginxTunnelStarting ? "Tunneling NGINX…" : (nginxTunnelLive ? "Stop NGINX Tunnel" : "Expose NGINX (:\(controller.config.nginxProxy.listenPort))")) {
-                    Task { await controller.toggleNginxCloudflareTunnel() }
-                }
-                .disabled(nginxTunnelStarting)
-                .buttonStyle(BeaconSecondaryButtonStyle())
 
                 let nodeTunnelLive = controller.cloudflareTunnelEntry(for: "node-host")?.isRunning == true
                 let nodeTunnelStarting = controller.cloudflareTunnelEntry(for: "node-host")?.isStarting == true
@@ -148,18 +131,15 @@ struct CloudflareTunnelSectionView: View {
                 // Quick custom port expose
                 HStack(spacing: 6) {
                     Text("Port")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(palette.secondaryText)
                     TextField("3000", text: $customPortText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundStyle(palette.primaryText)
                         .frame(width: 58)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(palette.input)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.inputBorder))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .beaconGlassInput(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 5)
                         .onSubmit { exposeCustomPort() }
                     Button("Expose Port") {
                         exposeCustomPort()
@@ -174,52 +154,18 @@ struct CloudflareTunnelSectionView: View {
                     Button("Stop All Tunnels") {
                         Task { await controller.stopAllCloudflareTunnels() }
                     }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
+                    .buttonStyle(BeaconDangerButtonStyle())
                 }
             }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .beaconGlassWell(cornerRadius: 11)
 
-            // Keychain Cloudflare API & Transport Options
+            // Transport & Quick Tunnel Options
             HStack(spacing: 14) {
-                Toggle("Use Keychain Cloudflare API", isOn: Binding(
-                    get: { controller.config.cloudflareTunnel.preferCloudflareAPI },
-                    set: { next in
-                        controller.updateCloudflareTunnelSettings(
-                            preferredProtocol: controller.config.cloudflareTunnel.preferredProtocol,
-                            autoInstallCloudflared: controller.config.cloudflareTunnel.autoInstallCloudflared,
-                            autoCopyURLOnStart: controller.config.cloudflareTunnel.autoCopyURLOnStart,
-                            preferCloudflareAPI: next,
-                            customBaseDomain: baseDomainDraft
-                        )
-                    }
-                ))
-                .toggleStyle(.switch)
-                .font(.system(size: 11.5))
-                .foregroundStyle(palette.secondaryText)
-
-                HStack(spacing: 6) {
-                    Text("Domain")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(palette.secondaryText)
-                    TextField("auto-detect zone (or example.com)", text: $baseDomainDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(palette.primaryText)
-                        .frame(width: 210)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(palette.input)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.inputBorder))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .onSubmit { saveBaseDomain() }
-                    if CloudflareTunnelService.sanitizeDomain(baseDomainDraft) != controller.config.cloudflareTunnel.customBaseDomain {
-                        Button("Save") { saveBaseDomain() }
-                            .buttonStyle(BeaconSecondaryButtonStyle())
-                    }
-                }
-
                 HStack(spacing: 6) {
                     Text("Transport")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(palette.secondaryText)
                     Picker("Transport", selection: Binding(
                         get: { controller.config.cloudflareTunnel.preferredProtocol },
@@ -227,9 +173,7 @@ struct CloudflareTunnelSectionView: View {
                             controller.updateCloudflareTunnelSettings(
                                 preferredProtocol: next,
                                 autoInstallCloudflared: controller.config.cloudflareTunnel.autoInstallCloudflared,
-                                autoCopyURLOnStart: controller.config.cloudflareTunnel.autoCopyURLOnStart,
-                                preferCloudflareAPI: controller.config.cloudflareTunnel.preferCloudflareAPI,
-                                customBaseDomain: baseDomainDraft
+                                autoCopyURLOnStart: controller.config.cloudflareTunnel.autoCopyURLOnStart
                             )
                         }
                     )) {
@@ -248,13 +192,12 @@ struct CloudflareTunnelSectionView: View {
                         controller.updateCloudflareTunnelSettings(
                             preferredProtocol: controller.config.cloudflareTunnel.preferredProtocol,
                             autoInstallCloudflared: controller.config.cloudflareTunnel.autoInstallCloudflared,
-                            autoCopyURLOnStart: next,
-                            preferCloudflareAPI: controller.config.cloudflareTunnel.preferCloudflareAPI,
-                            customBaseDomain: baseDomainDraft
+                            autoCopyURLOnStart: next
                         )
                     }
                 ))
                 .toggleStyle(.switch)
+                .controlSize(.small)
                 .font(.system(size: 11.5))
                 .foregroundStyle(palette.secondaryText)
 
@@ -268,6 +211,9 @@ struct CloudflareTunnelSectionView: View {
 
             if let err = controller.cloudflareTunnel.lastError, !err.isEmpty {
                 HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.errorText)
                     Text(err)
                         .font(.system(size: 11.5))
                         .foregroundStyle(palette.errorText)
@@ -279,49 +225,34 @@ struct CloudflareTunnelSectionView: View {
                     }
                     .buttonStyle(BeaconSecondaryButtonStyle())
                 }
-                .padding(10)
-                .background(Color.red.opacity(palette.isLight ? 0.08 : 0.12))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red.opacity(0.3)))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(11)
+                .background(Color.red.opacity(palette.isLight ? 0.08 : 0.14))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.red.opacity(0.32), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             // Active Tunnels List
             let active = controller.cloudflareTunnel.activeTunnels
             if active.isEmpty {
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Image(systemName: "globe.americas.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: 16))
                         .foregroundStyle(palette.accentLink)
-                    Text(controller.hasCloudflareAPITokenInKeychain
-                        ? "Cloudflare API token detected in Keychain. Click \"Expose via Cloudflare Tunnel\" on any app card above to auto-provision a named tunnel, generate `config.yml`, and publish your app online."
-                        : "No active Cloudflare Tunnels yet. Click \"Expose via Cloudflare Tunnel\" on any Managed Local App above (or add your Cloudflare API token in Settings for named custom domains).")
+                    Text("No active Cloudflare Tunnels yet. Click \"Expose via Cloudflare Tunnel\" on any Managed Local App, \"Expose Ollama\", or enter any local port above to publish an instant HTTPS Quick Tunnel.")
                         .font(.system(size: 12))
                         .foregroundStyle(palette.secondaryText)
                     Spacer()
                 }
-                .padding(12)
-                .background(palette.row)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.subtleBorder))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .beaconGlassRow(cornerRadius: 11, padding: 14)
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(active) { entry in
                         tunnelRow(entry)
                     }
                 }
             }
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
-        .onAppear {
-            if !didLoadDraft {
-                baseDomainDraft = controller.config.cloudflareTunnel.customBaseDomain
-                didLoadDraft = true
-            }
-        }
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
         .sheet(item: $inspectedTunnel) { tunnel in
             CloudflareConfigInspectorSheet(
                 title: "\(tunnel.label) · cloudflared config.yml",
@@ -333,25 +264,28 @@ struct CloudflareTunnelSectionView: View {
     }
 
     private func tunnelRow(_ entry: CloudflareTunnelEntry) -> some View {
-        HStack(spacing: 12) {
+        let isHovered = hoveredTunnelID == entry.id
+        return HStack(spacing: 12) {
             Circle()
                 .fill(entry.isRunning ? palette.successText : palette.warningText)
                 .frame(width: 8, height: 8)
+                .shadow(color: (entry.isRunning ? palette.successText : palette.warningText).opacity(0.65), radius: 4)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(entry.label)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(palette.primaryText)
                     Text(entry.mode.badgeLabel)
                         .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(entry.mode == .apiManaged ? palette.accentLink : palette.secondaryText)
+                        .foregroundStyle(palette.secondaryText)
                     Text("→ \(entry.targetURL)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
                     if let pid = entry.pid {
                         Text("· PID \(pid)")
                             .font(.system(size: 10.5, design: .monospaced))
+                            .monospacedDigit()
                             .foregroundStyle(palette.secondaryText)
                     }
                 }
@@ -383,7 +317,7 @@ struct CloudflareTunnelSectionView: View {
             }
 
             if let pubURL = entry.publicURL, !pubURL.isEmpty {
-                Button(copiedTunnelID == entry.id ? "Copied" : "Copy URL") {
+                Button(copiedTunnelID == entry.id ? "Copied ✓" : "Copy URL") {
                     copyURL(pubURL, tunnelID: entry.id)
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
@@ -397,13 +331,17 @@ struct CloudflareTunnelSectionView: View {
             Button("Stop") {
                 Task { await controller.stopCloudflareTunnel(key: entry.id) }
             }
-            .buttonStyle(BeaconSecondaryButtonStyle())
+            .buttonStyle(BeaconDangerButtonStyle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(palette.row)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(entry.isRunning ? palette.successText.opacity(0.35) : palette.subtleBorder))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .beaconGlassRow(
+            cornerRadius: 11,
+            padding: 13,
+            accentBorder: entry.isRunning ? palette.successText.opacity(0.42) : nil,
+            isHovered: isHovered
+        )
+        .onHover { hovering in
+            hoveredTunnelID = hovering ? entry.id : (hoveredTunnelID == entry.id ? nil : hoveredTunnelID)
+        }
     }
 }
 
@@ -421,49 +359,50 @@ struct CloudflareConfigInspectorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    BeaconSectionHeaderText(title: title, fontSize: 15)
-                    if !configPath.isEmpty {
-                        Text(configPath)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(palette.secondaryText)
-                            .textSelection(.enabled)
-                    }
-                }
-                Spacer()
-                Button(copied ? "Copied" : "Copy YAML") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(configText, forType: .string)
-                    copied = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.5))
-                        copied = false
-                    }
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
+        ZStack {
+            BeaconAmbientCanvas()
 
-                Button("Done") {
-                    dismiss()
-                }
-                .buttonStyle(BeaconPrimaryButtonStyle())
-            }
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        BeaconSectionHeaderText(title: title, fontSize: 15.5, systemImage: "doc.text.magnifyingglass")
+                        if !configPath.isEmpty {
+                            Text(configPath)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(palette.secondaryText)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    Spacer()
+                    Button(copied ? "Copied ✓" : "Copy YAML") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(configText, forType: .string)
+                        copied = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            copied = false
+                        }
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
 
-            ScrollView {
-                Text(configText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(palette.primaryText)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .buttonStyle(BeaconPrimaryButtonStyle())
+                }
+
+                ScrollView {
+                    Text(configText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(palette.primaryText)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .beaconGlassWell(cornerRadius: 11)
             }
-            .background(palette.console)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(20)
         }
-        .padding(18)
-        .frame(minWidth: 560, minHeight: 340)
-        .background(palette.canvas)
+        .frame(minWidth: 580, minHeight: 360)
     }
 }

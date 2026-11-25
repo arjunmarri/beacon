@@ -27,10 +27,14 @@ struct ServerLogSearchView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Server Log Search (grep / regex)", fontSize: 15.5)
+                    BeaconSectionHeaderText(
+                        title: "Server Log Search (grep / regex)",
+                        fontSize: 15.5,
+                        systemImage: "magnifyingglass"
+                    )
                     Text("Target file: \(controller.launchd.serverLogPath) · supports extended regex (-E), literal match (-F), and per-entry copy")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
@@ -51,9 +55,9 @@ struct ServerLogSearchView: View {
 
             searchControlsRow
 
-            HStack(spacing: 6) {
-                Text("Presets:")
-                    .font(.system(size: 11))
+            HStack(spacing: 7) {
+                Text("Presets")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(palette.secondaryText)
 
                 ForEach(quickPresets, id: \.label) { preset in
@@ -65,11 +69,11 @@ struct ServerLogSearchView: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(palette.bodyText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
                     .background(palette.chipFill)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.subtleBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(palette.subtleBorder, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 }
             }
 
@@ -77,11 +81,7 @@ struct ServerLogSearchView: View {
                 resultsBlock(result: result, height: 220)
             }
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
         .sheet(isPresented: $showModal) {
             ServerLogSearchModalSheet(
                 controller: controller,
@@ -122,11 +122,7 @@ struct ServerLogSearchView: View {
                     .help("Clear pattern and results")
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(palette.input)
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .beaconGlassInput(cornerRadius: 9, horizontalPadding: 11, verticalPadding: 7.5)
 
             toggleChip(label: "Regex -E", active: options.useRegex) {
                 options.useRegex.toggle()
@@ -177,10 +173,12 @@ struct ServerLogSearchView: View {
                          ? "\(result.matchCount)+ matches (capped) · \(result.durationMs) ms"
                          : "\(result.matchCount) \(result.matchCount == 1 ? "match" : "matches") · \(result.durationMs) ms")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundStyle(result.matchCount > 0 ? palette.successText : palette.secondaryText)
                 } else {
                     Text("Search Error · \(result.durationMs) ms")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundStyle(palette.errorText)
                 }
 
@@ -199,10 +197,10 @@ struct ServerLogSearchView: View {
                         .padding(.vertical, 6)
                         .background(autoScrollEnabled ? palette.chipFill : Color.orange.opacity(palette.isLight ? 0.14 : 0.16))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(autoScrollEnabled ? palette.inputBorder : Color.orange.opacity(0.45))
+                            RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                                .strokeBorder(autoScrollEnabled ? palette.border : Color.orange.opacity(0.45), lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .fixedSize()
@@ -236,11 +234,14 @@ struct ServerLogSearchView: View {
             .buttonStyle(.plain)
             .font(.system(size: 11, weight: active ? .semibold : .medium, design: .monospaced))
             .foregroundStyle(active ? palette.sectionHeader : palette.secondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6.5)
             .background(active ? palette.activeChipFill : palette.chipFill)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? palette.sectionHeader.opacity(0.45) : palette.inputBorder))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(active ? palette.sectionHeader.opacity(0.45) : palette.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func runSearch() {
@@ -358,13 +359,13 @@ struct ServerLogPreformattedOutputView: View {
                             if row.isDivider {
                                 HStack(spacing: 8) {
                                     Rectangle()
-                                        .fill(palette.border)
+                                        .fill(palette.subtleBorder)
                                         .frame(height: 1)
                                     Text("context break")
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundStyle(palette.secondaryText)
                                     Rectangle()
-                                        .fill(palette.border)
+                                        .fill(palette.subtleBorder)
                                         .frame(height: 1)
                                 }
                                 .padding(.horizontal, 10)
@@ -399,7 +400,7 @@ struct ServerLogPreformattedOutputView: View {
                                         .foregroundStyle(
                                             isCopied
                                                 ? palette.successText
-                                                : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.65))
+                                                : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.60))
                                         )
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -408,7 +409,7 @@ struct ServerLogPreformattedOutputView: View {
                                                 ? palette.successText.opacity(0.14)
                                                 : (isHovered ? palette.chipFill : Color.clear)
                                         )
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                     .help("Copy this server log entry")
@@ -416,9 +417,9 @@ struct ServerLogPreformattedOutputView: View {
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .monospacedDigit()
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 3)
+                                .padding(.vertical, 3.5)
                                 .background(isHovered ? palette.hoverFill : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                 .onHover { hovering in
                                     if hovering {
                                         hoveredRowID = row.id
@@ -471,8 +472,8 @@ struct ServerLogPreformattedOutputView: View {
             }
         }
         .background(background)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(palette.subtleBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
@@ -491,137 +492,140 @@ private struct ServerLogSearchModalSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Server Log Search — \(controller.launchd.serverLogPath)", fontSize: 16)
-                    Text("Full-view grep / regex search with auto-scroll controls and per-entry copy")
+        ZStack {
+            BeaconAmbientCanvas()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        BeaconSectionHeaderText(
+                            title: "Server Log Search — \(controller.launchd.serverLogPath)",
+                            fontSize: 16,
+                            systemImage: "magnifyingglass"
+                        )
+                        Text("Full-view grep / regex search with auto-scroll controls and per-entry copy")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(palette.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+                }
+
+                HStack(spacing: 8) {
+                    TextField("grep or regex pattern...", text: $query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .foregroundStyle(palette.primaryText)
+                        .beaconGlassInput(cornerRadius: 9, horizontalPadding: 11, verticalPadding: 7.5)
+                        .onSubmit { onSearch() }
+
+                    Toggle("Regex (-E)", isOn: $options.useRegex)
+                        .toggleStyle(.checkbox)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(palette.secondaryText)
+                        .foregroundStyle(palette.bodyText)
+
+                    Toggle("Case", isOn: $options.caseSensitive)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(palette.bodyText)
+
+                    Toggle("±2 Context", isOn: $options.includeContext)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(palette.bodyText)
+
+                    Button(controller.isSearchingServerLog ? "Searching…" : "Search") {
+                        onSearch()
+                    }
+                    .disabled(query.trimmingCharacters(in: .newlines).isEmpty || controller.isSearchingServerLog)
+                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
 
-                Spacer()
+                if let result = controller.serverLogSearchResult {
+                    HStack(spacing: 10) {
+                        Text("$ \(result.commandPreview)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(palette.accentLink)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
 
-                Button("Done") {
-                    dismiss()
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-            }
+                        Spacer()
 
-            HStack(spacing: 8) {
-                TextField("grep or regex pattern...", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12.5, design: .monospaced))
-                    .foregroundStyle(palette.primaryText)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(palette.input)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                    .onSubmit { onSearch() }
+                        if result.ok {
+                            Text(result.truncated
+                                 ? "\(result.matchCount)+ matches (capped) · \(result.durationMs) ms"
+                                 : "\(result.matchCount) \(result.matchCount == 1 ? "match" : "matches") · \(result.durationMs) ms")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .monospacedDigit()
+                                .foregroundStyle(result.matchCount > 0 ? palette.successText : palette.secondaryText)
+                        } else {
+                            Text("Search Error · \(result.durationMs) ms")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .monospacedDigit()
+                                .foregroundStyle(palette.errorText)
+                        }
 
-                Toggle("Regex (-E)", isOn: $options.useRegex)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(palette.bodyText)
+                        if !result.preformattedOutput.isEmpty {
+                            Button {
+                                autoScrollEnabled.toggle()
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: autoScrollEnabled ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                    Text(autoScrollEnabled ? "Pause auto-scroll" : "Resume auto-scroll")
+                                        .font(.system(size: 11.5, weight: .medium))
+                                }
+                                .foregroundStyle(autoScrollEnabled ? palette.primaryText : palette.warningText)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(autoScrollEnabled ? palette.chipFill : Color.orange.opacity(palette.isLight ? 0.14 : 0.16))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                                        .strokeBorder(autoScrollEnabled ? palette.border : Color.orange.opacity(0.45), lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize()
 
-                Toggle("Case", isOn: $options.caseSensitive)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(palette.bodyText)
-
-                Toggle("±2 Context", isOn: $options.includeContext)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(palette.bodyText)
-
-                Button(controller.isSearchingServerLog ? "Searching…" : "Search") {
-                    onSearch()
-                }
-                .disabled(query.trimmingCharacters(in: .newlines).isEmpty || controller.isSearchingServerLog)
-                .buttonStyle(BeaconPrimaryButtonStyle())
-            }
-
-            if let result = controller.serverLogSearchResult {
-                HStack(spacing: 10) {
-                    Text("$ \(result.commandPreview)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(palette.accentLink)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-
-                    Spacer()
-
-                    if result.ok {
-                        Text(result.truncated
-                             ? "\(result.matchCount)+ matches (capped) · \(result.durationMs) ms"
-                             : "\(result.matchCount) \(result.matchCount == 1 ? "match" : "matches") · \(result.durationMs) ms")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(result.matchCount > 0 ? palette.successText : palette.secondaryText)
-                    } else {
-                        Text("Search Error · \(result.durationMs) ms")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(palette.errorText)
+                            Button(copiedModalResults ? "Copied ✓" : "Copy Results") {
+                                controller.copyServerLogSearchResults()
+                                copiedModalResults = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(2))
+                                    copiedModalResults = false
+                                }
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+                        }
                     }
 
-                    if !result.preformattedOutput.isEmpty {
-                        Button {
-                            autoScrollEnabled.toggle()
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: autoScrollEnabled ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 10, weight: .semibold))
-                                Text(autoScrollEnabled ? "Pause auto-scroll" : "Resume auto-scroll")
-                                    .font(.system(size: 11.5, weight: .medium))
-                            }
-                            .foregroundStyle(autoScrollEnabled ? palette.primaryText : palette.warningText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(autoScrollEnabled ? palette.chipFill : Color.orange.opacity(palette.isLight ? 0.14 : 0.16))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7)
-                                    .stroke(autoScrollEnabled ? palette.inputBorder : Color.orange.opacity(0.45))
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                        .fixedSize()
-
-                        Button(copiedModalResults ? "Copied ✓" : "Copy Results") {
-                            controller.copyServerLogSearchResults()
-                            copiedModalResults = true
-                            Task {
-                                try? await Task.sleep(for: .seconds(2))
-                                copiedModalResults = false
-                            }
-                        }
-                        .buttonStyle(BeaconSecondaryButtonStyle())
+                    ServerLogPreformattedOutputView(
+                        result: result,
+                        background: palette.console,
+                        autoScrollEnabled: autoScrollEnabled
+                    )
+                    .frame(minHeight: 360, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        Text("Enter a grep or regex pattern above and press Return to search \(controller.launchd.serverLogPath).")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(palette.secondaryText)
+                        Spacer()
                     }
+                    .frame(maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
+                    .beaconGlassWell(cornerRadius: 11)
                 }
-
-                ServerLogPreformattedOutputView(
-                    result: result,
-                    background: palette.console,
-                    autoScrollEnabled: autoScrollEnabled
-                )
-                .frame(minHeight: 360, maxHeight: .infinity)
-            } else {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Text("Enter a grep or regex pattern above and press Return to search \(controller.launchd.serverLogPath).")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(palette.secondaryText)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
-                .background(palette.console)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+            .padding(22)
         }
-        .padding(20)
-        .frame(minWidth: 780, minHeight: 540)
-        .background(palette.sheetCanvas)
+        .frame(minWidth: 800, minHeight: 560)
     }
 }

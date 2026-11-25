@@ -1,6 +1,6 @@
 {
   "name": "Beacon",
-  "description": "Native macOS multi-app local deployer, Built-In Node.js Server, Inbuilt NGINX Reverse Proxy, traffic-light monitor, Cloud AI & Edge API Keychain manager, exportable logs, and Apple launchd supervisor.",
+  "description": "Native macOS multi-app local deployer, Built-In Node.js Server, 1-click Cloudflare Quick Tunnels for local apps & Ollama, traffic-light monitor, exportable logs, and Apple launchd supervisor.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

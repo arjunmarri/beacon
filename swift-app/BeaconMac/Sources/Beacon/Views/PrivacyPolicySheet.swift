@@ -41,109 +41,114 @@ struct PrivacyPolicySheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "BeaconMac Privacy Policy (Placeholder)", fontSize: 16)
-                    Text("Local-first privacy disclosure · App Store Connect compliance notice")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(palette.secondaryText)
+        ZStack {
+            BeaconAmbientCanvas()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        BeaconSectionHeaderText(
+                            title: "BeaconMac Privacy Policy (Placeholder)",
+                            fontSize: 16,
+                            systemImage: "hand.raised.shield.fill"
+                        )
+                        Text("Local-first privacy disclosure · App Store Connect compliance notice")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(palette.secondaryText)
+                    }
+                    Spacer()
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
                 }
-                Spacer()
-                Button("Close") {
-                    dismiss()
+
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "hand.raised.shield.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(palette.warningText)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("App Store Connect Placeholder Notice")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(palette.primaryText)
+                        Text("Replace the bracketed developer placeholders ([YOUR_COMPANY_OR_DEVELOPER_NAME], [YOUR_SUPPORT_EMAIL], [YOUR_PRIVACY_POLICY_URL]) and publish this policy at a public HTTPS URL before submitting BeaconMac to the Mac App Store.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(palette.bodyText)
+                    }
                 }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-            }
-
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "hand.raised.shield.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(palette.warningText)
-                    .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("App Store Connect Placeholder Notice")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(palette.primaryText)
-                    Text("Replace the bracketed developer placeholders ([YOUR_COMPANY_OR_DEVELOPER_NAME], [YOUR_SUPPORT_EMAIL], [YOUR_PRIVACY_POLICY_URL]) and publish this policy at a public HTTPS URL before submitting BeaconMac to the Mac App Store.")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(palette.bodyText)
-                }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.orange.opacity(palette.isLight ? 0.08 : 0.12))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.32)))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    policySection(
-                        title: "1. Overview",
-                        body: "BeaconMac is a local-first macOS developer utility designed to monitor local web applications, reverse proxies, and development services on your Mac. We do not collect, sell, rent, or track personal data."
-                    )
-
-                    policySection(
-                        title: "2. Data Stored Locally on Your Mac",
-                        body: "All configuration files, local application paths, activity logs, and runtime state are stored strictly on your device inside macOS Application Support (~/Library/Application Support/Beacon/). Any GitHub, Cloudflare, or cloud provider API tokens you choose to enter are stored encrypted in your macOS Keychain (Security.framework) and are never written to plaintext files or transmitted to the developer."
-                    )
-
-                    policySection(
-                        title: "3. Optional User-Initiated Third-Party Connections",
-                        body: "BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (such as checking a GitHub repository, verifying a cloud API token you entered, or starting a Cloudflare Tunnel). Those requests go directly from your Mac to your selected provider and are governed by that provider's privacy policy."
-                    )
-
-                    policySection(
-                        title: "4. Tracking, Analytics & Crash Reporting",
-                        body: "BeaconMac does not track you across apps or websites (NSPrivacyTracking = false) and includes no third-party analytics SDKs, advertising SDKs, or behavioral telemetry."
-                    )
-
-                    policySection(
-                        title: "5. Data Deletion",
-                        body: "You can remove stored credentials at any time using the Clear buttons in Settings (which deletes entries from your macOS Keychain) and clear local activity logs via Clear Logs or by removing BeaconMac's Application Support folder."
-                    )
-
-                    policySection(
-                        title: "6. Contact & Public Policy URL",
-                        body: "Developer: [YOUR_COMPANY_OR_DEVELOPER_NAME]\nContact: [YOUR_SUPPORT_EMAIL]\nConfigured URL: \(policyURLString)"
-                    )
-                }
-                .padding(14)
+                .padding(13)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(palette.isLight ? 0.08 : 0.13))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Color.orange.opacity(0.35), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 15) {
+                        policySection(
+                            title: "1. Overview",
+                            body: "BeaconMac is a local-first macOS developer utility designed to monitor local web applications, local Ollama models, and development services on your Mac. We do not collect, sell, rent, or track personal data."
+                        )
+
+                        policySection(
+                            title: "2. Data Stored Locally on Your Mac",
+                            body: "All configuration files, local application paths, activity logs, and runtime state are stored strictly on your device inside macOS Application Support (~/Library/Application Support/Beacon/). Any GitHub Personal Access Token you choose to enter is stored encrypted in your macOS Keychain (Security.framework) and is never written to plaintext files or transmitted to the developer."
+                        )
+
+                        policySection(
+                            title: "3. Optional User-Initiated Third-Party Connections",
+                            body: "BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (such as cloning or polling a GitHub repository or starting a Cloudflare Quick Tunnel). Those requests go directly from your Mac to your selected service and are governed by that provider's privacy policy."
+                        )
+
+                        policySection(
+                            title: "4. Tracking, Analytics & Crash Reporting",
+                            body: "BeaconMac does not track you across apps or websites (NSPrivacyTracking = false) and includes no third-party analytics SDKs, advertising SDKs, or behavioral telemetry."
+                        )
+
+                        policySection(
+                            title: "5. Data Deletion",
+                            body: "You can remove stored credentials at any time using the Clear buttons in Settings (which deletes entries from your macOS Keychain) and clear local activity logs via Clear Logs or by removing BeaconMac's Application Support folder."
+                        )
+
+                        policySection(
+                            title: "6. Contact & Public Policy URL",
+                            body: "Developer: [YOUR_COMPANY_OR_DEVELOPER_NAME]\nContact: [YOUR_SUPPORT_EMAIL]\nConfigured URL: \(policyURLString)"
+                        )
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .beaconGlassWell(cornerRadius: 12)
+
+                HStack(spacing: 10) {
+                    if let statusNotice {
+                        Text(statusNotice)
+                            .font(.system(size: 11))
+                            .foregroundStyle(palette.successText)
+                    } else if let localPolicyFileURL {
+                        Text("Local file: \(localPolicyFileURL.lastPathComponent)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(palette.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Button("Copy Policy Text") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(markdownText, forType: .string)
+                        statusNotice = "Copied Privacy Policy markdown to clipboard."
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Open Local File") {
+                        openLocalPolicyFile()
+                    }
+                    .buttonStyle(BeaconPrimaryButtonStyle())
+                }
             }
-            .background(palette.card)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-
-            HStack(spacing: 10) {
-                if let statusNotice {
-                    Text(statusNotice)
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.successText)
-                } else if let localPolicyFileURL {
-                    Text("Local file: \(localPolicyFileURL.lastPathComponent)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(palette.secondaryText)
-                }
-
-                Spacer()
-
-                Button("Copy Policy Text") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(markdownText, forType: .string)
-                    statusNotice = "Copied Privacy Policy markdown to clipboard."
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Open Local File") {
-                    openLocalPolicyFile()
-                }
-                .buttonStyle(BeaconPrimaryButtonStyle())
-            }
+            .padding(22)
         }
-        .padding(20)
-        .frame(minWidth: 620, idealWidth: 660, minHeight: 520, idealHeight: 560)
-        .background(palette.sheetCanvas)
+        .frame(minWidth: 640, idealWidth: 680, minHeight: 540, idealHeight: 580)
     }
 
     private func policySection(title: String, body: String) -> some View {
@@ -186,16 +191,16 @@ struct PrivacyPolicySheet: View {
     **Website:** [YOUR_PRIVACY_POLICY_URL]
 
     ## 1. Overview
-    BeaconMac is a local-first macOS developer utility designed to monitor local web applications, reverse proxies, and development services on your Mac. We do not collect, sell, rent, or track personal data.
+    BeaconMac is a local-first macOS developer utility designed to monitor local web applications, local Ollama models, and development services on your Mac. We do not collect, sell, rent, or track personal data.
 
     ## 2. Data Stored Locally on Your Mac
     All configuration files, local application paths, activity logs, and runtime state are stored strictly on your device inside macOS Application Support (`~/Library/Application Support/Beacon/`).
 
-    * **Credentials & API Tokens:** Any GitHub, Cloudflare, or cloud provider API tokens you choose to enter are stored encrypted in your macOS Keychain (`Security.framework`) and are never written to plaintext configuration files or transmitted to the developer.
+    * **Credentials & Tokens:** Any GitHub Personal Access Token you choose to enter is stored encrypted in your macOS Keychain (`Security.framework`) and is never written to plaintext configuration files or transmitted to the developer.
     * **Logs:** Activity and server logs remain local to your Mac and are never uploaded to third-party AI services or developer servers.
 
     ## 3. Optional User-Initiated Third-Party Connections
-    BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (for example, checking a GitHub repository, verifying a cloud API token you entered, or starting a Cloudflare Tunnel). Those requests go directly from your Mac to the third-party provider you selected and are governed by that provider's privacy policy.
+    BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (for example, cloning or polling a GitHub repository or starting a Cloudflare Quick Tunnel). Those requests go directly from your Mac to the third-party provider you selected and are governed by that provider's privacy policy.
 
     ## 4. Tracking, Analytics & Crash Reporting
     * **Tracking:** BeaconMac does not track you across apps or websites (`NSPrivacyTracking = false`).

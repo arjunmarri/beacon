@@ -54,8 +54,6 @@ public struct SessionLogExportBundle: Codable, Sendable {
         public let ollamaEndpoint: String
         public let ollamaStatus: String
         public let ollamaActiveModel: String
-        public let claudeStatus: String
-        public let claudeConfigured: Bool
         public let launchdLoaded: Bool
         public let launchdStatus: String
     }
@@ -200,8 +198,6 @@ public enum LogExportService {
             ollamaEndpoint: controller.ollama.endpoint,
             ollamaStatus: SecretMasker.redact(controller.ollama.statusLabel),
             ollamaActiveModel: controller.ollama.activeModel,
-            claudeStatus: SecretMasker.redact(controller.claude.statusLabel),
-            claudeConfigured: controller.claude.keyHint != nil,
             launchdLoaded: controller.launchd.isLoaded,
             launchdStatus: controller.launchd.statusLabel
         )
@@ -291,7 +287,6 @@ public enum LogExportService {
         }
         let modelNote = bundle.services.ollamaActiveModel.isEmpty ? "" : " · model: \(bundle.services.ollamaActiveModel)"
         lines.append("Ollama       : \(bundle.services.ollamaStatus) (\(bundle.services.ollamaEndpoint)\(modelNote))")
-        lines.append("Claude API   : \(bundle.services.claudeStatus) (configured: \(bundle.services.claudeConfigured ? "yes" : "no"))")
         lines.append("launchd      : \(bundle.services.launchdStatus) (loaded: \(bundle.services.launchdLoaded ? "yes" : "no"))")
 
         if !bundle.systemTools.isEmpty {

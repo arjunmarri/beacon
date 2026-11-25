@@ -5,7 +5,7 @@
     {
       "version": "1.1.0",
       "build": 2,
-      "date": "2026-11-24",
+      "date": "2026-11-25",
       "minMacOS": "14.0",
       "architecture": "Universal (Apple Silicon + Intel)",
       "dmgFilename": "BeaconMac-1.1.0-universal.dmg",
@@ -13,13 +13,12 @@
       "sha256": null,
       "sizeBytes": null,
       "notes": [
-        "Added Inbuilt NGINX Reverse Proxy (~/beaconmac/nginx, zero sudo) with path-prefix routes, *.localhost virtual hosts, WebSocket/HMR headers, optional LAN (0.0.0.0) exposure, live nginx -t & zero-downtime reload, nginx.conf viewer, and 1-click Expose via NGINX",
+        "Added 1-click Cloudflare Quick Tunnels (*.trycloudflare.com) for Managed Local Apps, Built-In Node.js Server, Local Ollama LLM (with automatic Host header rewrite), and custom local ports — no API token required",
         "Added Built-In Node.js Server (http://127.0.0.1:4173) to load any static/built app folder (dist/build/out/public SPA fallback) or local port proxy with 1-click Load in Node Host",
         "Added high-contrast Blue section headers and a real-time White (Light) / Dark theme toggle in the top bar, Settings, and Menu Bar",
-        "Added Settings integrations (stored in macOS Keychain with live verification) for OpenAI (ChatGPT), Google Gemini, Anthropic Claude, OpenRouter, Groq, Custom OpenAI-Compatible APIs, Cloudflare (API & Workers AI), Vercel, and Supabase — powering AI Log Help alongside Local Ollama",
         "Enhanced Activity, Terminal, and Server Log views with chronological auto-scroll, Pause/Resume auto-scroll (with unread badge), inline per-entry Copy buttons & context menus, and Export Logs (.txt / .json)",
-        "Added Install Dependencies with Project Type presets (Node.js/npm, pnpm, Yarn, Bun, Python/uv, Go, plus NGINX) for silent Homebrew or verified direct official installation",
-        "Hardened Self-Updater (pinned arjunmarri/beacon feed, pre-mount SHA-256, Developer ID Team ID pinning, codesign & Gatekeeper spctl, explicit user confirmation) and signed/notarized Universal DMG pipeline",
+        "Added Install Dependencies with Project Type presets (Node.js/npm, pnpm, Yarn, Bun, Python/uv, Go) for silent Homebrew or verified direct official installation",
+        "Prepared for Mac App Store compliance: added Privacy Policy disclosure (in-app & website), removed external self-updater UI, third-party AI log sharing, Cloud/Edge API verifications, and NGINX",
         "Fixed Stop button to halt local apps completely without auto-restart respawning, silenced premature HTTP probe errors on unconfigured apps, and made deploy/restart auto-detect package.json scripts gracefully"
       ]
     },
@@ -39,7 +38,7 @@
         "Native Apple launchd background daemon (~/Library/LaunchAgents) with persistent ~/beaconmac/server.log",
         "Native macOS sleep prevention via IOKit Power Management + headless caffeinate -s",
         "Integrated Terminal output console + macOS Terminal.app handoff",
-        "Encrypted macOS Keychain storage for GitHub PAT and Anthropic Claude API health checker + Ollama monitor"
+        "Encrypted macOS Keychain storage for GitHub PAT and local Ollama LLM monitoring"
       ]
     }
   ]

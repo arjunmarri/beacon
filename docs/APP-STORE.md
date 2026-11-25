@@ -8,10 +8,10 @@ A 100% native Swift 5.10 + SwiftUI macOS 14+ application supporting both **Mac A
 
 BeaconMac maintains two explicit entitlements files so every build path is signed with deliberate permissions:
 
-| Distribution Channel | Entitlements File | App Sandbox | Self-Updater |
+| Distribution Channel | Entitlements File | App Sandbox | Update Delivery |
 | :--- | :--- | :--- | :--- |
-| **Mac App Store** | `Sources/Beacon/Resources/Beacon.entitlements` | Enabled (`true`) | Managed by App Store (links to release page) |
-| **Direct Developer ID DMG** | `Sources/Beacon/Resources/Beacon-DMG.entitlements` | Disabled (`false`) + Hardened Runtime | Verified in-place updater (SHA-256 + Team ID + `codesign` + `spctl`) |
+| **Mac App Store** | `Sources/Beacon/Resources/Beacon.entitlements` | Enabled (`true`) | Managed exclusively by the Mac App Store |
+| **Direct Developer ID DMG** | `Sources/Beacon/Resources/Beacon-DMG.entitlements` | Disabled (`false`) + Hardened Runtime | Signed & notarized Universal `.dmg` via GitHub Releases |
 
 *(Set `BEACONMAC_SANDBOX_DMG=1` when running `Scripts/build-dmg.sh` if you prefer to ship a sandboxed DMG using `Beacon.entitlements`.)*
 
@@ -26,7 +26,7 @@ cd swift-app/BeaconMac
 chmod +x Scripts/*.sh
 ./Scripts/generate-xcode-project.sh
 ```
-This creates `BeaconMac.xcodeproj` and opens it in Xcode with **App Sandbox**, **Hardened Runtime**, `ServiceManagement.framework`, `Security.framework`, `IOKit.framework`, `Info.plist`, and **Mac App Store** entitlements (`Beacon.entitlements`) pre-configured.
+This creates `BeaconMac.xcodeproj` and opens it in Xcode with **App Sandbox**, **Hardened Runtime**, `ServiceManagement.framework`, `Security.framework`, `IOKit.framework`, `Info.plist`, `PrivacyInfo.xcprivacy`, and **Mac App Store** entitlements (`Beacon.entitlements`) pre-configured.
 
 ### Option B — Quick Local Run via Swift Package Manager
 ```bash
@@ -38,7 +38,7 @@ swift run
 ---
 
 ## Step 2: Install App Sandbox Hook Scripts (Mac App Store Builds)
-Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, `nginx`, or `launchctl`. BeaconMac uses Apple's official **`NSUserUnixTask`** API with all 10 helper scripts embedded inside the app:
+Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, `cloudflared`, or `launchctl`. BeaconMac uses Apple's official **`NSUserUnixTask`** API with all 10 helper scripts embedded inside the app:
 
 - **Inside BeaconMac (1-Click):** Click **Install Hook Scripts** in the setup banner to write all 10 scripts into `~/Library/Application Scripts/<your-bundle-id>/` via macOS's `NSOpenPanel`.
 - **Or via Terminal (One Command):**
@@ -48,15 +48,16 @@ Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spaw
   ```
   *(Replace `com.beaconmac.app` with your final Bundle Identifier.)*
 
-This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, `beacon-startup.sh`, `beacon-node-server.sh`, `beacon-node-host.mjs`, and `beacon-nginx.sh`. Non-sandboxed launches (`swift run` and Direct Developer ID DMGs) auto-install all 10 scripts automatically on boot.
+This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, `beacon-startup.sh`, `beacon-node-server.sh`, `beacon-node-host.mjs`, and `beacon-cloudflared.sh`. Non-sandboxed launches (`swift run` and Direct Developer ID DMGs) auto-install all 10 scripts automatically on boot.
 
 ---
 
-## Step 3: Configure Signing & Bundle ID in Xcode (Mac App Store)
+## Step 3: Configure Signing, Icon & Privacy URL in Xcode (Mac App Store)
 1. Select the **BeaconMac** project in Xcode → **BeaconMac** target → **Signing & Capabilities**.
 2. Choose your **Apple Developer Program Team** (required for App Store Connect).
 3. Change **Bundle Identifier** from `com.beaconmac.app` to your own unique reverse-DNS identifier (e.g. `com.yourname.beaconmac`).
-4. Add a macOS **AppIcon** asset set (16px to 1024px) in `Assets.xcassets` — Apple requires a 1024×1024 icon for Mac App Store validation.
+4. Ensure your macOS **AppIcon** asset set (16px to 1024px) is populated in `Assets.xcassets` — Apple requires a 1024×1024 icon for Mac App Store validation.
+5. Replace the placeholder developer fields in `docs/PRIVACY_POLICY.md` / `Sources/Beacon/Resources/PRIVACY_POLICY.md` and set `BeaconPrivacyPolicyURL` in `Info.plist` (and `project.yml`) to your live HTTPS Privacy Policy URL.
 
 ---
 
@@ -64,7 +65,7 @@ This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `
 1. In Xcode's toolbar, choose **Any Mac (Apple Silicon, Intel)** as the build destination.
 2. Click **Product → Archive**.
 3. When Organizer opens, select the archive and click **Distribute App → App Store Connect → Upload**.
-4. In **App Store Connect**, complete app metadata, privacy disclosures (no tracking; API keys stored locally in Keychain), and submit for App Review.
+4. In **App Store Connect**, complete app metadata, privacy disclosures (no tracking, `NSPrivacyTracking = false`; GitHub PAT stored locally in Keychain), link your published Privacy Policy URL, and submit for App Review.
 
 ---
 

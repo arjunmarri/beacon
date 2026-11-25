@@ -26,188 +26,191 @@ struct AppEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                BeaconSectionHeaderText(
-                    title: existingApp == nil ? "Add Local App to Monitor & Deploy" : "Edit \(existingApp?.name ?? "App")",
-                    fontSize: 16
-                )
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
-            }
+        ZStack {
+            BeaconAmbientCanvas()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if !controller.git.repos.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Quick-fill from connected GitHub repositories")
-                                .font(.system(size: 11))
-                                .foregroundStyle(palette.secondaryText)
-                            Picker("GitHub Repo", selection: Binding(
-                                get: { repoURL },
-                                set: { selectedCloneURL in
-                                    repoURL = selectedCloneURL
-                                    if let match = controller.git.repos.first(where: { $0.cloneURL == selectedCloneURL }) {
-                                        let repoName = match.fullName.split(separator: "/").last.map(String.init) ?? match.fullName
-                                        if name.isEmpty { name = repoName }
-                                        branch = match.defaultBranch
-                                        if localPath.isEmpty {
-                                            localPath = "\(NSHomeDirectory())/BeaconApps/\(repoName)"
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    BeaconSectionHeaderText(
+                        title: existingApp == nil ? "Add Local App to Monitor & Deploy" : "Edit \(existingApp?.name ?? "App")",
+                        fontSize: 16,
+                        systemImage: existingApp == nil ? "plus.app.fill" : "slider.horizontal.3"
+                    )
+                    Spacer()
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if !controller.git.repos.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Quick-fill from connected GitHub repositories")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(palette.secondaryText)
+                                Picker("GitHub Repo", selection: Binding(
+                                    get: { repoURL },
+                                    set: { selectedCloneURL in
+                                        repoURL = selectedCloneURL
+                                        if let match = controller.git.repos.first(where: { $0.cloneURL == selectedCloneURL }) {
+                                            let repoName = match.fullName.split(separator: "/").last.map(String.init) ?? match.fullName
+                                            if name.isEmpty { name = repoName }
+                                            branch = match.defaultBranch
+                                            if localPath.isEmpty {
+                                                localPath = "\(NSHomeDirectory())/BeaconApps/\(repoName)"
+                                            }
+                                            detectScriptsFromPackageJSON(silentIfMissing: true)
                                         }
+                                    }
+                                )) {
+                                    Text("Select a repository...").tag("")
+                                    ForEach(controller.git.repos) { repo in
+                                        Text("\(repo.fullName) (\(repo.defaultBranch))").tag(repo.cloneURL)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            field("App Name", placeholder: "e.g. SoroWiz Web", text: $name)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Stack Preset")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(palette.secondaryText)
+                                Picker("Stack", selection: $stackPreset) {
+                                    ForEach(AppStackPreset.allCases) { preset in
+                                        Text(preset.rawValue).tag(preset)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .onChange(of: stackPreset) { _, next in
+                                    let port = LocalProcessService.extractPort(from: monitorURL, fallback: 5173)
+                                    installCommand = next.defaultInstallCommand
+                                    buildCommand = next.defaultBuildCommand
+                                    startCommand = next.defaultStartCommand(port: port)
+                                }
+                            }
+                            .frame(width: 170)
+                        }
+
+                        HStack(spacing: 12) {
+                            field("Remote Git Repository URL", placeholder: "https://github.com/user/my-vite-app.git", text: $repoURL)
+                            field("Branch", placeholder: "main", text: $branch)
+                                .frame(width: 130)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Local Folder (cloned automatically if empty or missing)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(palette.secondaryText)
+                            HStack(spacing: 8) {
+                                TextField("/Users/you/BeaconApps/my-app", text: $localPath)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(palette.primaryText)
+                                    .beaconGlassInput()
+                                Button("Browse…") {
+                                    let panel = NSOpenPanel()
+                                    panel.canChooseFiles = false
+                                    panel.canChooseDirectories = true
+                                    panel.canCreateDirectories = true
+                                    if panel.runModal() == .OK, let url = panel.url {
+                                        localPath = url.path
                                         detectScriptsFromPackageJSON(silentIfMissing: true)
                                     }
                                 }
-                            )) {
-                                Text("Select a repository...").tag("")
-                                ForEach(controller.git.repos) { repo in
-                                    Text("\(repo.fullName) (\(repo.defaultBranch))").tag(repo.cloneURL)
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                        }
-                    }
-
-                    HStack(spacing: 12) {
-                        field("App Name", placeholder: "e.g. SoroWiz Web", text: $name)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Stack Preset")
-                                .font(.system(size: 11))
-                                .foregroundStyle(palette.secondaryText)
-                            Picker("Stack", selection: $stackPreset) {
-                                ForEach(AppStackPreset.allCases) { preset in
-                                    Text(preset.rawValue).tag(preset)
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                            .onChange(of: stackPreset) { _, next in
-                                let port = LocalProcessService.extractPort(from: monitorURL, fallback: 5173)
-                                installCommand = next.defaultInstallCommand
-                                buildCommand = next.defaultBuildCommand
-                                startCommand = next.defaultStartCommand(port: port)
+                                .buttonStyle(BeaconSecondaryButtonStyle())
                             }
                         }
-                        .frame(width: 170)
-                    }
 
-                    HStack(spacing: 12) {
-                        field("Remote Git Repository URL", placeholder: "https://github.com/user/my-vite-app.git", text: $repoURL)
-                        field("Branch", placeholder: "main", text: $branch)
-                            .frame(width: 130)
-                    }
+                        field("Local App URL to Monitor", placeholder: "http://localhost:5173 or http://127.0.0.1:3000", text: $monitorURL)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Local Folder (cloned automatically if empty or missing)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(palette.secondaryText)
-                        HStack(spacing: 8) {
-                            TextField("/Users/you/BeaconApps/my-app", text: $localPath)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(palette.primaryText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(palette.input)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
-                            Button("Browse...") {
-                                let panel = NSOpenPanel()
-                                panel.canChooseFiles = false
-                                panel.canChooseDirectories = true
-                                panel.canCreateDirectories = true
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    localPath = url.path
-                                    detectScriptsFromPackageJSON(silentIfMissing: true)
-                                }
+                        Divider().overlay(palette.subtleBorder)
+
+                        HStack {
+                            Text("Build & Run Commands")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(palette.sectionHeader)
+                            Spacer()
+                            Button {
+                                detectScriptsFromPackageJSON(silentIfMissing: false)
+                            } label: {
+                                Label("Detect from package.json", systemImage: "wand.and.stars")
                             }
                             .buttonStyle(BeaconSecondaryButtonStyle())
+                            .disabled(localPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+
+                        if let note = detectedScriptsNote {
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundStyle(palette.successText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .beaconGlassRow(cornerRadius: 8, padding: 9)
+                        }
+
+                        field("Dependency Install Command (auto = detect npm/pnpm/yarn/bun)", placeholder: "auto", text: $installCommand)
+                        field("Build Command (auto = run build only if script exists; blank = skip)", placeholder: "auto", text: $buildCommand)
+                        field("Start Command (auto = detect dev/start/serve script)", placeholder: "auto", text: $startCommand)
+
+                        Divider().overlay(palette.subtleBorder)
+
+                        HStack(spacing: 20) {
+                            Toggle("Auto-restart on crash", isOn: $autoRestart)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                            Toggle("Auto-deploy on Git push", isOn: $autoDeploy)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                            Toggle("Run on macOS startup / cron", isOn: $runOnStartup)
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.bodyText)
+                    }
+                    .beaconGlassCard(cornerRadius: 14, padding: 16)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Save App") {
+                        let normalizedMonitorURL = LocalProcessService.normalizeLocalAppURL(monitorURL)
+                        let port = LocalProcessService.extractPort(from: normalizedMonitorURL, fallback: 5173)
+                        let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? "Local App :\(port)"
+                            : name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let model = ManagedApp(
+                            id: existingApp?.id ?? UUID(),
+                            name: finalName,
+                            stackPreset: stackPreset,
+                            repoURL: repoURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                            branch: branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "main" : branch.trimmingCharacters(in: .whitespacesAndNewlines),
+                            localPath: localPath.trimmingCharacters(in: .whitespacesAndNewlines),
+                            monitorURL: normalizedMonitorURL,
+                            port: port,
+                            installCommand: installCommand.trimmingCharacters(in: .whitespacesAndNewlines),
+                            buildCommand: buildCommand.trimmingCharacters(in: .whitespacesAndNewlines),
+                            startCommand: startCommand.trimmingCharacters(in: .whitespacesAndNewlines),
+                            autoRestart: autoRestart,
+                            autoDeploy: autoDeploy,
+                            runOnStartup: runOnStartup
+                        )
+                        Task {
+                            await controller.upsertManagedApp(model)
+                            dismiss()
                         }
                     }
-
-                    field("Local App URL to Monitor", placeholder: "http://localhost:5173 or http://127.0.0.1:3000", text: $monitorURL)
-
-                    Divider().overlay(palette.border)
-
-                    HStack {
-                        Text("Build & Run Commands")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(palette.sectionHeader)
-                        Spacer()
-                        Button {
-                            detectScriptsFromPackageJSON(silentIfMissing: false)
-                        } label: {
-                            Label("Detect from package.json", systemImage: "wand.and.stars")
-                        }
-                        .buttonStyle(BeaconSecondaryButtonStyle())
-                        .disabled(localPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-
-                    if let note = detectedScriptsNote {
-                        Text(note)
-                            .font(.system(size: 11))
-                            .foregroundStyle(palette.successText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(palette.row)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.border))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-
-                    field("Dependency Install Command (auto = detect npm/pnpm/yarn/bun)", placeholder: "auto", text: $installCommand)
-                    field("Build Command (auto = run build only if script exists; blank = skip)", placeholder: "auto", text: $buildCommand)
-                    field("Start Command (auto = detect dev/start/serve script)", placeholder: "auto", text: $startCommand)
-
-                    Divider().overlay(palette.border)
-
-                    HStack(spacing: 20) {
-                        Toggle("Auto-restart on crash", isOn: $autoRestart)
-                        Toggle("Auto-deploy on Git push", isOn: $autoDeploy)
-                        Toggle("Run on macOS startup / cron", isOn: $runOnStartup)
-                    }
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.bodyText)
+                    .disabled(monitorURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
             }
-
-            HStack {
-                Spacer()
-                Button("Save App") {
-                    let normalizedMonitorURL = LocalProcessService.normalizeLocalAppURL(monitorURL)
-                    let port = LocalProcessService.extractPort(from: normalizedMonitorURL, fallback: 5173)
-                    let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ? "Local App :\(port)"
-                        : name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let model = ManagedApp(
-                        id: existingApp?.id ?? UUID(),
-                        name: finalName,
-                        stackPreset: stackPreset,
-                        repoURL: repoURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                        branch: branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "main" : branch.trimmingCharacters(in: .whitespacesAndNewlines),
-                        localPath: localPath.trimmingCharacters(in: .whitespacesAndNewlines),
-                        monitorURL: normalizedMonitorURL,
-                        port: port,
-                        installCommand: installCommand.trimmingCharacters(in: .whitespacesAndNewlines),
-                        buildCommand: buildCommand.trimmingCharacters(in: .whitespacesAndNewlines),
-                        startCommand: startCommand.trimmingCharacters(in: .whitespacesAndNewlines),
-                        autoRestart: autoRestart,
-                        autoDeploy: autoDeploy,
-                        runOnStartup: runOnStartup
-                    )
-                    Task {
-                        await controller.upsertManagedApp(model)
-                        dismiss()
-                    }
-                }
-                .disabled(monitorURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .buttonStyle(BeaconPrimaryButtonStyle())
-            }
+            .padding(22)
         }
-        .padding(22)
-        .frame(width: 620, height: 630)
-        .background(palette.sheetCanvas)
+        .frame(width: 640, height: 650)
         .onAppear {
             if let app = existingApp {
                 name = app.name
@@ -299,17 +302,13 @@ struct AppEditorSheet: View {
     private func field(_ label: String, placeholder: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.system(size: 11))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(palette.secondaryText)
             TextField(placeholder, text: text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(palette.primaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(palette.input)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .beaconGlassInput()
         }
     }
 }

@@ -165,6 +165,7 @@ async function fetchGitHubDmgAssets(githubRepo: string): Promise<Map<string, { u
 
 const app = express();
 const ASSETS_IMAGES_DIR = path.join(ROOT_DIR, 'src', 'assets', 'images');
+const ASSETS_JS_DIR = path.join(ROOT_DIR, 'src', 'assets', 'js');
 
 if (fs.existsSync(ASSETS_IMAGES_DIR)) {
   app.use(
@@ -172,6 +173,15 @@ if (fs.existsSync(ASSETS_IMAGES_DIR)) {
     express.static(ASSETS_IMAGES_DIR, {
       maxAge: '7d',
       immutable: true,
+    })
+  );
+}
+
+if (fs.existsSync(ASSETS_JS_DIR)) {
+  app.use(
+    '/src/assets/js',
+    express.static(ASSETS_JS_DIR, {
+      maxAge: '1h',
     })
   );
 }

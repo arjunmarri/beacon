@@ -10,7 +10,6 @@ public enum LogSource: String, Codable, CaseIterable, Identifiable, Sendable {
     case vite
     case git
     case ollama
-    case claude
     case terminal
     case startup
     case alerts
@@ -349,25 +348,6 @@ public struct OllamaState: Sendable {
     public var lastError: String?
 }
 
-public struct ClaudeModelInfo: Identifiable, Hashable, Sendable {
-    public let id: String
-    public let displayName: String
-    public let createdAt: String?
-}
-
-public struct ClaudeState: Sendable {
-    public var light: TrafficLightColor = .amber
-    public var statusLabel: String = "No Key"
-    public var isConnected: Bool = false
-    public var keyHint: String?
-    public var httpStatus: Int?
-    public var latencyMs: Int?
-    public var activeModel: String = ""
-    public var models: [ClaudeModelInfo] = []
-    public var lastCheckedAt: Date?
-    public var lastError: String?
-}
-
 public enum BuiltInNodeAppMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case staticFolder = "static"
     case localProxy = "proxy"
@@ -457,199 +437,8 @@ public struct BuiltInServerState: Sendable {
     }
 }
 
-public struct NginxProxyRoute: Identifiable, Codable, Hashable, Sendable {
-    public var id: UUID
-    public var name: String
-    /// URL path prefix (e.g. "/my-app") when serving via path-based reverse proxy.
-    public var pathPrefix: String
-    /// Optional virtual-host domain (e.g. "myapp.localhost"). When non-empty, NGINX exposes a dedicated `server_name` block.
-    public var serverName: String
-    /// Target local host (strictly loopback by default: 127.0.0.1).
-    public var targetHost: String
-    /// Target local app port (e.g. 3000, 5173).
-    public var targetPort: Int
-    /// Enables Upgrade/Connection headers for WebSockets and Vite HMR.
-    public var webSocketsEnabled: Bool
-    /// Strips the pathPrefix before forwarding to upstream (proxy_pass trailing slash).
-    public var stripPrefix: Bool
-    /// Whether this route is currently active in generated nginx.conf.
-    public var enabled: Bool
-    public var addedAt: Date
-
-    public init(
-        id: UUID = UUID(),
-        name: String,
-        pathPrefix: String,
-        serverName: String = "",
-        targetHost: String = "127.0.0.1",
-        targetPort: Int,
-        webSocketsEnabled: Bool = true,
-        stripPrefix: Bool = true,
-        enabled: Bool = true,
-        addedAt: Date = Date()
-    ) {
-        self.id = id
-        self.name = name
-        self.pathPrefix = pathPrefix
-        self.serverName = serverName
-        self.targetHost = targetHost
-        self.targetPort = targetPort
-        self.webSocketsEnabled = webSocketsEnabled
-        self.stripPrefix = stripPrefix
-        self.enabled = enabled
-        self.addedAt = addedAt
-    }
-}
-
-public struct NginxProxyConfig: Codable, Sendable {
-    public var listenPort: Int = 8080
-    public var exposeOnLAN: Bool = false
-    public var autoStart: Bool = false
-    public var activeRootRouteID: UUID? = nil
-    public var routes: [NginxProxyRoute] = []
-
-    public init(
-        listenPort: Int = 8080,
-        exposeOnLAN: Bool = false,
-        autoStart: Bool = false,
-        activeRootRouteID: UUID? = nil,
-        routes: [NginxProxyRoute] = []
-    ) {
-        self.listenPort = listenPort
-        self.exposeOnLAN = exposeOnLAN
-        self.autoStart = autoStart
-        self.activeRootRouteID = activeRootRouteID
-        self.routes = routes
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedPort = try container.decodeIfPresent(Int.self, forKey: .listenPort) ?? 8080
-        self.listenPort = (80...65535).contains(decodedPort) ? decodedPort : 8080
-        self.exposeOnLAN = try container.decodeIfPresent(Bool.self, forKey: .exposeOnLAN) ?? false
-        self.autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
-        self.activeRootRouteID = try container.decodeIfPresent(UUID.self, forKey: .activeRootRouteID)
-        self.routes = try container.decodeIfPresent([NginxProxyRoute].self, forKey: .routes) ?? []
-    }
-}
-
-public struct NginxStubStatusSnapshot: Sendable, Equatable {
-    public let activeConnections: Int
-    public let accepts: Int
-    public let handled: Int
-    public let requests: Int
-    public let reading: Int
-    public let writing: Int
-    public let waiting: Int
-    public let capturedAt: Date
-
-    public var droppedConnections: Int {
-        max(0, accepts - handled)
-    }
-
-    public var requestsPerConnection: Double {
-        handled > 0 ? Double(requests) / Double(handled) : 0
-    }
-
-    public init(
-        activeConnections: Int,
-        accepts: Int,
-        handled: Int,
-        requests: Int,
-        reading: Int,
-        writing: Int,
-        waiting: Int,
-        capturedAt: Date = Date()
-    ) {
-        self.activeConnections = activeConnections
-        self.accepts = accepts
-        self.handled = handled
-        self.requests = requests
-        self.reading = reading
-        self.writing = writing
-        self.waiting = waiting
-        self.capturedAt = capturedAt
-    }
-}
-
-public struct NginxConnectionSample: Identifiable, Sendable {
-    public let id: UUID
-    public let timestamp: Date
-    public let activeConnections: Int
-    public let reading: Int
-    public let writing: Int
-    public let waiting: Int
-    public let requestsPerSecond: Double
-    public let probeLatencyMs: Int
-
-    public init(
-        id: UUID = UUID(),
-        timestamp: Date = Date(),
-        activeConnections: Int,
-        reading: Int,
-        writing: Int,
-        waiting: Int,
-        requestsPerSecond: Double,
-        probeLatencyMs: Int
-    ) {
-        self.id = id
-        self.timestamp = timestamp
-        self.activeConnections = activeConnections
-        self.reading = reading
-        self.writing = writing
-        self.waiting = waiting
-        self.requestsPerSecond = requestsPerSecond
-        self.probeLatencyMs = probeLatencyMs
-    }
-}
-
-public struct NginxHealthMetrics: Sendable {
-    public var stubStatusSupported: Bool = true
-    public var stubStatusAvailable: Bool = false
-    public var probeLatencyMs: Int?
-    public var healthySince: Date?
-    public var consecutiveHealthyProbes: Int = 0
-    public var consecutiveFailedProbes: Int = 0
-    public var latestSnapshot: NginxStubStatusSnapshot?
-    public var requestsPerSecond: Double = 0
-    public var peakActiveConnections: Int = 0
-    public var peakRequestsPerSecond: Double = 0
-    public var history: [NginxConnectionSample] = []
-    public var livePollingEnabled: Bool = true
-
-    public var uptimeSeconds: Int {
-        guard let since = healthySince else { return 0 }
-        return max(0, Int(Date().timeIntervalSince(since)))
-    }
-}
-
-public struct NginxProxyState: Sendable {
-    public var light: TrafficLightColor = .amber
-    public var statusLabel: String = "Stopped"
-    public var isInstalled: Bool = false
-    public var isRunning: Bool = false
-    public var pid: Int?
-    public var listenPort: Int = 8080
-    public var nginxVersion: String?
-    public var lanAddress: String?
-    public var configPath: String = ""
-    public var lastCheckedAt: Date?
-    public var lastError: String?
-    public var metrics = NginxHealthMetrics()
-
-    public var baseURL: String {
-        listenPort == 80 ? "http://localhost" : "http://localhost:\(listenPort)"
-    }
-
-    public var lanBaseURL: String? {
-        guard let ip = lanAddress, !ip.isEmpty else { return nil }
-        return listenPort == 80 ? "http://\(ip)" : "http://\(ip):\(listenPort)"
-    }
-}
-
 public enum CloudflareTunnelTargetKind: String, Codable, Sendable {
     case managedApp
-    case nginxProxy
     case builtInNode
     case ollama
     case customPort
@@ -677,7 +466,7 @@ public enum CloudflareTunnelMode: String, Codable, Sendable {
 
     public var badgeLabel: String {
         switch self {
-        case .apiManaged: return "Cloudflare API · Named Tunnel"
+        case .apiManaged: return "Cloudflare Tunnel"
         case .quickTunnel: return "Quick Tunnel"
         }
     }
@@ -687,21 +476,15 @@ public struct CloudflareTunnelConfig: Codable, Sendable {
     public var preferredProtocol: CloudflareTunnelProtocol = .auto
     public var autoInstallCloudflared: Bool = true
     public var autoCopyURLOnStart: Bool = true
-    public var preferCloudflareAPI: Bool = true
-    public var customBaseDomain: String = ""
 
     public init(
         preferredProtocol: CloudflareTunnelProtocol = .auto,
         autoInstallCloudflared: Bool = true,
-        autoCopyURLOnStart: Bool = true,
-        preferCloudflareAPI: Bool = true,
-        customBaseDomain: String = ""
+        autoCopyURLOnStart: Bool = true
     ) {
         self.preferredProtocol = preferredProtocol
         self.autoInstallCloudflared = autoInstallCloudflared
         self.autoCopyURLOnStart = autoCopyURLOnStart
-        self.preferCloudflareAPI = preferCloudflareAPI
-        self.customBaseDomain = customBaseDomain
     }
 
     public init(from decoder: Decoder) throws {
@@ -709,8 +492,6 @@ public struct CloudflareTunnelConfig: Codable, Sendable {
         self.preferredProtocol = try container.decodeIfPresent(CloudflareTunnelProtocol.self, forKey: .preferredProtocol) ?? .auto
         self.autoInstallCloudflared = try container.decodeIfPresent(Bool.self, forKey: .autoInstallCloudflared) ?? true
         self.autoCopyURLOnStart = try container.decodeIfPresent(Bool.self, forKey: .autoCopyURLOnStart) ?? true
-        self.preferCloudflareAPI = try container.decodeIfPresent(Bool.self, forKey: .preferCloudflareAPI) ?? true
-        self.customBaseDomain = try container.decodeIfPresent(String.self, forKey: .customBaseDomain) ?? ""
     }
 }
 
@@ -819,168 +600,25 @@ public struct CloudflareTunnelState: Sendable {
 }
 
 public enum BeaconAppearanceMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    case dark = "dark"
     case light = "light"
+    case dark = "dark"
 
     public var id: String { rawValue }
 
     public var label: String {
         switch self {
+        case .light: return "Light"
         case .dark: return "Dark"
-        case .light: return "White"
         }
     }
-}
-
-public enum CloudProviderCategory: String, CaseIterable, Sendable {
-    case ai = "Cloud AI APIs"
-    case cloud = "Cloud & Edge Platforms"
-}
-
-public enum CloudProviderKind: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
-    case openai = "openai"
-    case gemini = "gemini"
-    case openrouter = "openrouter"
-    case groq = "groq"
-    case customOpenAI = "custom_openai"
-    case cloudflare = "cloudflare"
-    case vercel = "vercel"
-    case supabase = "supabase"
-
-    public var id: String { rawValue }
-
-    public var category: CloudProviderCategory {
-        switch self {
-        case .openai, .gemini, .openrouter, .groq, .customOpenAI:
-            return .ai
-        case .cloudflare, .vercel, .supabase:
-            return .cloud
-        }
-    }
-
-    public var displayName: String {
-        switch self {
-        case .openai: return "OpenAI (ChatGPT)"
-        case .gemini: return "Google Gemini"
-        case .openrouter: return "OpenRouter"
-        case .groq: return "Groq"
-        case .customOpenAI: return "Custom OpenAI-Compatible"
-        case .cloudflare: return "Cloudflare (API & Workers AI)"
-        case .vercel: return "Vercel"
-        case .supabase: return "Supabase"
-        }
-    }
-
-    public var subtitle: String {
-        switch self {
-        case .openai: return "api.openai.com · Verify OpenAI API key & model reachability"
-        case .gemini: return "generativelanguage.googleapis.com · Verify Gemini API key & model reachability"
-        case .openrouter: return "openrouter.ai/api/v1 · Verify OpenRouter API key & model list"
-        case .groq: return "api.groq.com/openai/v1 · Verify Groq API key & model list"
-        case .customOpenAI: return "DeepSeek, xAI Grok, Together, Mistral, or Azure OpenAI-compatible endpoint"
-        case .cloudflare: return "api.cloudflare.com · Verify API token & configure Cloudflare Tunnels"
-        case .vercel: return "api.vercel.com · Verify personal or team deployment token"
-        case .supabase: return "Project REST URL + anon/service key · Verify database API reachability"
-        }
-    }
-
-    public var keyPlaceholder: String {
-        switch self {
-        case .openai: return "sk-proj-..."
-        case .gemini: return "AIzaSy..."
-        case .openrouter: return "sk-or-v1-..."
-        case .groq: return "gsk_..."
-        case .customOpenAI: return "sk-..."
-        case .cloudflare: return "Cloudflare API Token..."
-        case .vercel: return "Vercel Access Token..."
-        case .supabase: return "eyJhbGciOi... or sb_..."
-        }
-    }
-
-    public var defaultModel: String {
-        switch self {
-        case .openai: return "gpt-4o-mini"
-        case .gemini: return "gemini-2.5-flash"
-        case .openrouter: return "openai/gpt-4o-mini"
-        case .groq: return "llama-3.3-70b-versatile"
-        case .customOpenAI: return "deepseek-chat"
-        case .cloudflare: return "@cf/meta/llama-3.1-8b-instruct"
-        case .vercel, .supabase: return ""
-        }
-    }
-
-    public var supportsBaseURL: Bool {
-        self == .customOpenAI || self == .supabase
-    }
-
-    public var baseURLPlaceholder: String {
-        switch self {
-        case .customOpenAI: return "https://api.deepseek.com/v1"
-        case .supabase: return "https://your-project.supabase.co"
-        default: return ""
-        }
-    }
-
-    public var supportsAccountID: Bool {
-        self == .cloudflare
-    }
-
-    public var supportsModelSelection: Bool {
-        switch self {
-        case .openai, .gemini, .openrouter, .groq, .customOpenAI:
-            return true
-        case .cloudflare, .vercel, .supabase:
-            return false
-        }
-    }
-
-    public var keychainAccount: KeychainAccount {
-        switch self {
-        case .openai: return .openaiAPIKey
-        case .gemini: return .geminiAPIKey
-        case .openrouter: return .openrouterAPIKey
-        case .groq: return .groqAPIKey
-        case .customOpenAI: return .customAIAPIKey
-        case .cloudflare: return .cloudflareAPIToken
-        case .vercel: return .vercelAPIToken
-        case .supabase: return .supabaseAPIKey
-        }
-    }
-}
-
-public struct CloudProviderConfig: Codable, Equatable, Sendable {
-    public var baseURL: String
-    public var accountID: String
-    public var selectedModel: String
-
-    public init(baseURL: String = "", accountID: String = "", selectedModel: String = "") {
-        self.baseURL = baseURL
-        self.accountID = accountID
-        self.selectedModel = selectedModel
-    }
-}
-
-public struct CloudProviderRuntimeState: Sendable {
-    public var light: TrafficLightColor = .amber
-    public var statusLabel: String = "Not Connected"
-    public var isConnected: Bool = false
-    public var keyHint: String?
-    public var httpStatus: Int?
-    public var latencyMs: Int?
-    public var accountLabel: String?
-    public var models: [String] = []
-    public var lastCheckedAt: Date?
-    public var lastError: String?
 }
 
 public struct BeaconConfig: Codable, Sendable {
     public var managedApps: [ManagedApp]
     public var builtInServer: BuiltInServerConfig
-    public var nginxProxy: NginxProxyConfig
     public var cloudflareTunnel: CloudflareTunnelConfig
     public var startupSchedule: StartupScheduleConfig
     public var appearanceMode: BeaconAppearanceMode
-    public var cloudProviders: [String: CloudProviderConfig]
     public var maxRestarts: Int
     public var gitPollIntervalSec: Int
     public var ollamaEndpoint: String
@@ -992,11 +630,9 @@ public struct BeaconConfig: Codable, Sendable {
     public init(
         managedApps: [ManagedApp],
         builtInServer: BuiltInServerConfig = BuiltInServerConfig(),
-        nginxProxy: NginxProxyConfig = NginxProxyConfig(),
         cloudflareTunnel: CloudflareTunnelConfig = CloudflareTunnelConfig(),
         startupSchedule: StartupScheduleConfig,
-        appearanceMode: BeaconAppearanceMode = .dark,
-        cloudProviders: [String: CloudProviderConfig] = [:],
+        appearanceMode: BeaconAppearanceMode = .light,
         maxRestarts: Int,
         gitPollIntervalSec: Int,
         ollamaEndpoint: String,
@@ -1007,11 +643,9 @@ public struct BeaconConfig: Codable, Sendable {
     ) {
         self.managedApps = managedApps
         self.builtInServer = builtInServer
-        self.nginxProxy = nginxProxy
         self.cloudflareTunnel = cloudflareTunnel
         self.startupSchedule = startupSchedule
         self.appearanceMode = appearanceMode
-        self.cloudProviders = cloudProviders
         self.maxRestarts = maxRestarts
         self.gitPollIntervalSec = gitPollIntervalSec
         self.ollamaEndpoint = ollamaEndpoint
@@ -1025,11 +659,9 @@ public struct BeaconConfig: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.managedApps = try container.decodeIfPresent([ManagedApp].self, forKey: .managedApps) ?? []
         self.builtInServer = try container.decodeIfPresent(BuiltInServerConfig.self, forKey: .builtInServer) ?? BuiltInServerConfig()
-        self.nginxProxy = try container.decodeIfPresent(NginxProxyConfig.self, forKey: .nginxProxy) ?? NginxProxyConfig()
         self.cloudflareTunnel = try container.decodeIfPresent(CloudflareTunnelConfig.self, forKey: .cloudflareTunnel) ?? CloudflareTunnelConfig()
         self.startupSchedule = try container.decodeIfPresent(StartupScheduleConfig.self, forKey: .startupSchedule) ?? StartupScheduleConfig()
-        self.appearanceMode = try container.decodeIfPresent(BeaconAppearanceMode.self, forKey: .appearanceMode) ?? .dark
-        self.cloudProviders = try container.decodeIfPresent([String: CloudProviderConfig].self, forKey: .cloudProviders) ?? [:]
+        self.appearanceMode = try container.decodeIfPresent(BeaconAppearanceMode.self, forKey: .appearanceMode) ?? .light
         self.maxRestarts = try container.decodeIfPresent(Int.self, forKey: .maxRestarts) ?? 10
         self.gitPollIntervalSec = try container.decodeIfPresent(Int.self, forKey: .gitPollIntervalSec) ?? 60
         self.ollamaEndpoint = try container.decodeIfPresent(String.self, forKey: .ollamaEndpoint) ?? "http://127.0.0.1:11434"
@@ -1043,11 +675,9 @@ public struct BeaconConfig: Codable, Sendable {
         BeaconConfig(
             managedApps: [],
             builtInServer: BuiltInServerConfig(),
-            nginxProxy: NginxProxyConfig(),
             cloudflareTunnel: CloudflareTunnelConfig(),
             startupSchedule: StartupScheduleConfig(),
-            appearanceMode: .dark,
-            cloudProviders: [:],
+            appearanceMode: .light,
             maxRestarts: 10,
             gitPollIntervalSec: 60,
             ollamaEndpoint: "http://127.0.0.1:11434",

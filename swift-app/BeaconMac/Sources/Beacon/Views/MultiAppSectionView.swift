@@ -8,6 +8,7 @@ struct MultiAppSectionView: View {
     @State private var editingApp: ManagedApp?
     @State private var copiedTunnelAppID: UUID?
     @State private var inspectedConfigTunnel: CloudflareTunnelEntry?
+    @State private var hoveredAppID: UUID?
 
     private var palette: BeaconPalette {
         BeaconPalette(colorScheme: colorScheme)
@@ -18,10 +19,14 @@ struct MultiAppSectionView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Managed Local Apps (\(controller.config.managedApps.count))", fontSize: 16)
+                    BeaconSectionHeaderText(
+                        title: "Managed Local Apps (\(controller.config.managedApps.count))",
+                        fontSize: 16,
+                        systemImage: "shippingbox.fill"
+                    )
                     Text("Clone remote Git repos, check required Vite/Node libraries, build, deploy locally, and monitor multiple apps simultaneously.")
                         .font(.system(size: 12))
                         .foregroundStyle(palette.secondaryText)
@@ -47,34 +52,38 @@ struct MultiAppSectionView: View {
 
             let visibleTools = controller.systemTools.filter { !$0.isOptional || $0.available }
             if !visibleTools.isEmpty {
-                HStack(spacing: 14) {
-                    Text("Runtime tools:")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(palette.secondaryText)
-                    ForEach(visibleTools) { tool in
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(tool.available ? palette.successText : palette.warningText.opacity(0.8))
-                                .frame(width: 6, height: 6)
-                            Text("\(tool.name) \(tool.available ? tool.detail : "missing")")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(tool.available ? palette.bodyText : palette.secondaryText)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        Text("Runtime tools")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(palette.secondaryText)
+                        ForEach(visibleTools) { tool in
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(tool.available ? palette.successText : palette.warningText.opacity(0.85))
+                                    .frame(width: 6, height: 6)
+                                Text("\(tool.name) \(tool.available ? tool.detail : "missing")")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(tool.available ? palette.bodyText : palette.secondaryText)
+                            }
                         }
                     }
-                    Spacer()
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(palette.row)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.subtleBorder))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.vertical, 8.5)
+                .beaconGlassWell(cornerRadius: 10)
             }
 
             if controller.config.managedApps.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("No local apps configured yet.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(palette.primaryText)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus.app.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(palette.sectionHeader)
+                        Text("No local apps configured yet")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(palette.primaryText)
+                    }
                     Text("Add any locally deployed Vite, Node.js, or custom app with its remote Git repository URL, local folder, and localhost port. BeaconMac will clone it, check & install required dependencies, build it, and monitor its health.")
                         .font(.system(size: 12))
                         .foregroundStyle(palette.secondaryText)
@@ -83,11 +92,8 @@ struct MultiAppSectionView: View {
                     }
                     .buttonStyle(BeaconPrimaryButtonStyle())
                 }
-                .padding(18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(palette.row)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .beaconGlassRow(cornerRadius: 12, padding: 18)
             } else {
                 VStack(spacing: 12) {
                     ForEach(controller.config.managedApps) { app in
@@ -96,11 +102,7 @@ struct MultiAppSectionView: View {
                 }
             }
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
         .sheet(isPresented: $showingAddSheet) {
             AppEditorSheet(controller: controller, existingApp: nil)
                 .preferredColorScheme(activeScheme)
@@ -121,20 +123,21 @@ struct MultiAppSectionView: View {
 
     private func appRow(_ app: ManagedApp) -> some View {
         let state = controller.runtimeState(for: app.id)
+        let isHovered = hoveredAppID == app.id
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text(app.name)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14.5, weight: .semibold))
                             .foregroundStyle(palette.primaryText)
                         Text(app.stackPreset.rawValue)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(palette.secondaryText)
                         if app.runOnStartup {
                             Text("· Startup/Cron")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(palette.accentLink)
                         }
                     }
@@ -157,7 +160,7 @@ struct MultiAppSectionView: View {
                 || state.statusLabel == "Starting..."
                 || state.statusLabel == "Stopping..."
 
-            HStack(spacing: 22) {
+            HStack(spacing: 24) {
                 miniMetric(
                     "HTTP Probe",
                     state.isHealthy
@@ -185,9 +188,10 @@ struct MultiAppSectionView: View {
                     Circle()
                         .fill(tunnel.isRunning ? palette.successText : (tunnel.isStarting ? palette.warningText : palette.errorText))
                         .frame(width: 7, height: 7)
+                        .shadow(color: (tunnel.isRunning ? palette.successText : .clear).opacity(0.65), radius: 4)
 
                     if let pubURL = tunnel.publicURL, tunnel.isRunning {
-                        Text(tunnel.mode == .apiManaged ? "Cloudflare API:" : "Public URL:")
+                        Text("Public URL")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(palette.successText)
                         Text(pubURL)
@@ -202,7 +206,7 @@ struct MultiAppSectionView: View {
                             }
                             .buttonStyle(BeaconSecondaryButtonStyle())
                         }
-                        Button(copiedTunnelAppID == app.id ? "Copied" : "Copy URL") {
+                        Button(copiedTunnelAppID == app.id ? "Copied ✓" : "Copy URL") {
                             controller.copyTunnelURL(pubURL)
                             copiedTunnelAppID = app.id
                             Task {
@@ -222,8 +226,10 @@ struct MultiAppSectionView: View {
                         Button("Stop Tunnel") {
                             Task { await controller.stopCloudflareTunnel(key: tunnel.id) }
                         }
-                        .buttonStyle(BeaconSecondaryButtonStyle())
+                        .buttonStyle(BeaconDangerButtonStyle())
                     } else if tunnel.isStarting {
+                        ProgressView()
+                            .controlSize(.mini)
                         Text("Cloudflare Tunnel: \(tunnel.statusLabel)")
                             .font(.system(size: 11.5, design: .monospaced))
                             .foregroundStyle(palette.warningText)
@@ -240,20 +246,26 @@ struct MultiAppSectionView: View {
                         .buttonStyle(BeaconSecondaryButtonStyle())
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(tunnel.isRunning
-                    ? (palette.isLight ? Color(red: 0.91, green: 0.98, blue: 0.94) : Color(red: 0.06, green: 0.16, blue: 0.13))
-                    : palette.card)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(
-                    tunnel.isRunning ? palette.successText.opacity(0.38) : palette.subtleBorder
-                ))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    tunnel.isRunning
+                        ? (palette.isLight ? Color(red: 0.90, green: 0.98, blue: 0.94).opacity(0.92) : Color(red: 0.05, green: 0.18, blue: 0.14).opacity(0.75))
+                        : palette.console
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(tunnel.isRunning ? palette.successText.opacity(0.42) : palette.subtleBorder, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
+
+            Divider().overlay(palette.subtleBorder)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Button(state.isDeploying ? "Deploying..." : "Clone & Deploy") {
+                    Button(state.isDeploying ? "Deploying…" : "Clone & Deploy") {
                         Task { await controller.cloneBuildAndDeploy(app: app, trigger: "manual") }
                     }
                     .disabled(state.isDeploying || controller.busyAction != nil)
@@ -280,12 +292,6 @@ struct MultiAppSectionView: View {
                     .disabled(appTunnel?.isStarting == true)
                     .buttonStyle(BeaconPrimaryButtonStyle())
 
-                    Button("Expose via NGINX") {
-                        Task { await controller.exposeManagedAppViaNginx(app) }
-                    }
-                    .disabled(controller.busyAction != nil)
-                    .buttonStyle(BeaconSecondaryButtonStyle())
-
                     Button("Load in Node Host") {
                         Task { await controller.loadManagedAppIntoBuiltInServer(app) }
                     }
@@ -299,6 +305,7 @@ struct MultiAppSectionView: View {
                         set: { _ in controller.toggleAppStartup(app) }
                     ))
                     .toggleStyle(.switch)
+                    .controlSize(.small)
                     .font(.system(size: 11))
                     .foregroundStyle(palette.secondaryText)
 
@@ -310,7 +317,7 @@ struct MultiAppSectionView: View {
                     Button("Remove") {
                         controller.deleteManagedApp(app)
                     }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
+                    .buttonStyle(BeaconDangerButtonStyle())
                 }
 
                 HStack(spacing: 8) {
@@ -345,19 +352,24 @@ struct MultiAppSectionView: View {
                 }
             }
         }
-        .padding(14)
-        .background(palette.row)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .beaconGlassRow(
+            cornerRadius: 13,
+            padding: 15,
+            accentBorder: state.isHealthy ? palette.successText.opacity(isHovered ? 0.45 : 0.25) : nil,
+            isHovered: isHovered
+        )
+        .onHover { hovering in
+            hoveredAppID = hovering ? app.id : (hoveredAppID == app.id ? nil : hoveredAppID)
+        }
     }
 
     private func miniMetric(_ title: String, _ value: String, color: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 10.5))
+                .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(palette.secondaryText)
             Text(value)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(color ?? palette.primaryText)
                 .lineLimit(1)

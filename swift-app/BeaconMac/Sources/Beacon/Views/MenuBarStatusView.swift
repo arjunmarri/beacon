@@ -3,127 +3,287 @@ import SwiftUI
 
 struct MenuBarStatusView: View {
     @Bindable var controller: BeaconController
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var palette: BeaconPalette { BeaconPalette(colorScheme: colorScheme) }
+
+    private var aggregateStatusText: String {
+        switch controller.aggregateLight {
+        case .green: return "Nominal"
+        case .amber: return "Attention"
+        case .red: return "Issue"
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("BeaconMac Monitor")
-                .font(.headline)
-                .foregroundStyle(Color(red: 0.23, green: 0.56, blue: 0.98))
+        ZStack {
+            BeaconAmbientCanvas()
+                .opacity(palette.isLight ? 0.42 : 0.34)
+            Rectangle()
+                .fill(palette.menuMaterial)
+            Rectangle()
+                .fill(palette.sidebarFill)
+            Rectangle()
+                .fill(palette.glassTopSheen)
 
-            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack(spacing: 9) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(palette.accentGradient)
+                            .shadow(color: palette.sectionAccentBar.opacity(0.32), radius: 6, y: 2)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.45), lineWidth: 1)
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.system(size: 11.5, weight: .bold))
+                            .foregroundStyle(palette.isLight ? Color.white : Color(red: 0.03, green: 0.05, blue: 0.08))
+                    }
+                    .frame(width: 26, height: 26)
 
-            if controller.config.managedApps.isEmpty {
-                Text("No local apps configured")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(controller.config.managedApps) { app in
-                    let state = controller.runtimeState(for: app.id)
-                    statusRow(name: app.name, light: state.light, detail: state.statusLabel)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("BeaconMac")
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundStyle(palette.primaryText)
+                        Text("v1.1.0 · Local Watchdog")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(palette.secondaryText)
+                    }
+
+                    Spacer()
+
+                    TrafficLightLampView(
+                        active: controller.aggregateLight,
+                        label: aggregateStatusText
+                    )
                 }
-            }
+                .padding(.horizontal, 4)
 
-            Divider()
-
-            statusRow(name: "launchd Daemon", light: controller.launchd.light, detail: controller.launchd.statusLabel)
-            statusRow(name: "NGINX Reverse Proxy", light: controller.nginxProxy.light, detail: controller.nginxProxy.statusLabel)
-            statusRow(name: "Cloudflare Tunnels", light: controller.cloudflareTunnel.light, detail: controller.cloudflareTunnel.statusLabel)
-            statusRow(
-                name: "Prevent Mac Sleep",
-                light: controller.launchd.sleepAssertionActive ? .green : .amber,
-                detail: controller.launchd.sleepAssertionActive ? "Awake (IOKit)" : "Off"
-            )
-            statusRow(name: "GitHub Account", light: controller.git.light, detail: controller.git.statusLabel)
-            statusRow(name: "Local LLM (Ollama)", light: controller.ollama.light, detail: controller.ollama.statusLabel)
-            statusRow(name: "Claude API", light: controller.claude.light, detail: controller.claude.statusLabel)
-
-            let connectedCloudCount = CloudProviderKind.allCases.filter { controller.cloudProviderState(for: $0).isConnected }.count
-            if connectedCloudCount > 0 {
-                statusRow(
-                    name: "Cloud AI & APIs",
-                    light: .green,
-                    detail: "\(connectedCloudCount) connected"
-                )
-            }
-
-            Divider()
-
-            let ollamaTunnelLive = controller.ollamaCloudflareTunnel?.isRunning == true
-            Button(ollamaTunnelLive ? "Stop Ollama Cloudflare Tunnel" : "Expose Ollama via Cloudflare") {
-                Task { await controller.toggleOllamaCloudflareTunnel() }
-            }
-
-            let liveTunnels = controller.cloudflareTunnel.activeTunnels.filter { $0.isRunning && $0.publicURL != nil }
-            if !liveTunnels.isEmpty {
-                ForEach(liveTunnels) { tunnel in
-                    if let pubURL = tunnel.publicURL {
-                        Button("Copy \(tunnel.label) Public URL") {
-                            controller.copyTunnelURL(pubURL)
+                // Managed Apps Section
+                VStack(alignment: .leading, spacing: 6) {
+                    if controller.config.managedApps.isEmpty {
+                        Text("No local apps configured")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(palette.secondaryText)
+                            .padding(.vertical, 2)
+                    } else {
+                        ForEach(controller.config.managedApps) { app in
+                            let state = controller.runtimeState(for: app.id)
+                            statusRow(name: app.name, light: state.light, detail: state.statusLabel)
                         }
                     }
                 }
-                Button("Stop All Cloudflare Tunnels") {
-                    Task { await controller.stopAllCloudflareTunnels() }
+                .padding(10)
+                .background(palette.row.opacity(palette.isLight ? 0.65 : 0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(palette.specularBorderGradient, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                // Services Section
+                VStack(alignment: .leading, spacing: 6) {
+                    statusRow(name: "launchd Daemon", light: controller.launchd.light, detail: controller.launchd.statusLabel)
+                    statusRow(name: "Cloudflare Tunnels", light: controller.cloudflareTunnel.light, detail: controller.cloudflareTunnel.statusLabel)
+                    statusRow(
+                        name: "Prevent Mac Sleep",
+                        light: controller.launchd.sleepAssertionActive ? .green : .amber,
+                        detail: controller.launchd.sleepAssertionActive ? "Awake (IOKit)" : "Off"
+                    )
+                    statusRow(name: "GitHub Account", light: controller.git.light, detail: controller.git.statusLabel)
+                    statusRow(name: "Local LLM (Ollama)", light: controller.ollama.light, detail: controller.ollama.statusLabel)
                 }
-                Divider()
-            } else {
-                Divider()
-            }
+                .padding(10)
+                .background(palette.row.opacity(palette.isLight ? 0.65 : 0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(palette.specularBorderGradient, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-            Button(controller.config.appearanceMode == .light ? "Switch to Dark Theme" : "Switch to White Theme") {
-                controller.toggleAppearanceMode()
-            }
+                // Tunnel Quick Actions
+                VStack(alignment: .leading, spacing: 2) {
+                    let ollamaTunnelLive = controller.ollamaCloudflareTunnel?.isRunning == true
+                    MenuBarGlassActionRow(
+                        title: ollamaTunnelLive ? "Stop Ollama Cloudflare Tunnel" : "Expose Ollama via Cloudflare",
+                        systemImage: ollamaTunnelLive ? "stop.circle" : "globe"
+                    ) {
+                        Task { await controller.toggleOllamaCloudflareTunnel() }
+                    }
 
-            Button(controller.config.startupSchedule.preventSleep ? "Allow Mac Sleep" : "Prevent Mac Sleep (IOKit)") {
-                controller.togglePreventSleep(!controller.config.startupSchedule.preventSleep)
-            }
-
-            Button("Watch Live Logs (tail -f)") {
-                controller.watchSupervisorLiveLogs()
-            }
-
-            Button(controller.launchd.isLoaded ? "Stop launchd Daemon" : "Start launchd Daemon") {
-                Task {
-                    if controller.launchd.isLoaded {
-                        await controller.unloadLaunchdAgent()
-                    } else {
-                        await controller.installAndLoadLaunchdAgent()
+                    let liveTunnels = controller.cloudflareTunnel.activeTunnels.filter { $0.isRunning && $0.publicURL != nil }
+                    if !liveTunnels.isEmpty {
+                        ForEach(liveTunnels) { tunnel in
+                            if let pubURL = tunnel.publicURL {
+                                MenuBarGlassActionRow(
+                                    title: "Copy \(tunnel.label) Public URL",
+                                    systemImage: "doc.on.doc"
+                                ) {
+                                    controller.copyTunnelURL(pubURL)
+                                }
+                            }
+                        }
+                        MenuBarGlassActionRow(
+                            title: "Stop All Cloudflare Tunnels",
+                            systemImage: "xmark.circle",
+                            isDestructive: true
+                        ) {
+                            Task { await controller.stopAllCloudflareTunnels() }
+                        }
                     }
                 }
-            }
 
-            Button("Install Dependencies…") {
-                NSApplication.shared.activate(ignoringOtherApps: true)
-                controller.openDependencyInstaller()
-            }
+                Divider().overlay(palette.subtleBorder)
 
-            Button("Check All Services") {
-                Task { await controller.refreshAllServices() }
-            }
+                // System & App Actions
+                VStack(alignment: .leading, spacing: 2) {
+                    MenuBarGlassActionRow(
+                        title: controller.config.appearanceMode == .light ? "Switch to Dark Theme" : "Switch to Light Theme",
+                        systemImage: controller.config.appearanceMode == .light ? "moon.stars.fill" : "sun.max.fill"
+                    ) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                            controller.toggleAppearanceMode()
+                        }
+                    }
 
-            Divider()
+                    MenuBarGlassActionRow(
+                        title: controller.config.startupSchedule.preventSleep ? "Allow Mac Sleep" : "Prevent Mac Sleep (IOKit)",
+                        systemImage: controller.config.startupSchedule.preventSleep ? "moon.zzz" : "bolt.fill"
+                    ) {
+                        controller.togglePreventSleep(!controller.config.startupSchedule.preventSleep)
+                    }
 
-            Button("Quit BeaconMac") {
-                NSApplication.shared.terminate(nil)
+                    MenuBarGlassActionRow(
+                        title: "Watch Live Logs (tail -f)",
+                        systemImage: "terminal"
+                    ) {
+                        controller.watchSupervisorLiveLogs()
+                    }
+
+                    MenuBarGlassActionRow(
+                        title: controller.launchd.isLoaded ? "Stop launchd Daemon" : "Start launchd Daemon",
+                        systemImage: controller.launchd.isLoaded ? "pause.circle" : "play.circle"
+                    ) {
+                        Task {
+                            if controller.launchd.isLoaded {
+                                await controller.unloadLaunchdAgent()
+                            } else {
+                                await controller.installAndLoadLaunchdAgent()
+                            }
+                        }
+                    }
+
+                    MenuBarGlassActionRow(
+                        title: "Install Dependencies…",
+                        systemImage: "arrow.down.circle"
+                    ) {
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        controller.openDependencyInstaller()
+                    }
+
+                    MenuBarGlassActionRow(
+                        title: "Check All Services",
+                        systemImage: "arrow.clockwise"
+                    ) {
+                        Task { await controller.refreshAllServices() }
+                    }
+                }
+
+                Divider().overlay(palette.subtleBorder)
+
+                MenuBarGlassActionRow(
+                    title: "Quit BeaconMac",
+                    systemImage: "power",
+                    shortcut: "⌘Q",
+                    isDestructive: true
+                ) {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
             }
-            .keyboardShortcut("q")
+            .padding(14)
         }
-        .padding(10)
-        .frame(width: 270)
+        .frame(width: 304)
     }
 
     private func statusRow(name: String, light: TrafficLightColor, detail: String) -> some View {
-        HStack {
+        let dotColor: Color = {
+            switch light {
+            case .green: return palette.successText
+            case .amber: return palette.warningText
+            case .red: return palette.errorText
+            }
+        }()
+
+        return HStack(spacing: 8) {
             Circle()
-                .fill(light == .green ? Color.green : (light == .amber ? Color.orange : Color.red))
-                .frame(width: 8, height: 8)
+                .fill(dotColor)
+                .frame(width: 7.5, height: 7.5)
+                .shadow(color: dotColor.opacity(0.6), radius: 3)
             Text(name)
-                .font(.system(size: 12))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(palette.primaryText)
                 .lineLimit(1)
             Spacer()
             Text(detail)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .foregroundStyle(palette.secondaryText)
+        }
+    }
+}
+
+private struct MenuBarGlassActionRow: View {
+    let title: String
+    let systemImage: String
+    var shortcut: String? = nil
+    var isDestructive: Bool = false
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+
+    var body: some View {
+        let palette = BeaconPalette(colorScheme: colorScheme)
+
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(isDestructive ? palette.errorText : palette.sectionHeader)
+                    .frame(width: 16, alignment: .center)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isDestructive ? palette.errorText : palette.primaryText)
+                    .lineLimit(1)
+
+                Spacer()
+
+                if let shortcut {
+                    Text(shortcut)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(palette.secondaryText)
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background {
+                if isHovered {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isDestructive ? Color.red.opacity(palette.isLight ? 0.10 : 0.16) : palette.menuItemHover)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(isDestructive ? Color.red.opacity(0.30) : palette.border, lineWidth: 1)
+                        )
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.14), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }

@@ -8,6 +8,7 @@ struct BuiltInNodeServerView: View {
     @State private var portText: String = "4173"
     @State private var showingCustomLoadSheet = false
     @State private var copiedAppID: UUID?
+    @State private var hoveredMountedID: UUID?
 
     private var palette: BeaconPalette {
         BeaconPalette(colorScheme: colorScheme)
@@ -18,11 +19,15 @@ struct BuiltInNodeServerView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        BeaconSectionHeaderText(title: "Built-In Node.js Server", fontSize: 16)
+                        BeaconSectionHeaderText(
+                            title: "Built-In Node.js Server",
+                            fontSize: 16,
+                            systemImage: "server.rack"
+                        )
                         if let nodeVer = controller.builtInServer.nodeVersion {
                             Text(nodeVer)
                                 .font(.system(size: 11, design: .monospaced))
@@ -31,6 +36,7 @@ struct BuiltInNodeServerView: View {
                         if let pid = controller.builtInServer.pid, controller.builtInServer.isRunning {
                             Text("· PID \(pid)")
                                 .font(.system(size: 11, design: .monospaced))
+                                .monospacedDigit()
                                 .foregroundStyle(palette.secondaryText)
                         }
                     }
@@ -51,18 +57,15 @@ struct BuiltInNodeServerView: View {
             HStack(spacing: 10) {
                 HStack(spacing: 6) {
                     Text("Port")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(palette.secondaryText)
                     TextField("4173", text: $portText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundStyle(palette.primaryText)
                         .frame(width: 62)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(palette.input)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.inputBorder))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .beaconGlassInput(cornerRadius: 7, horizontalPadding: 8, verticalPadding: 5)
                         .onSubmit { applyPortChange() }
                     if Int(portText) != controller.config.builtInServer.port {
                         Button("Apply") { applyPortChange() }
@@ -116,6 +119,7 @@ struct BuiltInNodeServerView: View {
                     }
                 ))
                 .toggleStyle(.switch)
+                .controlSize(.small)
                 .font(.system(size: 11.5))
                 .foregroundStyle(palette.secondaryText)
 
@@ -137,18 +141,18 @@ struct BuiltInNodeServerView: View {
                                 .foregroundStyle(palette.secondaryText)
                         }
                         .foregroundStyle(palette.primaryText)
-                        .padding(.horizontal, 11)
+                        .padding(.horizontal, 11.5)
                         .padding(.vertical, 6)
                         .background(palette.chipFill)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 8.5, style: .continuous).strokeBorder(palette.border, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
                 }
 
-                Button("Custom / Proxy...") {
+                Button("Custom / Proxy…") {
                     showingCustomLoadSheet = true
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
@@ -159,14 +163,15 @@ struct BuiltInNodeServerView: View {
                 .disabled(controller.busyAction != nil)
                 .buttonStyle(BeaconPrimaryButtonStyle())
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 13)
             .padding(.vertical, 10)
-            .background(palette.row)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.subtleBorder))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .beaconGlassWell(cornerRadius: 11)
 
             if let err = controller.builtInServer.lastError, !controller.builtInServer.isRunning {
                 HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.errorText)
                     Text(err)
                         .font(.system(size: 11.5))
                         .foregroundStyle(palette.errorText)
@@ -179,27 +184,24 @@ struct BuiltInNodeServerView: View {
                         .buttonStyle(BeaconSecondaryButtonStyle())
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color.red.opacity(palette.isLight ? 0.08 : 0.12))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.red.opacity(0.28)))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(Color.red.opacity(palette.isLight ? 0.08 : 0.14))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.red.opacity(0.30), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             if controller.config.builtInServer.mountedApps.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("No apps loaded into the built-in Node.js server yet.")
-                        .font(.system(size: 13, weight: .medium))
+                    Text("No apps loaded into the built-in Node.js server yet")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(palette.primaryText)
                     Text("Click \"+ Load App Folder\" to select any web project folder (HTML/JS, Vite dist, React build, Next static export) or mount a running local port. BeaconMac auto-starts the built-in Node.js server and serves your app immediately on \(controller.builtInServer.baseURL).")
                         .font(.system(size: 12))
                         .foregroundStyle(palette.secondaryText)
                 }
-                .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(palette.row)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .beaconGlassRow(cornerRadius: 12, padding: 16)
             } else {
                 VStack(spacing: 10) {
                     ForEach(controller.config.builtInServer.mountedApps) { app in
@@ -208,11 +210,7 @@ struct BuiltInNodeServerView: View {
                 }
             }
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
         .onAppear {
             portText = String(controller.config.builtInServer.port)
         }
@@ -227,6 +225,7 @@ struct BuiltInNodeServerView: View {
 
     private func mountedAppRow(_ app: BuiltInMountedApp) -> some View {
         let isActiveRoot = controller.config.builtInServer.activeRootAppID == app.id
+        let isHovered = hoveredMountedID == app.id
         let primaryURL = isActiveRoot
             ? "\(controller.builtInServer.baseURL)/"
             : "\(controller.builtInServer.baseURL)/apps/\(app.slug)/"
@@ -296,15 +295,17 @@ struct BuiltInNodeServerView: View {
             Button("Unload") {
                 controller.removeBuiltInMountedApp(app)
             }
-            .buttonStyle(BeaconSecondaryButtonStyle())
+            .buttonStyle(BeaconDangerButtonStyle())
         }
-        .padding(12)
-        .background(palette.row)
-        .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(isActiveRoot ? palette.successText.opacity(0.45) : palette.border)
+        .beaconGlassRow(
+            cornerRadius: 11,
+            padding: 13,
+            accentBorder: isActiveRoot ? palette.successText.opacity(0.45) : nil,
+            isHovered: isHovered
         )
-        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .onHover { hovering in
+            hoveredMountedID = hovering ? app.id : (hoveredMountedID == app.id ? nil : hoveredMountedID)
+        }
     }
 
     private func applyPortChange() {
@@ -368,131 +369,129 @@ private struct BuiltInAppLoadSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                BeaconSectionHeaderText(title: "Load App into Built-In Node.js Server", fontSize: 16)
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(BeaconSecondaryButtonStyle())
-            }
+        ZStack {
+            BeaconAmbientCanvas()
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Hosting Mode")
-                    .font(.system(size: 11))
-                    .foregroundStyle(palette.secondaryText)
-                Picker("Mode", selection: $mode) {
-                    ForEach(BuiltInNodeAppMode.allCases) { item in
-                        Text(item.label).tag(item)
-                    }
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    BeaconSectionHeaderText(
+                        title: "Load App into Built-In Node.js Server",
+                        fontSize: 16,
+                        systemImage: "server.rack"
+                    )
+                    Spacer()
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("App Display Name")
-                    .font(.system(size: 11))
-                    .foregroundStyle(palette.secondaryText)
-                TextField("e.g. My Web App", text: $name)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.primaryText)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(palette.input)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-            }
-
-            if mode == .staticFolder {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("App Folder (auto-detects dist/, build/, out/, public/, or root index.html)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.secondaryText)
-                    HStack(spacing: 8) {
-                        TextField("/Users/you/Projects/my-app", text: $folderPath)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(palette.primaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(palette.input)
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
-                        Button("Browse...") {
-                            let panel = NSOpenPanel()
-                            panel.canChooseFiles = false
-                            panel.canChooseDirectories = true
-                            if panel.runModal() == .OK, let url = panel.url {
-                                folderPath = url.path
-                                if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    name = url.lastPathComponent
-                                }
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Hosting Mode")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.secondaryText)
+                        Picker("Mode", selection: $mode) {
+                            ForEach(BuiltInNodeAppMode.allCases) { item in
+                                Text(item.label).tag(item)
                             }
                         }
-                        .buttonStyle(BeaconSecondaryButtonStyle())
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
                     }
-                    if !folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Detected serve root: \(BuiltInNodeServerService.describeServeRoot(for: folderPath))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(palette.successText)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("App Display Name")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.secondaryText)
+                        TextField("e.g. My Web App", text: $name)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12))
+                            .foregroundStyle(palette.primaryText)
+                            .beaconGlassInput()
                     }
+
+                    if mode == .staticFolder {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("App Folder (auto-detects dist/, build/, out/, public/, or root index.html)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(palette.secondaryText)
+                            HStack(spacing: 8) {
+                                TextField("/Users/you/Projects/my-app", text: $folderPath)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(palette.primaryText)
+                                    .beaconGlassInput()
+                                Button("Browse…") {
+                                    let panel = NSOpenPanel()
+                                    panel.canChooseFiles = false
+                                    panel.canChooseDirectories = true
+                                    if panel.runModal() == .OK, let url = panel.url {
+                                        folderPath = url.path
+                                        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                            name = url.lastPathComponent
+                                        }
+                                    }
+                                }
+                                .buttonStyle(BeaconSecondaryButtonStyle())
+                            }
+                            if !folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("Detected serve root: \(BuiltInNodeServerService.describeServeRoot(for: folderPath))")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(palette.successText)
+                            }
+                        }
+
+                        Toggle("SPA Fallback (route unknown paths to index.html)", isOn: $spaFallback)
+                            .font(.system(size: 12))
+                            .foregroundStyle(palette.bodyText)
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Local Target Port (proxies strictly to 127.0.0.1:<port>)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(palette.secondaryText)
+                            TextField("3001", text: $proxyPortText)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(palette.primaryText)
+                                .beaconGlassInput()
+                        }
+                    }
+
+                    Toggle("Set as Active Root app (serve directly on \(controller.builtInServer.baseURL)/)", isOn: $makeActiveRoot)
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.bodyText)
                 }
+                .beaconGlassCard(cornerRadius: 14, padding: 16)
 
-                Toggle("SPA Fallback (route unknown paths to index.html)", isOn: $spaFallback)
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.bodyText)
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Local Target Port (proxies strictly to 127.0.0.1:<port>)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.secondaryText)
-                    TextField("3001", text: $proxyPortText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(palette.primaryText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(palette.input)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                }
-            }
-
-            Toggle("Set as Active Root app (serve directly on \(controller.builtInServer.baseURL)/)", isOn: $makeActiveRoot)
-                .font(.system(size: 12))
-                .foregroundStyle(palette.bodyText)
-
-            Spacer()
-
-            HStack {
                 Spacer()
-                Button("Load & Start") {
-                    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let fallbackName = mode == .staticFolder
-                        ? URL(fileURLWithPath: folderPath).lastPathComponent
-                        : "Local :\(proxyPortText)"
-                    let finalName = trimmedName.isEmpty ? fallbackName : trimmedName
-                    let portVal = Int(proxyPortText.trimmingCharacters(in: .whitespacesAndNewlines))
-                    Task {
-                        await controller.loadAppIntoBuiltInServer(
-                            name: finalName,
-                            mode: mode,
-                            folderPath: folderPath,
-                            proxyPort: mode == .localProxy ? portVal : nil,
-                            spaFallback: spaFallback,
-                            makeActiveRoot: makeActiveRoot,
-                            autoStartServer: true
-                        )
-                        dismiss()
+
+                HStack {
+                    Spacer()
+                    Button("Load & Start") {
+                        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let fallbackName = mode == .staticFolder
+                            ? URL(fileURLWithPath: folderPath).lastPathComponent
+                            : "Local :\(proxyPortText)"
+                        let finalName = trimmedName.isEmpty ? fallbackName : trimmedName
+                        let portVal = Int(proxyPortText.trimmingCharacters(in: .whitespacesAndNewlines))
+                        Task {
+                            await controller.loadAppIntoBuiltInServer(
+                                name: finalName,
+                                mode: mode,
+                                folderPath: folderPath,
+                                proxyPort: mode == .localProxy ? portVal : nil,
+                                spaFallback: spaFallback,
+                                makeActiveRoot: makeActiveRoot,
+                                autoStartServer: true
+                            )
+                            dismiss()
+                        }
                     }
+                    .disabled(!canSubmit)
+                    .buttonStyle(BeaconPrimaryButtonStyle())
                 }
-                .disabled(!canSubmit)
-                .buttonStyle(BeaconPrimaryButtonStyle())
             }
+            .padding(22)
         }
-        .padding(22)
-        .frame(width: 540, height: 390)
-        .background(palette.sheetCanvas)
+        .frame(width: 560, height: 420)
     }
 }

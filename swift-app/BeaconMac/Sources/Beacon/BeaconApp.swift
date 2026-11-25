@@ -4,22 +4,28 @@ import SwiftUI
 struct BeaconApp: App {
     @State private var controller = BeaconController()
 
+    private var activeScheme: ColorScheme {
+        controller.config.appearanceMode == .light ? .light : .dark
+    }
+
     var body: some Scene {
         WindowGroup("BeaconMac") {
             ContentView(controller: controller)
-                .preferredColorScheme(controller.config.appearanceMode == .light ? .light : .dark)
-                .frame(minWidth: 940, minHeight: 680)
+                .preferredColorScheme(activeScheme)
+                .frame(minWidth: 1020, minHeight: 700)
         }
-        .windowStyle(.titleBar)
-        .defaultSize(width: 1180, height: 820)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1280, height: 840)
 
         MenuBarExtra {
             MenuBarStatusView(controller: controller)
+                .preferredColorScheme(activeScheme)
         } label: {
             Image(systemName: menuBarSymbolName)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(menuBarTintColor)
         }
+        .menuBarExtraStyle(.window)
     }
 
     private var menuBarSymbolName: String {

@@ -12,11 +12,8 @@ public final class BeaconController {
     public var terminalLines: [TerminalOutputLine] = []
     public var git = GitDeployState()
     public var ollama = OllamaState()
-    public var claude = ClaudeState()
-    public var cloudProviderStates: [CloudProviderKind: CloudProviderRuntimeState] = [:]
     public var launchd = LaunchdDaemonState()
     public var builtInServer = BuiltInServerState()
-    public var nginxProxy = NginxProxyState()
     public var cloudflareTunnel = CloudflareTunnelState()
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
@@ -37,21 +34,17 @@ public final class BeaconController {
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
     private let builtInServerService: BuiltInNodeServerService
-    private let nginxProxyService: NginxProxyService
     private let cloudflareTunnelService: CloudflareTunnelService
     private let serverLogSearchService = ServerLogSearchService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
-    private let claudeService = ClaudeService()
-    private let cloudProviderService = CloudProviderService()
     private let alertService = AlertService()
 
     private var pollingTask: Task<Void, Never>?
-    private var nginxMetricsTask: Task<Void, Never>?
     private var tickCount = 0
 
     public var aggregateLight: TrafficLightColor {
-        var lights: [TrafficLightColor] = [git.light, ollama.light, claude.light]
+        var lights: [TrafficLightColor] = [git.light, ollama.light]
         lights.append(contentsOf: config.managedApps.map { runtimeState(for: $0.id).light })
         if lights.contains(.red) { return .red }
         if lights.contains(.amber) { return .amber }
@@ -61,14 +54,10 @@ public final class BeaconController {
     public init() {
         let loaded = flatFileStore.loadConfig()
         self.builtInServerService = BuiltInNodeServerService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
-        self.nginxProxyService = NginxProxyService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
         self.cloudflareTunnelService = CloudflareTunnelService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
         self.config = loaded
         self.config.startupSchedule.launchAtLogin = startupService.isLaunchAtLoginEnabled
         self.builtInServer.port = loaded.builtInServer.port
-        self.nginxProxy.listenPort = loaded.nginxProxy.listenPort
-        self.nginxProxy.configPath = self.nginxProxyService.configFileURL.path
-        self.nginxProxy.lanAddress = NginxProxyService.detectPrimaryLANIPv4()
         self.ollama.endpoint = loaded.ollamaEndpoint
         self.ollama.activeModel = loaded.ollamaActiveModel
         self.logs = flatFileStore.loadRecentLogs()
@@ -79,7 +68,6 @@ public final class BeaconController {
         }
 
         self.builtInServerService.writeRegistry(from: loaded.builtInServer)
-        self.nginxProxyService.writeConfig(from: loaded.nginxProxy)
         self.launchd.plistPath = startupService.launchdPlistTildePath
         self.launchd.serverLogPath = startupService.serverLogTildePath
         self.scriptsInstalled = EmbeddedScripts.autoInstallIfNotSandboxed()
@@ -97,19 +85,10 @@ public final class BeaconController {
             await bootServices()
         }
         startPollingLoop()
-        startNginxLiveMetricsLoop()
     }
 
     public func runtimeState(for appID: UUID) -> ManagedAppRuntimeState {
         appStates[appID] ?? ManagedAppRuntimeState()
-    }
-
-    public func cloudProviderConfig(for kind: CloudProviderKind) -> CloudProviderConfig {
-        config.cloudProviders[kind.rawValue] ?? CloudProviderConfig(selectedModel: kind.defaultModel)
-    }
-
-    public func cloudProviderState(for kind: CloudProviderKind) -> CloudProviderRuntimeState {
-        cloudProviderStates[kind] ?? CloudProviderRuntimeState()
     }
 
     public func setAppearanceMode(_ mode: BeaconAppearanceMode) {
@@ -154,30 +133,12 @@ public final class BeaconController {
         if config.builtInServer.autoStart && !builtInServer.isRunning {
             await startBuiltInNodeServer()
         }
-        await probeNginxProxy(logTransitions: false)
-        if config.nginxProxy.autoStart && nginxProxy.isInstalled && !nginxProxy.isRunning {
-            await startNginxProxy()
-        }
         await probeCloudflareTunnels(logTransitions: false)
         await probeOllama(logResult: true)
 
         if let savedGitToken = keychain.read(.githubToken), !savedGitToken.isEmpty {
             git.keyHint = SecretMasker.mask(savedGitToken)
             await connectGitToken(savedGitToken, persistToKeychain: false)
-        }
-
-        if let savedClaudeKey = keychain.read(.claudeAPIKey), !savedClaudeKey.isEmpty {
-            claude.keyHint = SecretMasker.mask(savedClaudeKey)
-            await probeClaude(logResult: true)
-        }
-
-        for kind in CloudProviderKind.allCases {
-            if let savedSecret = keychain.read(kind.keychainAccount), !savedSecret.isEmpty {
-                var st = cloudProviderState(for: kind)
-                st.keyHint = SecretMasker.mask(savedSecret)
-                cloudProviderStates[kind] = st
-                await probeCloudProvider(kind, logResult: false)
-            }
         }
 
         // Automatically start or deploy any app marked runOnStartup
@@ -209,7 +170,6 @@ public final class BeaconController {
 
                 if self.tickCount % 3 == 0 {
                     await self.probeBuiltInNodeServer(logTransitions: true)
-                    await self.probeNginxProxy(logTransitions: true)
                     if self.cloudflareTunnel.activeCount > 0 {
                         await self.probeCloudflareTunnels(logTransitions: true)
                     }
@@ -222,23 +182,6 @@ public final class BeaconController {
                 let gitIntervalTicks = max(5, self.config.gitPollIntervalSec / 3)
                 if self.tickCount % gitIntervalTicks == 0 {
                     await self.pollAutoDeployApps()
-                }
-
-                if self.tickCount % 20 == 0 && self.keychain.read(.claudeAPIKey) != nil {
-                    await self.probeClaude(logResult: false)
-                }
-            }
-        }
-    }
-
-    private func startNginxLiveMetricsLoop() {
-        nginxMetricsTask?.cancel()
-        nginxMetricsTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                guard let self, !Task.isCancelled else { break }
-                if self.nginxProxy.isRunning && self.nginxProxy.metrics.livePollingEnabled {
-                    await self.pollNginxMetricsNow()
                 }
             }
         }
@@ -993,190 +936,6 @@ public final class BeaconController {
         }
     }
 
-    // MARK: - Claude API Health Checker
-
-    @discardableResult
-    public func connectClaudeKey(_ rawKey: String) async -> Bool {
-        busyAction = "claude-connect"
-        bannerError = nil
-        defer { busyAction = nil }
-
-        let trimmed = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 16, !trimmed.contains(where: \.isWhitespace) else {
-            bannerError = "Paste a valid Anthropic Claude API key (starts with sk-ant-...)."
-            return false
-        }
-
-        keychain.save(trimmed, for: .claudeAPIKey)
-        claude.keyHint = SecretMasker.mask(trimmed)
-        return await probeClaude(logResult: true)
-    }
-
-    @discardableResult
-    public func probeClaude(logResult: Bool) async -> Bool {
-        guard let apiKey = keychain.read(.claudeAPIKey), !apiKey.isEmpty else {
-            claude = ClaudeState()
-            return false
-        }
-
-        claude.light = .amber
-        claude.statusLabel = "Checking"
-        let res = await claudeService.probeHealth(apiKey: apiKey)
-        claude.lastCheckedAt = Date()
-        claude.httpStatus = res.httpStatus
-        claude.latencyMs = res.latencyMs
-        claude.isConnected = res.connected
-        claude.lastError = res.error
-
-        if res.connected {
-            claude.light = .green
-            claude.statusLabel = "Healthy"
-            claude.models = res.models
-            if claude.activeModel.isEmpty || !res.models.contains(where: { $0.id == claude.activeModel }) {
-                claude.activeModel = res.models.first(where: { $0.id.contains("sonnet") })?.id ?? res.models.first?.id ?? ""
-            }
-            if logResult {
-                log(.claude, .info, "Claude API healthy (HTTP \(res.httpStatus ?? 200), \(res.latencyMs) ms, \(res.models.count) models, key \(claude.keyHint ?? "stored"))")
-            }
-            return true
-        } else {
-            claude.light = .red
-            claude.statusLabel = "Error"
-            bannerError = res.error
-            log(.claude, .error, "Claude API check failed (\(res.error ?? "Unknown error"))")
-            return false
-        }
-    }
-
-    public func disconnectClaudeKey() {
-        keychain.delete(.claudeAPIKey)
-        claude = ClaudeState()
-        log(.claude, .info, "Cleared Claude API key from macOS Keychain")
-    }
-
-    // MARK: - Cloud AI & Platform API Integrations (OpenAI, Gemini, OpenRouter, Groq, Cloudflare, Vercel, Supabase)
-
-    @discardableResult
-    public func connectCloudProvider(
-        _ kind: CloudProviderKind,
-        apiKey: String,
-        baseURL: String = "",
-        accountID: String = "",
-        selectedModel: String = ""
-    ) async -> Bool {
-        busyAction = "cloud-connect-\(kind.rawValue)"
-        bannerError = nil
-        defer { busyAction = nil }
-
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedKey.count >= 8, !trimmedKey.contains(where: \.isWhitespace) else {
-            bannerError = "Paste a valid \(kind.displayName) API key or token."
-            return false
-        }
-
-        var cfg = cloudProviderConfig(for: kind)
-        let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedAccount = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        if kind.supportsBaseURL {
-            cfg.baseURL = trimmedBase
-        }
-        if kind.supportsAccountID {
-            cfg.accountID = trimmedAccount
-        }
-        if !trimmedModel.isEmpty {
-            cfg.selectedModel = trimmedModel
-        } else if cfg.selectedModel.isEmpty {
-            cfg.selectedModel = kind.defaultModel
-        }
-        config.cloudProviders[kind.rawValue] = cfg
-        flatFileStore.saveConfig(config)
-
-        keychain.save(trimmedKey, for: kind.keychainAccount)
-        var st = cloudProviderState(for: kind)
-        st.keyHint = SecretMasker.mask(trimmedKey)
-        cloudProviderStates[kind] = st
-
-        return await probeCloudProvider(kind, logResult: true)
-    }
-
-    public func updateCloudProviderSettings(
-        _ kind: CloudProviderKind,
-        baseURL: String? = nil,
-        accountID: String? = nil,
-        selectedModel: String? = nil
-    ) {
-        var cfg = cloudProviderConfig(for: kind)
-        if let baseURL { cfg.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if let accountID { cfg.accountID = accountID.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if let selectedModel { cfg.selectedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines) }
-        config.cloudProviders[kind.rawValue] = cfg
-        flatFileStore.saveConfig(config)
-    }
-
-    @discardableResult
-    public func probeCloudProvider(_ kind: CloudProviderKind, logResult: Bool) async -> Bool {
-        guard let secret = keychain.read(kind.keychainAccount), !secret.isEmpty else {
-            cloudProviderStates[kind] = CloudProviderRuntimeState()
-            return false
-        }
-
-        let cfg = cloudProviderConfig(for: kind)
-        var st = cloudProviderState(for: kind)
-        st.keyHint = SecretMasker.mask(secret)
-        st.light = .amber
-        st.statusLabel = "Checking"
-        cloudProviderStates[kind] = st
-
-        let res = await cloudProviderService.probe(
-            kind: kind,
-            apiKey: secret,
-            baseURL: cfg.baseURL,
-            accountID: cfg.accountID
-        )
-
-        st.lastCheckedAt = Date()
-        st.httpStatus = res.httpStatus
-        st.latencyMs = res.latencyMs
-        st.isConnected = res.connected
-        st.accountLabel = res.accountLabel
-        st.lastError = res.error
-
-        if res.connected {
-            st.light = .green
-            st.statusLabel = "Connected"
-            st.models = res.models
-            if !res.models.isEmpty {
-                var updatedCfg = cfg
-                if updatedCfg.selectedModel.isEmpty || (!res.models.contains(updatedCfg.selectedModel) && kind != .customOpenAI) {
-                    updatedCfg.selectedModel = res.models.first(where: { $0 == kind.defaultModel }) ?? res.models.first ?? kind.defaultModel
-                    config.cloudProviders[kind.rawValue] = updatedCfg
-                    flatFileStore.saveConfig(config)
-                }
-            }
-            cloudProviderStates[kind] = st
-            if logResult {
-                log(.system, .info, "\(kind.displayName) connected (HTTP \(res.httpStatus ?? 200), \(res.latencyMs) ms\(res.accountLabel.map { ", \($0)" } ?? ""))")
-            }
-            return true
-        } else {
-            st.light = .red
-            st.statusLabel = "Error"
-            cloudProviderStates[kind] = st
-            if logResult {
-                bannerError = res.error
-                log(.system, .error, "\(kind.displayName) check failed (\(res.error ?? "Unknown error"))")
-            }
-            return false
-        }
-    }
-
-    public func disconnectCloudProvider(_ kind: CloudProviderKind) {
-        keychain.delete(kind.keychainAccount)
-        cloudProviderStates[kind] = CloudProviderRuntimeState()
-        log(.system, .info, "Cleared \(kind.displayName) credentials from macOS Keychain")
-    }
-
     // MARK: - Batch & Utility Actions
 
     public func refreshAllServices() async {
@@ -1184,15 +943,8 @@ public final class BeaconController {
         defer { busyAction = nil }
         await probeAllManagedApps(logTransitions: true)
         await probeBuiltInNodeServer(logTransitions: true)
-        await probeNginxProxy(logTransitions: true)
         await probeCloudflareTunnels(logTransitions: true)
         await probeOllama(logResult: true)
-        if keychain.read(.claudeAPIKey) != nil {
-            await probeClaude(logResult: true)
-        }
-        for kind in CloudProviderKind.allCases where keychain.read(kind.keychainAccount) != nil {
-            await probeCloudProvider(kind, logResult: false)
-        }
     }
 
     // MARK: - Built-In Node.js App Host Server
@@ -1429,456 +1181,7 @@ public final class BeaconController {
         }
     }
 
-    // MARK: - Inbuilt NGINX Reverse Proxy
-
-    public var currentNginxConfigText: String {
-        nginxProxyService.generateConfigText(
-            from: config.nginxProxy,
-            includeStubStatus: nginxProxy.metrics.stubStatusSupported
-        )
-    }
-
-    private func recordHealthyNginxProbe(port: Int, latencyMs: Int) async {
-        nginxProxy.metrics.probeLatencyMs = latencyMs
-        nginxProxy.metrics.consecutiveHealthyProbes += 1
-        nginxProxy.metrics.consecutiveFailedProbes = 0
-        if nginxProxy.metrics.healthySince == nil {
-            nginxProxy.metrics.healthySince = Date()
-        }
-
-        if let snap = await nginxProxyService.probeStubStatus(port: port) {
-            var rps: Double = 0
-            if let prev = nginxProxy.metrics.latestSnapshot {
-                let dt = snap.capturedAt.timeIntervalSince(prev.capturedAt)
-                if dt > 0.25 && snap.requests >= prev.requests {
-                    rps = Double(snap.requests - prev.requests) / dt
-                }
-            }
-
-            nginxProxy.metrics.stubStatusAvailable = true
-            nginxProxy.metrics.latestSnapshot = snap
-            nginxProxy.metrics.requestsPerSecond = rps
-            nginxProxy.metrics.peakActiveConnections = max(nginxProxy.metrics.peakActiveConnections, snap.activeConnections)
-            nginxProxy.metrics.peakRequestsPerSecond = max(nginxProxy.metrics.peakRequestsPerSecond, rps)
-
-            let sample = NginxConnectionSample(
-                timestamp: snap.capturedAt,
-                activeConnections: snap.activeConnections,
-                reading: snap.reading,
-                writing: snap.writing,
-                waiting: snap.waiting,
-                requestsPerSecond: rps,
-                probeLatencyMs: latencyMs
-            )
-            nginxProxy.metrics.history.append(sample)
-            if nginxProxy.metrics.history.count > 30 {
-                nginxProxy.metrics.history = Array(nginxProxy.metrics.history.suffix(30))
-            }
-        } else {
-            nginxProxy.metrics.stubStatusAvailable = false
-            nginxProxy.metrics.requestsPerSecond = 0
-        }
-    }
-
-    public func pollNginxMetricsNow() async {
-        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
-        nginxProxy.listenPort = port
-        if let probe = await nginxProxyService.probeHealthWithLatency(port: port), probe.health.ok {
-            nginxProxy.isInstalled = true
-            nginxProxy.isRunning = true
-            nginxProxy.light = .green
-            nginxProxy.statusLabel = config.nginxProxy.exposeOnLAN ? "LAN :\(port)" : "Running :\(port)"
-            nginxProxy.lastError = nil
-            nginxProxy.lastCheckedAt = Date()
-            await recordHealthyNginxProbe(port: port, latencyMs: probe.latencyMs)
-        } else {
-            await probeNginxProxy(logTransitions: false)
-        }
-    }
-
-    public func setNginxLivePolling(_ enabled: Bool) {
-        nginxProxy.metrics.livePollingEnabled = enabled
-        if enabled && nginxProxy.isRunning {
-            Task { await pollNginxMetricsNow() }
-        }
-    }
-
-    public func resetNginxMetricsHistory() {
-        nginxProxy.metrics.history = []
-        nginxProxy.metrics.peakActiveConnections = nginxProxy.metrics.latestSnapshot?.activeConnections ?? 0
-        nginxProxy.metrics.peakRequestsPerSecond = nginxProxy.metrics.requestsPerSecond
-    }
-
-    public func probeNginxProxy(logTransitions: Bool = false) async {
-        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
-        nginxProxy.listenPort = port
-        nginxProxy.configPath = nginxProxyService.configFileURL.path
-        nginxProxy.lanAddress = NginxProxyService.detectPrimaryLANIPv4()
-        let wasRunning = nginxProxy.isRunning
-
-        if let probe = await nginxProxyService.probeHealthWithLatency(port: port), probe.health.ok {
-            nginxProxy.isInstalled = true
-            nginxProxy.isRunning = true
-            nginxProxy.light = .green
-            nginxProxy.statusLabel = config.nginxProxy.exposeOnLAN ? "LAN :\(port)" : "Running :\(port)"
-            nginxProxy.lastError = nil
-            nginxProxy.lastCheckedAt = Date()
-            if nginxProxy.nginxVersion == nil || nginxProxy.pid == nil {
-                let statusProbe = await deploymentService.runNginxAction(
-                    "status",
-                    configPath: nginxProxyService.configFileURL.path,
-                    port: port
-                )
-                if let ver = statusProbe.version { nginxProxy.nginxVersion = ver }
-                if let pid = statusProbe.pid { nginxProxy.pid = pid }
-                if let stubSup = statusProbe.stubStatusSupported {
-                    nginxProxy.metrics.stubStatusSupported = stubSup
-                }
-            }
-            await recordHealthyNginxProbe(port: port, latencyMs: probe.latencyMs)
-            if logTransitions && !wasRunning {
-                log(.system, .info, "Inbuilt NGINX reverse proxy is online at \(nginxProxy.baseURL)")
-            }
-            return
-        }
-
-        let statusProbe = await deploymentService.runNginxAction(
-            "status",
-            configPath: nginxProxyService.configFileURL.path,
-            port: port
-        )
-        let installed = statusProbe.isInstalled ?? systemTools.first(where: { $0.name == "nginx" })?.available ?? false
-        nginxProxy.isInstalled = installed
-        if let ver = statusProbe.version {
-            nginxProxy.nginxVersion = ver
-        }
-        if let stubSup = statusProbe.stubStatusSupported {
-            nginxProxy.metrics.stubStatusSupported = stubSup
-        }
-        nginxProxy.isRunning = false
-        nginxProxy.pid = nil
-        nginxProxy.lastCheckedAt = Date()
-        if wasRunning {
-            nginxProxy.metrics.consecutiveFailedProbes += 1
-        }
-        nginxProxy.metrics.healthySince = nil
-        nginxProxy.metrics.probeLatencyMs = nil
-        nginxProxy.metrics.stubStatusAvailable = false
-        nginxProxy.metrics.requestsPerSecond = 0
-
-        if !installed {
-            nginxProxy.light = .amber
-            nginxProxy.statusLabel = "Not Installed"
-        } else {
-            nginxProxy.light = .amber
-            nginxProxy.statusLabel = "Stopped"
-        }
-
-        if logTransitions && wasRunning {
-            log(.system, .warn, "Inbuilt NGINX reverse proxy on port \(port) stopped responding")
-        }
-    }
-
-    public func startNginxProxy(restart: Bool = false) async {
-        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
-        config.nginxProxy.listenPort = port
-        nginxProxy.listenPort = port
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-        flatFileStore.saveConfig(config)
-
-        let action = restart ? "restart" : "start"
-        busyAction = "nginx-\(action)"
-        defer { busyAction = nil }
-
-        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh \(action) \"\(nginxProxyService.configFileURL.path)\" \(port)")
-        let probe = await deploymentService.runNginxAction(
-            action,
-            configPath: nginxProxyService.configFileURL.path,
-            port: port
-        )
-        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
-        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: true) }
-
-        if probe.result.ok {
-            nginxProxy.lastError = nil
-            if let ver = probe.version { nginxProxy.nginxVersion = ver }
-            if let pid = probe.pid { nginxProxy.pid = pid }
-            await probeNginxProxy(logTransitions: false)
-            log(.system, .info, "Inbuilt NGINX reverse proxy running on \(nginxProxy.baseURL) (\(config.nginxProxy.routes.filter(\.enabled).count) active route(s))")
-        } else {
-            nginxProxy.isRunning = false
-            nginxProxy.light = .red
-            nginxProxy.statusLabel = "Start Failed"
-            nginxProxy.lastError = probe.result.summary
-            bannerError = probe.result.summary
-            log(.system, .error, "Inbuilt NGINX reverse proxy failed to start: \(probe.result.summary)")
-        }
-    }
-
-    public func reloadNginxProxy() async {
-        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-
-        busyAction = "nginx-reload"
-        defer { busyAction = nil }
-
-        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh reload \"\(nginxProxyService.configFileURL.path)\" \(port)")
-        let probe = await deploymentService.runNginxAction(
-            "reload",
-            configPath: nginxProxyService.configFileURL.path,
-            port: port
-        )
-        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
-        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: true) }
-
-        if probe.result.ok {
-            nginxProxy.lastError = nil
-            if let ver = probe.version { nginxProxy.nginxVersion = ver }
-            if let pid = probe.pid { nginxProxy.pid = pid }
-            await probeNginxProxy(logTransitions: false)
-            log(.system, .info, "Reloaded inbuilt NGINX reverse proxy configuration")
-        } else {
-            nginxProxy.lastError = probe.result.summary
-            bannerError = probe.result.summary
-            log(.system, .error, "NGINX reload failed: \(probe.result.summary)")
-        }
-    }
-
-    public func stopNginxProxy() async {
-        let port = config.nginxProxy.listenPort
-        busyAction = "nginx-stop"
-        defer { busyAction = nil }
-
-        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh stop \"\(nginxProxyService.configFileURL.path)\" \(port)")
-        let probe = await deploymentService.runNginxAction(
-            "stop",
-            configPath: nginxProxyService.configFileURL.path,
-            port: port
-        )
-        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
-        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: !probe.result.ok) }
-
-        nginxProxy.isRunning = false
-        nginxProxy.pid = nil
-        nginxProxy.light = .amber
-        nginxProxy.statusLabel = nginxProxy.isInstalled ? "Stopped" : "Not Installed"
-        nginxProxy.lastError = nil
-        nginxProxy.metrics.healthySince = nil
-        nginxProxy.metrics.probeLatencyMs = nil
-        nginxProxy.metrics.stubStatusAvailable = false
-        nginxProxy.metrics.requestsPerSecond = 0
-        nginxProxy.metrics.consecutiveHealthyProbes = 0
-        nginxProxy.metrics.consecutiveFailedProbes = 0
-        nginxProxy.metrics.latestSnapshot = nil
-        log(.system, .info, "Stopped inbuilt NGINX reverse proxy on port \(port)")
-    }
-
-    public func testNginxConfig() async {
-        let port = config.nginxProxy.listenPort
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-
-        busyAction = "nginx-test"
-        defer { busyAction = nil }
-
-        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh test \"\(nginxProxyService.configFileURL.path)\" \(port)")
-        let probe = await deploymentService.runNginxAction(
-            "test",
-            configPath: nginxProxyService.configFileURL.path,
-            port: port
-        )
-        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
-        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: !probe.result.ok) }
-
-        if probe.result.ok {
-            nginxProxy.lastError = nil
-            log(.system, .info, "NGINX configuration syntax check passed (nginx -t)")
-        } else {
-            nginxProxy.lastError = probe.result.summary
-            bannerError = probe.result.summary
-            log(.system, .error, "NGINX config test failed: \(probe.result.summary)")
-        }
-    }
-
-    public func installNginxSilently() async {
-        let res = await installPrerequisitesAndDependencies(
-            for: nil,
-            requestedTools: ["nginx"],
-            strategy: .auto
-        )
-        await probeNginxProxy(logTransitions: false)
-        if res.ok && nginxProxy.isInstalled {
-            log(.system, .info, "Installed NGINX silently (\(nginxProxy.nginxVersion ?? "ready"))")
-        }
-    }
-
-    public func updateNginxSettings(listenPort: Int, exposeOnLAN: Bool, autoStart: Bool) async {
-        let clampedPort = NginxProxyService.clampedPort(listenPort, fallback: 8080)
-        let bindChanged = config.nginxProxy.listenPort != clampedPort || config.nginxProxy.exposeOnLAN != exposeOnLAN
-        config.nginxProxy.listenPort = clampedPort
-        config.nginxProxy.exposeOnLAN = exposeOnLAN
-        config.nginxProxy.autoStart = autoStart
-        nginxProxy.listenPort = clampedPort
-        flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-
-        if nginxProxy.isRunning {
-            if bindChanged {
-                await startNginxProxy(restart: true)
-            } else {
-                await reloadNginxProxy()
-            }
-        }
-    }
-
-    public func upsertNginxRoute(
-        _ route: NginxProxyRoute,
-        makeActiveRoot: Bool = false,
-        autoStartOrReload: Bool = true
-    ) async {
-        var sanitized = route
-        sanitized.name = route.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if sanitized.name.isEmpty {
-            sanitized.name = "Local :\(route.targetPort)"
-        }
-        sanitized.pathPrefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: sanitized.name)
-        sanitized.serverName = NginxProxyService.sanitizeServerName(route.serverName)
-        sanitized.targetHost = NginxProxyService.sanitizeTargetHost(route.targetHost)
-        sanitized.targetPort = max(1, min(65535, route.targetPort))
-
-        if let idx = config.nginxProxy.routes.firstIndex(where: { $0.id == sanitized.id }) {
-            config.nginxProxy.routes[idx] = sanitized
-            log(.system, .info, "Updated NGINX proxy route \"\(sanitized.name)\" (\(sanitized.pathPrefix) → \(sanitized.targetHost):\(sanitized.targetPort))")
-        } else {
-            // Ensure unique pathPrefix among existing routes
-            let existingPrefixes = Set(config.nginxProxy.routes.map(\.pathPrefix))
-            if existingPrefixes.contains(sanitized.pathPrefix) {
-                var n = 2
-                while existingPrefixes.contains("\(sanitized.pathPrefix)-\(n)") {
-                    n += 1
-                }
-                sanitized.pathPrefix = "\(sanitized.pathPrefix)-\(n)"
-            }
-            config.nginxProxy.routes.append(sanitized)
-            log(.system, .info, "Added NGINX proxy route \"\(sanitized.name)\" (\(sanitized.pathPrefix) → \(sanitized.targetHost):\(sanitized.targetPort))")
-        }
-
-        if makeActiveRoot || config.nginxProxy.activeRootRouteID == nil {
-            config.nginxProxy.activeRootRouteID = sanitized.id
-        }
-
-        flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-
-        if autoStartOrReload {
-            if nginxProxy.isRunning {
-                await reloadNginxProxy()
-            } else if nginxProxy.isInstalled {
-                await startNginxProxy()
-            }
-        }
-    }
-
-    public func exposeManagedAppViaNginx(_ app: ManagedApp) async {
-        let slug = BuiltInNodeServerService.makeSlug(from: app.name, existingSlugs: [])
-        if let existing = config.nginxProxy.routes.first(where: { $0.targetPort == app.port && $0.targetHost == "127.0.0.1" }) {
-            var updated = existing
-            updated.name = app.name
-            updated.enabled = true
-            await upsertNginxRoute(updated, makeActiveRoot: false, autoStartOrReload: true)
-            return
-        }
-
-        let route = NginxProxyRoute(
-            name: app.name,
-            pathPrefix: "/\(slug)",
-            serverName: "\(slug).localhost",
-            targetHost: "127.0.0.1",
-            targetPort: app.port,
-            webSocketsEnabled: true,
-            stripPrefix: true,
-            enabled: true
-        )
-        await upsertNginxRoute(route, makeActiveRoot: config.nginxProxy.routes.isEmpty, autoStartOrReload: true)
-    }
-
-    public func toggleNginxRoute(_ route: NginxProxyRoute) async {
-        guard let idx = config.nginxProxy.routes.firstIndex(where: { $0.id == route.id }) else { return }
-        config.nginxProxy.routes[idx].enabled.toggle()
-        flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-        log(.system, .info, "\(config.nginxProxy.routes[idx].enabled ? "Enabled" : "Disabled") NGINX route \"\(route.name)\"")
-        if nginxProxy.isRunning {
-            await reloadNginxProxy()
-        }
-    }
-
-    public func setNginxRootRoute(_ routeID: UUID?) async {
-        config.nginxProxy.activeRootRouteID = routeID
-        flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-        if let routeID, let match = config.nginxProxy.routes.first(where: { $0.id == routeID }) {
-            log(.system, .info, "Set \"\(match.name)\" as active NGINX root route at \(nginxProxy.baseURL)/")
-        } else {
-            log(.system, .info, "Cleared active NGINX root route (showing route directory on /)")
-        }
-        if nginxProxy.isRunning {
-            await reloadNginxProxy()
-        }
-    }
-
-    public func deleteNginxRoute(_ route: NginxProxyRoute) async {
-        config.nginxProxy.routes.removeAll { $0.id == route.id }
-        if config.nginxProxy.activeRootRouteID == route.id {
-            config.nginxProxy.activeRootRouteID = config.nginxProxy.routes.first?.id
-        }
-        flatFileStore.saveConfig(config)
-        nginxProxyService.writeConfig(from: config.nginxProxy, includeStubStatus: nginxProxy.metrics.stubStatusSupported)
-        log(.system, .info, "Removed NGINX proxy route \"\(route.name)\"")
-        if nginxProxy.isRunning {
-            await reloadNginxProxy()
-        }
-    }
-
-    public func primaryURL(for route: NginxProxyRoute) -> String {
-        let port = config.nginxProxy.listenPort
-        if !route.serverName.isEmpty {
-            return port == 80 ? "http://\(route.serverName)/" : "http://\(route.serverName):\(port)/"
-        }
-        if config.nginxProxy.activeRootRouteID == route.id {
-            return "\(nginxProxy.baseURL)/"
-        }
-        let prefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: route.name)
-        return "\(nginxProxy.baseURL)\(prefix)/"
-    }
-
-    public func pathURL(for route: NginxProxyRoute) -> String {
-        if config.nginxProxy.activeRootRouteID == route.id {
-            return "\(nginxProxy.baseURL)/"
-        }
-        let prefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: route.name)
-        return "\(nginxProxy.baseURL)\(prefix)/"
-    }
-
-    public func openNginxRouteInBrowser(_ route: NginxProxyRoute? = nil, useVHost: Bool = false) {
-        let urlString: String
-        if let route {
-            urlString = useVHost ? primaryURL(for: route) : pathURL(for: route)
-        } else {
-            urlString = "\(nginxProxy.baseURL)/"
-        }
-        if let url = URL(string: urlString) {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    // MARK: - One-Click Cloudflare Tunnels (Keychain API + Dynamic cloudflared Config)
-
-    public var hasCloudflareAPITokenInKeychain: Bool {
-        if let token = keychain.read(.cloudflareAPIToken), !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return true
-        }
-        return false
-    }
+    // MARK: - One-Click Cloudflare Quick Tunnels (Zero-Config cloudflared)
 
     public func cloudflareTunnelKey(for app: ManagedApp) -> String {
         "app-\(app.id.uuidString.lowercased())"
@@ -1926,10 +1229,7 @@ public final class BeaconController {
             var targetKind = existing?.targetKind ?? .customPort
             var appID = existing?.appID
 
-            if item.tunnelID == "nginx" {
-                label = "NGINX Reverse Proxy"
-                targetKind = .nginxProxy
-            } else if item.tunnelID == "node-host" {
+            if item.tunnelID == "node-host" {
                 label = "Built-In Node.js Server"
                 targetKind = .builtInNode
             } else if item.tunnelID == "ollama" {
@@ -2013,23 +1313,6 @@ public final class BeaconController {
         }
     }
 
-    public func toggleNginxCloudflareTunnel() async {
-        let key = "nginx"
-        if cloudflareTunnel.tunnels[key]?.isRunning == true {
-            await stopCloudflareTunnel(key: key)
-        } else {
-            if !nginxProxy.isRunning && nginxProxy.isInstalled {
-                await startNginxProxy()
-            }
-            await startCloudflareTunnel(
-                key: key,
-                label: "NGINX Reverse Proxy",
-                targetKind: .nginxProxy,
-                targetPort: config.nginxProxy.listenPort
-            )
-        }
-    }
-
     public func toggleBuiltInServerCloudflareTunnel() async {
         let key = "node-host"
         if cloudflareTunnel.tunnels[key]?.isRunning == true {
@@ -2093,16 +1376,7 @@ public final class BeaconController {
     ) async {
         let clampedPort = max(1, min(65535, targetPort))
         let targetURL = "http://127.0.0.1:\(clampedPort)"
-        let apiToken = keychain.read(.cloudflareAPIToken)
-        let hasKeychainToken = !(apiToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        let initialStatus: String
-        if !cloudflareTunnel.isInstalled {
-            initialStatus = "Installing cloudflared…"
-        } else if hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI {
-            initialStatus = "Provisioning via Cloudflare API…"
-        } else {
-            initialStatus = "Generating config & connecting…"
-        }
+        let initialStatus = cloudflareTunnel.isInstalled ? "Generating config & connecting…" : "Installing cloudflared…"
 
         cloudflareTunnel.lastError = nil
         cloudflareTunnel.tunnels[key] = CloudflareTunnelEntry(
@@ -2113,7 +1387,7 @@ public final class BeaconController {
             targetPort: clampedPort,
             targetURL: targetURL,
             publicURL: nil,
-            mode: (hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI) ? .apiManaged : .quickTunnel,
+            mode: .quickTunnel,
             configFilePath: nil,
             cloudflareTunnelID: nil,
             isRunning: false,
@@ -2163,80 +1437,40 @@ public final class BeaconController {
             }
         }
 
-        // Step 2: Use existing Cloudflare API integration in Keychain to dynamically provision
-        // the tunnel & DNS route and generate cloudflared config.yml (with automatic Quick Tunnel fallback).
+        // Step 2: Generate sanitized Quick Tunnel cloudflared config.yml
         if var pending = cloudflareTunnel.tunnels[key] {
-            pending.statusLabel = (hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI)
-                ? "Generating config via Cloudflare API…"
-                : "Generating cloudflared config…"
+            pending.statusLabel = "Generating cloudflared config…"
             cloudflareTunnel.tunnels[key] = pending
         }
 
-        let cfConfig = cloudProviderConfig(for: .cloudflare)
-        let provision = await cloudflareTunnelService.prepareTunnelSession(
+        let provision = cloudflareTunnelService.prepareTunnelSession(
             tunnelKey: key,
-            appName: label,
             targetPort: clampedPort,
             protocolChoice: config.cloudflareTunnel.preferredProtocol,
-            preferCloudflareAPI: config.cloudflareTunnel.preferCloudflareAPI,
-            customBaseDomain: config.cloudflareTunnel.customBaseDomain,
-            apiToken: apiToken,
-            configuredAccountID: cfConfig.accountID,
             httpHostHeader: httpHostHeader
         )
 
-        // Persist auto-discovered Cloudflare Account ID if it wasn't previously entered
-        if let resolvedAcct = provision.resolvedAccountID, !resolvedAcct.isEmpty, cfConfig.accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            updateCloudProviderSettings(.cloudflare, accountID: resolvedAcct)
-        }
-
         appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] \(provision.detailMessage)")
         appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] Generated config: \(provision.configFilePath)")
-        if let fallback = provision.fallbackReason, !fallback.isEmpty {
-            appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] Note: \(fallback)")
-            log(.system, .warn, "[\(label)] Cloudflare API fallback to Quick Tunnel: \(fallback)")
-        }
 
-        // Step 3: Trigger the detached cloudflared session using the generated config/token
+        // Step 3: Trigger detached cloudflared Quick Tunnel session
         if var pending = cloudflareTunnel.tunnels[key] {
             pending.mode = provision.mode
             pending.configFilePath = provision.configFilePath
-            pending.cloudflareTunnelID = provision.cloudflareTunnelID
-            pending.statusLabel = provision.usedCloudflareAPI ? "Starting API Tunnel…" : "Connecting Quick Tunnel…"
+            pending.statusLabel = "Connecting Quick Tunnel…"
             cloudflareTunnel.tunnels[key] = pending
         }
 
-        let probe: AppDeploymentService.CloudflareTunnelProbeResult
-        switch provision.launchMode {
-        case .localConfigRun:
-            let expectedURL = provision.publicURL ?? ""
-            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start-config \(key) \"\(provision.configFilePath)\" \(expectedURL) \(targetURL)")
-            probe = await deploymentService.runCloudflaredAction(
-                "start-config",
-                tunnelID: key,
-                extraArgs: [provision.configFilePath, expectedURL, targetURL]
-            )
-        case .remoteTokenRun:
-            let expectedURL = provision.publicURL ?? ""
-            let tokenFile = provision.tokenFilePath ?? ""
-            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start-token \(key) [keychain-token-file] \(expectedURL) \(targetURL)")
-            probe = await deploymentService.runCloudflaredAction(
-                "start-token",
-                tunnelID: key,
-                extraArgs: [tokenFile, expectedURL, targetURL]
-            )
-        case .quickTunnel:
-            let proto = config.cloudflareTunnel.preferredProtocol.rawValue
-            let hostHeaderArg = CloudflareTunnelService.sanitizeHostHeader(httpHostHeader)
-            let extraArgs = hostHeaderArg.map { [targetURL, proto, $0] } ?? [targetURL, proto]
-            let headerLogSuffix = hostHeaderArg.map { " \($0)" } ?? ""
-            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start \(key) \(targetURL) \(proto)\(headerLogSuffix)")
-            probe = await deploymentService.runCloudflaredAction(
-                "start",
-                tunnelID: key,
-                extraArgs: extraArgs
-            )
-        }
+        let proto = config.cloudflareTunnel.preferredProtocol.rawValue
+        let hostHeaderArg = CloudflareTunnelService.sanitizeHostHeader(httpHostHeader)
+        let extraArgs = hostHeaderArg.map { [targetURL, proto, $0] } ?? [targetURL, proto]
+        let headerLogSuffix = hostHeaderArg.map { " \($0)" } ?? ""
+        appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start \(key) \(targetURL) \(proto)\(headerLogSuffix)")
+        let probe = await deploymentService.runCloudflaredAction(
+            "start",
+            tunnelID: key,
+            extraArgs: extraArgs
+        )
 
         for line in probe.result.stdoutLines { appendTerminal(appName: "cloudflare", text: line) }
         for line in probe.result.stderrLines {
@@ -2252,8 +1486,7 @@ public final class BeaconController {
             cloudflareTunnel.isInstalled = true
         }
 
-        let resolvedPublicURL = probe.publicURL ?? provision.publicURL
-        if probe.result.ok, let publicURL = resolvedPublicURL, !publicURL.isEmpty {
+        if probe.result.ok, let publicURL = probe.publicURL, !publicURL.isEmpty {
             let entry = CloudflareTunnelEntry(
                 id: key,
                 label: label,
@@ -2264,7 +1497,7 @@ public final class BeaconController {
                 publicURL: publicURL,
                 mode: provision.mode,
                 configFilePath: provision.configFilePath,
-                cloudflareTunnelID: provision.cloudflareTunnelID,
+                cloudflareTunnelID: nil,
                 isRunning: true,
                 isStarting: false,
                 pid: probe.pid,
@@ -2333,21 +1566,13 @@ public final class BeaconController {
     public func updateCloudflareTunnelSettings(
         preferredProtocol: CloudflareTunnelProtocol,
         autoInstallCloudflared: Bool,
-        autoCopyURLOnStart: Bool,
-        preferCloudflareAPI: Bool? = nil,
-        customBaseDomain: String? = nil
+        autoCopyURLOnStart: Bool
     ) {
         config.cloudflareTunnel.preferredProtocol = preferredProtocol
         config.cloudflareTunnel.autoInstallCloudflared = autoInstallCloudflared
         config.cloudflareTunnel.autoCopyURLOnStart = autoCopyURLOnStart
-        if let preferCloudflareAPI {
-            config.cloudflareTunnel.preferCloudflareAPI = preferCloudflareAPI
-        }
-        if let customBaseDomain {
-            config.cloudflareTunnel.customBaseDomain = CloudflareTunnelService.sanitizeDomain(customBaseDomain)
-        }
         flatFileStore.saveConfig(config)
-        log(.system, .info, "Updated Cloudflare Tunnel settings (protocol: \(preferredProtocol.rawValue), key-API: \(config.cloudflareTunnel.preferCloudflareAPI))")
+        log(.system, .info, "Updated Cloudflare Tunnel settings (protocol: \(preferredProtocol.rawValue))")
     }
 
     public func copyTunnelURL(_ urlString: String) {

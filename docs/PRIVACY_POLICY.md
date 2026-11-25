@@ -10,16 +10,16 @@
 ---
 
 ## 1. Overview
-BeaconMac is a local-first macOS developer utility designed to monitor local web applications, reverse proxies, and development services on your Mac. We do not collect, sell, rent, or track personal data.
+BeaconMac is a local-first macOS developer utility designed to monitor local web applications, local Ollama models, and development services on your Mac. We do not collect, sell, rent, or track personal data.
 
 ## 2. Data Stored Locally on Your Mac
 All configuration files, local application paths, activity logs, and runtime state are stored strictly on your device inside macOS Application Support (`~/Library/Application Support/Beacon/`).
 
-* **Credentials & API Tokens:** Any GitHub, Cloudflare, or cloud provider API tokens you choose to enter are stored encrypted in your macOS Keychain (`Security.framework`) and are never written to plaintext configuration files or transmitted to the developer.
+* **Credentials & Tokens:** Any GitHub Personal Access Token you choose to enter is stored encrypted in your macOS Keychain (`Security.framework`) and is never written to plaintext configuration files or transmitted to the developer.
 * **Logs:** Activity and server logs remain local to your Mac and are never uploaded to third-party AI services or developer servers.
 
 ## 3. Optional User-Initiated Third-Party Connections
-BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (for example, checking a GitHub repository, verifying a cloud API token you entered, or starting a Cloudflare Tunnel). Those requests go directly from your Mac to the third-party provider you selected and are governed by that provider's privacy policy.
+BeaconMac only initiates outbound network requests to external services when you explicitly configure and trigger them (for example, cloning or polling a GitHub repository or starting a Cloudflare Quick Tunnel). Those requests go directly from your Mac to the third-party service you selected and are governed by that provider's privacy policy.
 
 ## 4. Tracking, Analytics & Crash Reporting
 * **Tracking:** BeaconMac does not track you across apps or websites (`NSPrivacyTracking = false`).

@@ -78,7 +78,7 @@ public final class AppDeploymentService: Sendable {
         var tools: [DependencyToolStatus] = []
         var appNotes: [String] = []
 
-        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun", "python3", "uv", "go", "nginx", "cloudflared"]
+        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun", "python3", "uv", "go", "cloudflared"]
 
         for line in res.stdoutLines {
             let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
@@ -107,7 +107,7 @@ public final class AppDeploymentService: Sendable {
         requestedTools: [String],
         strategy: DependencyInstallStrategy = .auto
     ) async -> ScriptExecutionResult {
-        let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git", "nginx", "cloudflared"]
+        let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git", "cloudflared"]
         let safeTools = requestedTools
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { allowedTools.contains($0) }
@@ -230,61 +230,6 @@ public final class AppDeploymentService: Sendable {
         await runUnixScript(
             named: "beacon-node-server.sh",
             arguments: [action, String(port), registryPath]
-        )
-    }
-
-    public struct NginxScriptProbeResult: Sendable {
-        public let result: ScriptExecutionResult
-        public let isInstalled: Bool?
-        public let isRunning: Bool?
-        public let pid: Int?
-        public let version: String?
-        public let stubStatusSupported: Bool?
-    }
-
-    public func runNginxAction(
-        _ action: String,
-        configPath: String,
-        port: Int
-    ) async -> NginxScriptProbeResult {
-        let res = await runUnixScript(
-            named: "beacon-nginx.sh",
-            arguments: [action, configPath, String(port)]
-        )
-        var installed: Bool?
-        var running: Bool?
-        var pid: Int?
-        var version: String?
-        var stubStatusSupported: Bool?
-
-        for line in res.stdoutLines {
-            let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
-            guard parts.count == 4, parts[0] == "NGINX" else { continue }
-            switch parts[1] {
-            case "INSTALLED":
-                installed = (parts[2] == "YES")
-                if parts[2] == "YES" {
-                    version = parts[3]
-                }
-            case "RUNNING":
-                running = (parts[2] == "YES")
-                if parts[2] == "YES" {
-                    pid = Int(parts[3].trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            case "STUB_STATUS":
-                stubStatusSupported = (parts[2] == "YES")
-            default:
-                break
-            }
-        }
-
-        return NginxScriptProbeResult(
-            result: res,
-            isInstalled: installed,
-            isRunning: running,
-            pid: pid,
-            version: version,
-            stubStatusSupported: stubStatusSupported
         )
     }
 

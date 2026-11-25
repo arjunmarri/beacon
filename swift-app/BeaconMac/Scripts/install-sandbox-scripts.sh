@@ -15,13 +15,13 @@ TARGETS=(
 
 for TARGET_DIR in "${TARGETS[@]}"; do
   mkdir -p "$TARGET_DIR"
-  for file in beacon-deploy.sh beacon-check-deps.sh beacon-restart.sh beacon-stop.sh beacon-git-pull.sh beacon-startup.sh beacon-launchd.sh beacon-node-server.sh beacon-node-host.mjs beacon-nginx.sh beacon-cloudflared.sh; do
+  for file in beacon-deploy.sh beacon-check-deps.sh beacon-restart.sh beacon-stop.sh beacon-git-pull.sh beacon-startup.sh beacon-launchd.sh beacon-node-server.sh beacon-node-host.mjs beacon-cloudflared.sh; do
     if [ -f "$SCRIPT_DIR/$file" ]; then
       cp "$SCRIPT_DIR/$file" "$TARGET_DIR/$file"
       chmod +x "$TARGET_DIR/$file"
     fi
   done
-  echo "Installed all 11 BeaconMac scripts into: $TARGET_DIR"
+  echo "Installed all 10 BeaconMac scripts into: $TARGET_DIR"
 done
 
 echo ""

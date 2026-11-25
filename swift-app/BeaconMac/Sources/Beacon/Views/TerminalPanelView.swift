@@ -46,10 +46,14 @@ struct TerminalPanelView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Integrated Terminal Output", fontSize: 15.5)
+                    BeaconSectionHeaderText(
+                        title: "Integrated Terminal Output",
+                        fontSize: 15.5,
+                        systemImage: "terminal.fill"
+                    )
                     Text("Live stdout/stderr from git clone, dependency installs, builds, and local deploys · Hover or right-click any line to copy")
                         .font(.system(size: 11))
                         .foregroundStyle(palette.secondaryText)
@@ -76,10 +80,10 @@ struct TerminalPanelView: View {
                     .padding(.vertical, 6)
                     .background(autoScrollEnabled ? palette.chipFill : Color.orange.opacity(palette.isLight ? 0.14 : 0.16))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(autoScrollEnabled ? palette.inputBorder : Color.orange.opacity(0.45))
+                        RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                            .strokeBorder(autoScrollEnabled ? palette.border : Color.orange.opacity(0.45), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
@@ -108,7 +112,9 @@ struct TerminalPanelView: View {
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
                 Button(expanded ? "Collapse" : "Expand") {
-                    expanded.toggle()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        expanded.toggle()
+                    }
                 }
                 .buttonStyle(BeaconSecondaryButtonStyle())
             }
@@ -121,7 +127,7 @@ struct TerminalPanelView: View {
                                 Text("Terminal output appears here when you run Check System Tools, Install Prerequisites, Check Deps, or Clone & Deploy.")
                                     .font(.system(size: 11.5, design: .monospaced))
                                     .foregroundStyle(palette.secondaryText)
-                                    .padding(10)
+                                    .padding(12)
                             } else {
                                 ForEach(controller.terminalLines) { line in
                                     let isCopied = copiedLineID == line.id
@@ -130,7 +136,7 @@ struct TerminalPanelView: View {
                                     HStack(alignment: .top, spacing: 8) {
                                         Text(line.timestamp.formatted(date: .omitted, time: .standard))
                                             .foregroundStyle(palette.secondaryText)
-                                            .frame(width: 70, alignment: .leading)
+                                            .frame(width: 72, alignment: .leading)
                                         Text("[\(line.appName)]")
                                             .foregroundStyle(palette.accentLink)
                                             .frame(width: 96, alignment: .leading)
@@ -154,7 +160,7 @@ struct TerminalPanelView: View {
                                             .foregroundStyle(
                                                 isCopied
                                                     ? palette.successText
-                                                    : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.65))
+                                                    : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.60))
                                             )
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
@@ -163,17 +169,17 @@ struct TerminalPanelView: View {
                                                     ? palette.successText.opacity(0.14)
                                                     : (isHovered ? palette.chipFill : Color.clear)
                                             )
-                                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                         }
                                         .buttonStyle(.plain)
                                         .help("Copy this terminal log entry")
                                     }
                                     .font(.system(size: 11.5, design: .monospaced))
                                     .monospacedDigit()
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 3.5)
                                     .background(isHovered ? palette.hoverFill : Color.clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     .onHover { hovering in
                                         if hovering {
                                             hoveredLineID = line.id
@@ -205,7 +211,7 @@ struct TerminalPanelView: View {
                                 .frame(height: 1)
                                 .id(bottomAnchorID)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 6)
                     }
                     .onAppear {
                         if autoScrollEnabled && !controller.terminalLines.isEmpty {
@@ -234,17 +240,11 @@ struct TerminalPanelView: View {
                         }
                     }
                 }
-                .frame(height: 185)
-                .background(palette.console)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(height: 210)
+                .beaconGlassWell(cornerRadius: 11)
             }
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
     }
 
     private func copyToPasteboard(_ text: String, flag: Binding<Bool>) {

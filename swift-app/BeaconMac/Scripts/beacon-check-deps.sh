@@ -199,14 +199,6 @@ install_runtime_tool() {
         xcode-select --install >/dev/null 2>&1 || true
       fi
       ;;
-    nginx)
-      if can_use_brew; then
-        brew install --quiet nginx
-      else
-        echo "[beacon-deps] ERROR: Homebrew is required for silent NGINX installation on macOS. Install Homebrew from https://brew.sh first." >&2
-        return 1
-      fi
-      ;;
     cloudflared)
       if can_use_brew; then
         brew install --quiet cloudflared
@@ -395,11 +387,7 @@ check_bin() {
   local mode="${2:-required}"
   if command -v "$name" >/dev/null 2>&1; then
     local ver
-    if [ "$name" = "nginx" ]; then
-      ver=$("$name" -v 2>&1 | sed 's/nginx version: //' | head -n 1 || echo "installed")
-    else
-      ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
-    fi
+    ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
     echo "TOOL:$name:OK:$ver"
   elif [ "$mode" = "optional" ]; then
     echo "TOOL:$name:OPTIONAL:not installed (optional)"
@@ -417,7 +405,6 @@ check_bin bun optional
 check_bin python3 optional
 check_bin uv optional
 check_bin go optional
-check_bin nginx optional
 check_bin cloudflared optional
 
 if [ -n "$WORKDIR" ]; then

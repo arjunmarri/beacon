@@ -1,21 +1,112 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BeaconMac — Native macOS Multi-App Deploy, Node Host &amp; NGINX Monitor</title>
+    <title>BeaconMac — Native macOS Multi-App Deploy, Node Host &amp; Local Monitor</title>
     <meta
       name="description"
-      content="Download BeaconMac (.dmg) for macOS 14+. Multi-app Git deployer, Built-In Node.js Server, Inbuilt NGINX Reverse Proxy (zero sudo), real-time Dark/White theme with Blue headers, Cloud AI & Edge APIs (ChatGPT, Gemini, Claude, Cloudflare, Vercel, Supabase), exportable auto-scrolling logs, and Apple launchd supervision."
+      content="Download BeaconMac (.dmg) for macOS 14+. Native SwiftUI Liquid Glass multi-app Git deployer, Built-In Node.js Server, 1-click Cloudflare Quick Tunnels for local apps &amp; Ollama, real-time Dark/White themes, exportable logs, and Apple launchd supervision."
     />
-    <meta property="og:title" content="BeaconMac — Native macOS Multi-App Deploy, Node Host & NGINX Monitor" />
+    <meta property="og:title" content="BeaconMac — Native macOS Multi-App Deploy, Node Host & Local Monitor" />
     <meta
       property="og:description"
-      content="Download BeaconMac (.dmg) for macOS 14+ — native SwiftUI multi-app deployer, Built-In Node.js Server, Inbuilt NGINX Reverse Proxy, Cloud AI Keychain integrations, exportable logs, and Apple launchd daemon manager."
+      content="Download BeaconMac (.dmg) for macOS 14+ — native SwiftUI Liquid Glass multi-app deployer, Built-In Node.js Server, 1-click Cloudflare Quick Tunnels for local apps & Ollama, exportable logs, and Apple launchd daemon manager."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      :root,
+      [data-theme='light'] {
+        --bg-base: #eef4fc;
+        --bg-canvas:
+          radial-gradient(64% 56% at 14% 8%, rgba(56, 189, 248, 0.24) 0%, rgba(56, 189, 248, 0) 68%),
+          radial-gradient(58% 54% at 88% 14%, rgba(99, 102, 241, 0.20) 0%, rgba(99, 102, 241, 0) 66%),
+          radial-gradient(60% 50% at 50% 96%, rgba(20, 184, 166, 0.16) 0%, rgba(20, 184, 166, 0) 65%),
+          linear-gradient(180deg, #f7faff 0%, #eef4fc 55%, #e6eef9 100%);
+        --grid-line: rgba(15, 23, 42, 0.032);
+        --glass-menu-bg: rgba(255, 255, 255, 0.24);
+        --glass-menu-border: rgba(255, 255, 255, 0.62);
+        --glass-menu-shadow: 0 12px 36px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        --glass-surface: rgba(255, 255, 255, 0.34);
+        --glass-surface-strong: rgba(255, 255, 255, 0.62);
+        --glass-card: rgba(255, 255, 255, 0.34);
+        --glass-card-hover: rgba(255, 255, 255, 0.60);
+        --glass-well: rgba(241, 246, 255, 0.44);
+        --glass-border: rgba(148, 163, 184, 0.32);
+        --glass-border-strong: rgba(59, 130, 246, 0.34);
+        --specular-rim: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(147, 197, 253, 0.55) 42%, rgba(148, 163, 184, 0.35) 100%);
+        --specular-sheen: radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), rgba(37, 99, 235, 0.08), transparent 62%);
+        --shadow-stage: 0 28px 80px rgba(15, 23, 42, 0.09), 0 6px 20px rgba(15, 23, 42, 0.05);
+        --shadow-card: 0 10px 26px rgba(15, 23, 42, 0.055);
+        --text-primary: #0b1324;
+        --text-body: #334155;
+        --text-muted: #586982;
+        --accent: #1d4ed8;
+        --accent-strong: #2563eb;
+        --accent-blue: #1d4ed8;
+        --accent-ink: #ffffff;
+        --accent-btn-bg: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+        --accent-btn-hover: linear-gradient(180deg, #2563eb 0%, #1e40af 100%);
+        --accent-glow: rgba(37, 99, 235, 0.26);
+        --chip-bg: rgba(37, 99, 235, 0.09);
+        --chip-border: rgba(37, 99, 235, 0.24);
+        --success: #059669;
+        --code-bg: rgba(15, 23, 42, 0.055);
+        --code-text: #1e3a8a;
+        --seg-track: rgba(255, 255, 255, 0.22);
+        --seg-thumb: rgba(255, 255, 255, 0.68);
+        --seg-thumb-border: rgba(255, 255, 255, 0.90);
+      }
+
+      [data-theme='dark'] {
+        --bg-base: #06080f;
+        --bg-canvas:
+          radial-gradient(62% 54% at 14% 8%, rgba(56, 189, 248, 0.22) 0%, rgba(56, 189, 248, 0) 68%),
+          radial-gradient(56% 52% at 88% 16%, rgba(99, 102, 241, 0.20) 0%, rgba(99, 102, 241, 0) 66%),
+          radial-gradient(58% 48% at 52% 96%, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0) 65%),
+          linear-gradient(180deg, #0a0f1c 0%, #060911 55%, #05070d 100%);
+        --grid-line: rgba(255, 255, 255, 0.025);
+        --glass-menu-bg: rgba(14, 20, 34, 0.28);
+        --glass-menu-border: rgba(255, 255, 255, 0.16);
+        --glass-menu-shadow: 0 14px 40px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+        --glass-surface: rgba(14, 20, 34, 0.38);
+        --glass-surface-strong: rgba(14, 19, 31, 0.62);
+        --glass-card: rgba(255, 255, 255, 0.036);
+        --glass-card-hover: rgba(255, 255, 255, 0.068);
+        --glass-well: rgba(6, 9, 16, 0.44);
+        --glass-border: rgba(255, 255, 255, 0.11);
+        --glass-border-strong: rgba(255, 255, 255, 0.18);
+        --specular-rim: linear-gradient(135deg, rgba(255, 255, 255, 0.34) 0%, rgba(125, 211, 252, 0.14) 38%, rgba(255, 255, 255, 0.05) 100%);
+        --specular-sheen: radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), rgba(125, 211, 252, 0.11), transparent 62%);
+        --shadow-stage: 0 32px 90px rgba(0, 0, 0, 0.58), 0 8px 26px rgba(0, 0, 0, 0.36);
+        --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.28);
+        --text-primary: #f8fafc;
+        --text-body: #b8c4d9;
+        --text-muted: #7f8ea8;
+        --accent: #38bdf8;
+        --accent-strong: #7dd3fc;
+        --accent-blue: #60a5fa;
+        --accent-ink: #05111f;
+        --accent-btn-bg: linear-gradient(180deg, #6ed4ff 0%, #2aa8f5 100%);
+        --accent-btn-hover: linear-gradient(180deg, #8ee0ff 0%, #38bdf8 100%);
+        --accent-glow: rgba(56, 189, 248, 0.34);
+        --chip-bg: rgba(56, 189, 248, 0.13);
+        --chip-border: rgba(56, 189, 248, 0.30);
+        --success: #34d399;
+        --code-bg: rgba(255, 255, 255, 0.055);
+        --code-text: #d7e8ff;
+        --seg-track: rgba(255, 255, 255, 0.045);
+        --seg-thumb: rgba(255, 255, 255, 0.14);
+        --seg-thumb-border: rgba(255, 255, 255, 0.28);
+      }
+
       *,
       *::before,
       *::after {
@@ -31,10 +122,11 @@
         margin: 0;
         padding: 0;
         min-height: 100%;
-        background-color: #07090d;
-        color: #f3f5f8;
-        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', system-ui, sans-serif;
+        background-color: var(--bg-base);
+        color: var(--text-primary);
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
+        transition: background-color 240ms ease, color 240ms ease;
       }
 
       body {
@@ -43,14 +135,9 @@
         display: flex;
         flex-direction: column;
         overflow-x: hidden;
-        background:
-          radial-gradient(65% 55% at 18% 12%, rgba(56, 189, 248, 0.14) 0%, rgba(56, 189, 248, 0) 68%),
-          radial-gradient(55% 50% at 86% 22%, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0) 65%),
-          radial-gradient(70% 55% at 50% 95%, rgba(15, 23, 42, 0.9) 0%, rgba(7, 9, 13, 0) 70%),
-          linear-gradient(180deg, #0b0f17 0%, #07090d 55%, #06080c 100%);
+        background: var(--bg-canvas);
       }
 
-      /* Constantly animating JS canvas background */
       #bg-canvas {
         position: fixed;
         inset: 0;
@@ -61,7 +148,6 @@
         display: block;
       }
 
-      /* Contemporary subtle dark architectural grid */
       body::before {
         content: '';
         position: fixed;
@@ -69,112 +155,181 @@
         z-index: 0;
         pointer-events: none;
         background-image:
-          linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-        background-size: 56px 56px;
-        mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 10%, transparent 82%);
-        -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 42%, #000 10%, transparent 82%);
+          linear-gradient(var(--grid-line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(ellipse 78% 66% at 50% 40%, #000 12%, transparent 84%);
+        -webkit-mask-image: radial-gradient(ellipse 78% 66% at 50% 40%, #000 12%, transparent 84%);
       }
 
-      /* Subtle top horizon sheen */
-      body::after {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        z-index: 35;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent 0%, rgba(125, 211, 252, 0.35) 50%, transparent 100%);
-      }
-
-      /* Sticky Top Menu */
+      /* Floating Transparent Liquid Glass Navigation Menu */
       .top-nav {
         position: sticky;
         top: 0;
         z-index: 30;
         width: 100%;
-        background: rgba(7, 10, 16, 0.72);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.075);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        padding: 14px 20px 0;
+        background: transparent;
       }
 
       .top-nav-inner {
-        max-width: 968px;
+        position: relative;
+        max-width: 1060px;
         margin: 0 auto;
-        padding: 12px 24px;
-        display: flex;
+        padding: 10px 18px;
+        border-radius: 18px;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
         gap: 16px;
+        background: var(--glass-menu-bg);
+        border: 1px solid var(--glass-menu-border);
+        box-shadow: var(--glass-menu-shadow);
+        backdrop-filter: blur(28px) saturate(210%);
+        -webkit-backdrop-filter: blur(28px) saturate(210%);
       }
 
       .nav-brand {
         display: inline-flex;
         align-items: center;
         gap: 10px;
+        justify-self: start;
         text-decoration: none;
-        color: #f8fafc;
-        font-size: 14.5px;
-        font-weight: 600;
-        letter-spacing: -0.015em;
+        color: var(--text-primary);
+        font-size: 15.5px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        white-space: nowrap;
       }
 
-      .nav-brand-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #34d399;
-        box-shadow: 0 0 10px rgba(52, 211, 153, 0.75);
-      }
-
-      .nav-links {
+      .brand-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        justify-content: center;
+        background: var(--accent-btn-bg);
+        color: var(--accent-ink);
+        box-shadow: 0 6px 16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        flex-shrink: 0;
+      }
+
+      .brand-mark svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      /* Floating Transparent Liquid Glass Segmented Menu */
+      .nav-segmented {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        padding: 4px;
+        border-radius: 999px;
+        background: var(--seg-track);
+        border: 1px solid var(--glass-menu-border);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+        backdrop-filter: blur(22px) saturate(200%);
+        -webkit-backdrop-filter: blur(22px) saturate(200%);
+      }
+
+      .nav-seg-thumb {
+        position: absolute;
+        top: 4px;
+        bottom: 4px;
+        left: 4px;
+        border-radius: 999px;
+        background: var(--seg-thumb);
+        border: 1px solid var(--seg-thumb-border);
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1), width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+        pointer-events: none;
+        z-index: 0;
       }
 
       .nav-link {
         position: relative;
+        z-index: 1;
         display: inline-flex;
         align-items: center;
-        padding: 7px 14px;
-        border-radius: 8px;
+        justify-content: center;
+        padding: 7px 18px;
+        border-radius: 999px;
         font-size: 13.5px;
-        font-weight: 500;
-        color: #9ba8bc;
+        font-weight: 600;
+        color: var(--text-muted);
         text-decoration: none;
-        transition: color 150ms ease, background-color 150ms ease;
+        white-space: nowrap;
+        transition: color 180ms ease;
       }
 
-      .nav-link:hover {
-        color: #f8fafc;
-        background: rgba(255, 255, 255, 0.05);
+      .nav-link:hover,
+      .nav-link.active {
+        color: var(--text-primary);
       }
 
-      .nav-link:focus-visible {
-        outline: 2px solid #38bdf8;
+      .nav-link:focus-visible,
+      .btn:focus-visible,
+      .icon-btn:focus-visible,
+      .theme-toggle:focus-visible {
+        outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
 
-      .nav-link.active {
-        color: #f8fafc;
-        background: rgba(56, 189, 248, 0.12);
+      .nav-right {
+        display: inline-flex;
+        align-items: center;
+        justify-self: end;
+        gap: 10px;
       }
 
-      .nav-link.active::after {
-        content: '';
-        position: absolute;
-        left: 14px;
-        right: 14px;
-        bottom: 3px;
-        height: 1.5px;
-        border-radius: 2px;
-        background: #38bdf8;
+      .theme-toggle {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--glass-card);
+        border: 1px solid var(--glass-border);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: background-color 160ms ease, border-color 160ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
+      .theme-toggle:hover {
+        background: var(--glass-card-hover);
+        border-color: var(--glass-border-strong);
+        transform: translateY(-1px);
+      }
+
+      .theme-toggle svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .nav-cta {
+        padding: 8px 15px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        text-decoration: none;
+        background: var(--accent-btn-bg);
+        color: var(--accent-ink);
+        box-shadow: 0 6px 18px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.48);
+        transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 160ms ease;
+      }
+
+      .nav-cta:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.06);
+      }
+
+      /* Expansive Liquid Glass Main Stage */
       .stage {
         position: relative;
         z-index: 1;
@@ -183,104 +338,96 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 28px 24px 24px;
+        padding: 32px 24px 28px;
         overflow-x: clip;
       }
 
-      /* Fixed-size 3-Tab Carousel Stage (About / Preview / FAQ share exact same size) */
       .tab-carousel {
         position: relative;
         width: 100%;
-        max-width: 720px;
-        height: 540px;
+        max-width: 1060px;
+        min-height: 580px;
       }
 
+      /* Optical Liquid Glass Panel with Specular Rim */
       .tab-panel {
-        position: absolute;
-        inset: 0;
+        position: relative;
         width: 100%;
-        height: 100%;
-        display: flex;
+        min-height: 580px;
+        display: none;
         flex-direction: column;
-        padding: 34px 34px 28px;
-        border-radius: 18px;
-        background: rgba(15, 19, 27, 0.78);
-        border: 1px solid rgba(255, 255, 255, 0.085);
-        box-shadow:
-          0 24px 70px rgba(0, 0, 0, 0.55),
-          inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
-        overflow-y: auto;
-        scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        scrollbar-width: thin;
-        will-change: transform, opacity;
-        transition:
-          transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
-          opacity 400ms ease;
-      }
-
-      .tab-panel.no-transition {
-        transition: none !important;
+        padding: 38px 40px 32px;
+        border-radius: 24px;
+        background: var(--glass-surface);
+        backdrop-filter: blur(12px) saturate(165%);
+        -webkit-backdrop-filter: blur(12px) saturate(165%);
+        box-shadow: var(--shadow-stage), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+        overflow: hidden;
+        animation: glassReveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
       }
 
       .tab-panel.is-active {
-        transform: translateX(0);
-        opacity: 1;
-        visibility: visible;
-        pointer-events: auto;
+        display: flex;
+      }
+
+      /* Specular Glass Edge Refraction */
+      .tab-panel::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: var(--specular-rim);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
         z-index: 2;
       }
 
-      .tab-panel.is-hidden-left {
-        transform: translateX(-118%);
-        opacity: 0;
-        visibility: hidden;
+      /* Subtle Pointer-Tracked Specular Glint */
+      .tab-panel::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: var(--specular-sheen);
         pointer-events: none;
+        z-index: 0;
+        opacity: 0.9;
+      }
+
+      .tab-panel > * {
+        position: relative;
         z-index: 1;
       }
 
-      .tab-panel.is-hidden-right {
-        transform: translateX(118%);
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-        z-index: 1;
+      @keyframes glassReveal {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
       }
 
-      .tab-panel.is-exiting-left {
-        transform: translateX(-118%);
-        opacity: 0;
-        visibility: visible;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .tab-panel.is-exiting-right {
-        transform: translateX(118%);
-        opacity: 0;
-        visibility: visible;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      main.tab-panel {
-        justify-content: safe center;
+      /* ABOUT TAB — Asymmetric Two-Column Hero & Bento */
+      .about-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
+        gap: 34px;
+        align-items: center;
+        flex: 1;
       }
 
       .meta-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 12px;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
         flex-wrap: wrap;
-      }
-
-      .meta-left {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
       }
 
       .traffic-lights {
@@ -289,8 +436,8 @@
         gap: 6px;
         padding: 6px 10px;
         border-radius: 999px;
-        background: rgba(7, 9, 13, 0.85);
-        border: 1px solid rgba(255, 255, 255, 0.09);
+        background: var(--glass-well);
+        border: 1px solid var(--glass-border);
       }
 
       .dot {
@@ -300,44 +447,55 @@
       }
 
       .dot-red {
-        background: rgba(244, 63, 94, 0.85);
+        background: #f43f5e;
       }
 
       .dot-amber {
-        background: rgba(251, 191, 36, 0.85);
+        background: #f59e0b;
       }
 
       .dot-green {
-        background: #34d399;
-        box-shadow: 0 0 10px rgba(52, 211, 153, 0.75);
+        background: #10b981;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
       }
 
       .platform-note {
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
         font-size: 12px;
-        color: #8f9bb0;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-muted);
       }
 
       h1 {
         margin: 0 0 16px;
-        font-size: clamp(2.25rem, 5vw, 3.1rem);
-        font-weight: 600;
-        letter-spacing: -0.03em;
-        line-height: 1.08;
-        color: #f8fafc;
+        font-size: clamp(2.35rem, 4.1vw, 3.35rem);
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 1.06;
+        text-wrap: balance;
+        color: var(--text-primary);
       }
 
-      p {
-        margin: 0 0 28px;
+      .hero-copy {
+        margin: 0 0 26px;
         font-size: 15.5px;
         line-height: 1.68;
-        color: #a1acbe;
+        color: var(--text-body);
+        max-width: 54ch;
+      }
+
+      .hero-copy strong {
+        color: var(--text-primary);
+        font-weight: 600;
       }
 
       code {
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-        font-size: 0.9em;
-        color: #d7e3f4;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 0.88em;
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: var(--code-bg);
+        color: var(--code-text);
       }
 
       .actions {
@@ -351,7 +509,7 @@
         align-items: center;
         gap: 8px;
         padding: 12px 20px;
-        border-radius: 10px;
+        border-radius: 12px;
         font-size: 14px;
         font-weight: 600;
         text-decoration: none;
@@ -359,36 +517,41 @@
         cursor: pointer;
         border: none;
         font-family: inherit;
-        transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-      }
-
-      .btn:focus-visible {
-        outline: 2px solid #38bdf8;
-        outline-offset: 2px;
+        transition:
+          transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+          background-color 160ms ease,
+          border-color 160ms ease,
+          box-shadow 180ms ease;
       }
 
       .btn-primary {
-        background: linear-gradient(180deg, #56ccf8 0%, #38bdf8 100%);
-        color: #070a0f;
-        box-shadow: 0 6px 22px rgba(56, 189, 248, 0.25);
+        background: var(--accent-btn-bg);
+        color: var(--accent-ink);
+        box-shadow: 0 10px 26px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.55);
       }
 
       .btn-primary:hover {
-        background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
-        transform: translateY(-1px);
+        background: var(--accent-btn-hover);
+        transform: translateY(-1.5px);
+        box-shadow: 0 14px 32px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+      }
+
+      .btn-primary:active {
+        transform: scale(0.98);
       }
 
       .btn-secondary {
-        background: rgba(255, 255, 255, 0.04);
-        color: #f3f5f8;
-        border: 1px solid rgba(255, 255, 255, 0.13);
-        font-weight: 500;
+        background: var(--glass-card);
+        color: var(--text-primary);
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
       }
 
       .btn-secondary:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.24);
-        transform: translateY(-1px);
+        background: var(--glass-card-hover);
+        border-color: var(--glass-border-strong);
+        transform: translateY(-1.5px);
       }
 
       .btn svg {
@@ -398,89 +561,140 @@
       }
 
       .release-meta {
-        margin-top: 18px;
+        margin-top: 22px;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 10px;
         padding-top: 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.075);
+        border-top: 1px solid var(--glass-border);
         font-size: 12.5px;
-        color: #8c98ad;
+        color: var(--text-muted);
       }
 
       .release-links {
         display: inline-flex;
         align-items: center;
-        gap: 14px;
+        gap: 16px;
       }
 
       .text-link {
         background: none;
         border: none;
         padding: 0;
-        color: #93c5fd;
+        color: var(--accent-blue);
         font-size: 12.5px;
+        font-weight: 600;
         font-family: inherit;
         text-decoration: none;
         cursor: pointer;
-        border-bottom: 1px solid rgba(147, 197, 253, 0.3);
+        border-bottom: 1px solid transparent;
+        transition: color 150ms ease, border-color 150ms ease;
       }
 
       .text-link:hover {
-        color: #38bdf8;
-        border-bottom-color: #38bdf8;
+        color: var(--accent-strong);
+        border-bottom-color: currentColor;
       }
 
-      .notice-box {
-        margin-top: 16px;
-        padding: 14px 16px;
-        border-radius: 10px;
-        background: rgba(8, 11, 17, 0.88);
-        border: 1px solid rgba(56, 189, 248, 0.22);
+      /* Right Column: 2x2 Liquid Glass Capability Bento */
+      .bento-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .bento-card {
+        position: relative;
+        padding: 18px 18px 17px;
+        border-radius: 16px;
+        background: var(--glass-card);
+        border: 1px solid var(--glass-border);
+        box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        transition:
+          transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+          background-color 180ms ease,
+          border-color 180ms ease;
+      }
+
+      .bento-card:hover {
+        transform: translateY(-2px);
+        background: var(--glass-card-hover);
+        border-color: var(--glass-border-strong);
+      }
+
+      .bento-index {
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent-blue);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .bento-card h3 {
+        margin: 0 0 6px;
+        font-size: 14.5px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--text-primary);
+      }
+
+      .bento-card p {
+        margin: 0;
         font-size: 12.5px;
-        line-height: 1.6;
-        color: #b7c4d8;
-        display: none;
+        line-height: 1.56;
+        color: var(--text-muted);
       }
 
-      .notice-box.visible {
-        display: block;
-      }
-
-      .notice-box pre {
-        margin: 8px 0 0;
-        padding: 10px 12px;
-        border-radius: 7px;
-        background: rgba(255, 255, 255, 0.035);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        overflow-x: auto;
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-        font-size: 11.5px;
-        color: #e2e8f0;
-      }
-
+      /* Expandable Build Notice & Version History */
+      .notice-box,
       .versions-panel {
-        margin-top: 16px;
-        padding: 16px;
-        border-radius: 10px;
-        background: rgba(8, 11, 17, 0.85);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        margin-top: 18px;
+        padding: 16px 18px;
+        border-radius: 14px;
+        background: var(--glass-well);
+        border: 1px solid var(--glass-border);
+        font-size: 12.5px;
+        line-height: 1.62;
+        color: var(--text-body);
         display: none;
       }
 
+      .notice-box.visible,
       .versions-panel.visible {
         display: block;
+        animation: glassReveal 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      .notice-box pre,
+      .faq-answer pre {
+        margin: 10px 0 0;
+        padding: 11px 14px;
+        border-radius: 10px;
+        background: var(--code-bg);
+        border: 1px solid var(--glass-border);
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        color: var(--code-text);
       }
 
       .version-row {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--glass-border);
+      }
+
+      .version-row:first-child {
+        padding-top: 0;
       }
 
       .version-row:last-child {
@@ -488,20 +702,16 @@
         padding-bottom: 0;
       }
 
-      .version-row:first-child {
-        padding-top: 0;
-      }
-
       .version-title {
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
         font-size: 13px;
         font-weight: 600;
-        color: #f8fafc;
+        color: var(--text-primary);
       }
 
       .version-sub {
         font-size: 12px;
-        color: #8492a6;
+        color: var(--text-muted);
         margin-top: 2px;
       }
 
@@ -510,38 +720,34 @@
         padding-left: 16px;
         font-size: 12px;
         line-height: 1.55;
-        color: #9ba8bc;
+        color: var(--text-body);
       }
 
-      /* Scrollable App Screenshots Showcase inside exact-size Preview Tab */
-      .gallery-section.tab-panel {
-        padding: 26px 28px 22px;
-        overflow: hidden;
-      }
-
-      .gallery-header {
+      /* PREVIEW TAB — Crisp Liquid Glass Gallery */
+      .gallery-header,
+      .faq-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        margin-bottom: 14px;
+        margin-bottom: 18px;
         flex-wrap: wrap;
-        flex-shrink: 0;
       }
 
-      .gallery-heading-group h2 {
+      .gallery-heading-group h2,
+      .faq-header h2 {
         margin: 0;
-        font-size: 16px;
-        font-weight: 600;
-        letter-spacing: -0.015em;
-        color: #f8fafc;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: var(--text-primary);
       }
 
       .gallery-heading-group span {
         display: block;
         margin-top: 3px;
-        font-size: 12px;
-        color: #8492a6;
+        font-size: 12.5px;
+        color: var(--text-muted);
       }
 
       .gallery-controls {
@@ -551,98 +757,74 @@
       }
 
       .gallery-counter {
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-        font-size: 11.5px;
-        color: #8f9bb0;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-muted);
         margin-right: 4px;
       }
 
       .icon-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 8px;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(255, 255, 255, 0.11);
-        color: #dbe6f5;
+        background: var(--glass-card);
+        border: 1px solid var(--glass-border);
+        color: var(--text-primary);
         cursor: pointer;
-        transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+        transition: background-color 150ms ease, border-color 150ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
       .icon-btn:hover {
-        background: rgba(255, 255, 255, 0.095);
-        border-color: rgba(56, 189, 248, 0.4);
-      }
-
-      .icon-btn:focus-visible {
-        outline: 2px solid #38bdf8;
-        outline-offset: 2px;
+        background: var(--glass-card-hover);
+        border-color: var(--glass-border-strong);
+        transform: translateY(-1px);
       }
 
       .icon-btn svg {
-        width: 15px;
-        height: 15px;
+        width: 16px;
+        height: 16px;
       }
 
       .gallery-track {
-        flex: 1;
-        min-height: 0;
         display: flex;
-        gap: 14px;
+        gap: 18px;
         overflow-x: auto;
         overflow-y: hidden;
         scroll-snap-type: x mandatory;
         scroll-behavior: smooth;
         -webkit-overflow-scrolling: touch;
         padding-bottom: 8px;
-        scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
         scrollbar-width: thin;
-      }
-
-      .gallery-track::-webkit-scrollbar {
-        height: 6px;
-      }
-
-      .gallery-track::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 999px;
-      }
-
-      .gallery-track::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.26);
-        border-radius: 999px;
-      }
-
-      .gallery-track::-webkit-scrollbar-thumb:hover {
-        background: rgba(56, 189, 248, 0.45);
+        scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
       }
 
       .shot-card {
         flex: 0 0 100%;
-        height: 100%;
         display: flex;
         flex-direction: column;
         scroll-snap-align: start;
         margin: 0;
-        border-radius: 12px;
+        border-radius: 16px;
         overflow: hidden;
-        background: rgba(8, 11, 17, 0.88);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        transition: border-color 160ms ease;
+        background: var(--glass-well);
+        border: 1px solid var(--glass-border);
+        transition: border-color 180ms ease;
       }
 
       .shot-card:hover {
-        border-color: rgba(56, 189, 248, 0.3);
+        border-color: var(--glass-border-strong);
       }
 
       .shot-frame {
         position: relative;
         width: 100%;
-        flex: 1;
-        min-height: 0;
-        background: #080a0f;
+        aspect-ratio: 16 / 9;
+        max-height: 430px;
+        background: #060911;
         cursor: zoom-in;
         overflow: hidden;
       }
@@ -652,7 +834,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        transition: transform 240ms ease;
+        transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
       .shot-card:hover .shot-frame img {
@@ -660,85 +842,155 @@
       }
 
       .shot-caption {
-        flex-shrink: 0;
-        padding: 12px 15px 13px;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 15px 18px 16px;
+        border-top: 1px solid var(--glass-border);
       }
 
       .shot-caption-title {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        font-size: 13px;
-        font-weight: 600;
-        color: #f1f5f9;
+        gap: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-primary);
       }
 
       .shot-step {
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-        font-size: 11px;
-        font-weight: 500;
-        color: #38bdf8;
+        font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent-blue);
       }
 
       .shot-caption p {
-        margin: 4px 0 0;
-        font-size: 12px;
-        line-height: 1.5;
-        color: #93a1b7;
+        margin: 5px 0 0;
+        font-size: 13px;
+        line-height: 1.56;
+        color: var(--text-muted);
       }
 
       .gallery-dots {
         display: flex;
         justify-content: center;
         gap: 8px;
-        margin-top: 12px;
+        margin-top: 14px;
       }
 
       .gallery-dot {
-        width: 22px;
-        height: 4px;
+        width: 24px;
+        height: 5px;
         border-radius: 999px;
         border: none;
         padding: 0;
-        background: rgba(255, 255, 255, 0.14);
+        background: var(--glass-border-strong);
         cursor: pointer;
-        transition: background-color 150ms ease, width 150ms ease;
+        transition: background-color 180ms ease, width 240ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
       .gallery-dot.active {
-        width: 34px;
-        background: #38bdf8;
+        width: 40px;
+        background: var(--accent-blue);
       }
 
-      /* Lightbox modal for inspecting screenshots full-size */
+      /* FAQ TAB — Spacious Glass Accordion */
+      .faq-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 540px;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+      }
+
+      .faq-item {
+        border-radius: 14px;
+        background: var(--glass-card);
+        border: 1px solid var(--glass-border);
+        transition: border-color 160ms ease, background-color 160ms ease;
+      }
+
+      .faq-item[open] {
+        border-color: var(--glass-border-strong);
+        background: var(--glass-surface-strong);
+      }
+
+      .faq-item summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 15px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .faq-item summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .faq-chevron {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        color: var(--text-muted);
+        transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), color 160ms ease;
+      }
+
+      .faq-item[open] .faq-chevron {
+        transform: rotate(180deg);
+        color: var(--accent-blue);
+      }
+
+      .faq-answer {
+        padding: 0 18px 16px;
+        font-size: 13.5px;
+        line-height: 1.66;
+        color: var(--text-body);
+      }
+
+      .faq-answer p {
+        margin: 0 0 9px;
+      }
+
+      .faq-answer p:last-child {
+        margin-bottom: 0;
+      }
+
+      /* Full-Size Frosted Lightbox */
       .lightbox {
         position: fixed;
         inset: 0;
-        z-index: 50;
+        z-index: 60;
         display: none;
         align-items: center;
         justify-content: center;
         padding: 28px;
-        background: rgba(4, 6, 10, 0.88);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background: rgba(4, 7, 14, 0.82);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
       }
 
       .lightbox.visible {
         display: flex;
+        animation: glassReveal 220ms ease both;
       }
 
       .lightbox-inner {
         position: relative;
         width: 100%;
-        max-width: 1120px;
-        border-radius: 14px;
+        max-width: 1140px;
+        border-radius: 18px;
         overflow: hidden;
-        background: #080a0f;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.75);
+        background: #070a12;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 36px 100px rgba(0, 0, 0, 0.78);
       }
 
       .lightbox-inner img {
@@ -752,168 +1004,81 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 12px 16px;
-        background: rgba(15, 19, 27, 0.95);
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 13px 18px;
+        background: rgba(14, 19, 31, 0.94);
+        border-top: 1px solid rgba(255, 255, 255, 0.10);
         font-size: 13px;
-        color: #dbe6f5;
-      }
-
-      .faq-section.tab-panel {
-        padding: 26px 28px 22px;
-        overflow: hidden;
-      }
-
-      .faq-header {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 14px;
-        flex-wrap: wrap;
-        flex-shrink: 0;
-      }
-
-      .faq-header h2 {
-        margin: 0;
-        font-size: 16px;
-        font-weight: 600;
-        letter-spacing: -0.015em;
-        color: #f8fafc;
-      }
-
-      .faq-list {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        padding-right: 4px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
-        scrollbar-width: thin;
-      }
-
-      .faq-item {
-        border-radius: 10px;
-        background: rgba(8, 11, 17, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.075);
-        transition: border-color 150ms ease, background-color 150ms ease;
-      }
-
-      .faq-item[open] {
-        border-color: rgba(56, 189, 248, 0.25);
-        background: rgba(9, 13, 21, 0.9);
-      }
-
-      .faq-item summary {
-        list-style: none;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-        padding: 13px 16px;
-        font-size: 13.5px;
-        font-weight: 500;
-        color: #e6edf7;
-        cursor: pointer;
-        user-select: none;
-      }
-
-      .faq-item summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .faq-item summary:hover {
-        color: #f8fafc;
-      }
-
-      .faq-item summary:focus-visible {
-        outline: 2px solid #38bdf8;
-        outline-offset: -2px;
-        border-radius: 10px;
-      }
-
-      .faq-chevron {
-        width: 15px;
-        height: 15px;
-        flex-shrink: 0;
-        color: #7c8ca3;
-        transition: transform 180ms ease, color 150ms ease;
-      }
-
-      .faq-item[open] .faq-chevron {
-        transform: rotate(180deg);
-        color: #38bdf8;
-      }
-
-      .faq-answer {
-        padding: 0 16px 14px;
-        font-size: 13px;
-        line-height: 1.65;
-        color: #9ba8bc;
-      }
-
-      .faq-answer p {
-        margin: 0 0 8px;
-        font-size: 13px;
-        line-height: 1.65;
-        color: #9ba8bc;
-      }
-
-      .faq-answer p:last-child {
-        margin-bottom: 0;
-      }
-
-      .faq-answer pre {
-        margin: 8px 0 0;
-        padding: 9px 12px;
-        border-radius: 7px;
-        background: rgba(255, 255, 255, 0.035);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        overflow-x: auto;
-        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-        font-size: 11.5px;
-        color: #d7e3f4;
+        color: #e2e8f0;
       }
 
       footer {
         position: relative;
         z-index: 1;
-        padding: 20px 24px 28px;
+        padding: 16px 24px 28px;
         text-align: center;
         font-size: 13px;
-        color: #7c8799;
+        color: var(--text-muted);
       }
 
       footer a {
-        color: #cbd5e1;
+        color: var(--text-primary);
         text-decoration: none;
-        font-weight: 500;
-        border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+        font-weight: 600;
+        border-bottom: 1px solid var(--glass-border-strong);
         padding-bottom: 1px;
         transition: color 150ms ease, border-color 150ms ease;
       }
 
       footer a:hover {
-        color: #38bdf8;
-        border-bottom-color: rgba(56, 189, 248, 0.65);
+        color: var(--accent-blue);
+        border-bottom-color: var(--accent-blue);
       }
 
       .footer-sep {
-        margin: 0 8px;
-        color: #475569;
+        margin: 0 9px;
+        opacity: 0.45;
       }
 
-      @media (max-width: 560px) {
-        .tab-carousel {
-          height: 580px;
+      @media (max-width: 900px) {
+        .about-grid {
+          grid-template-columns: 1fr;
+          gap: 26px;
         }
 
-        .tab-panel,
-        .gallery-section.tab-panel,
-        .faq-section.tab-panel {
-          padding: 22px 18px;
+        .tab-panel {
+          padding: 28px 24px 24px;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .top-nav-inner {
+          grid-template-columns: 1fr auto;
+          row-gap: 10px;
+        }
+
+        .nav-segmented {
+          grid-column: 1 / -1;
+          justify-self: center;
+          order: 3;
+        }
+
+        .bento-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .nav-cta {
+          display: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
         }
       }
     </style>
@@ -924,512 +1089,469 @@
     <header class="top-nav">
       <div class="top-nav-inner">
         <a class="nav-brand" href="#about" data-tab-target="about">
-          <span class="nav-brand-dot" aria-hidden="true"></span>
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+              <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+              <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
+            </svg>
+          </span>
           <span>BeaconMac</span>
         </a>
-        <nav class="nav-links" role="tablist" aria-label="Primary navigation">
+
+        <nav class="nav-segmented" id="nav-segmented" role="tablist" aria-label="Primary navigation">
+          <span class="nav-seg-thumb" id="nav-seg-thumb" aria-hidden="true"></span>
           <a class="nav-link active" role="tab" href="#about" data-tab-target="about" aria-controls="about" aria-selected="true" aria-current="page">About</a>
           <a class="nav-link" role="tab" href="#preview" data-tab-target="preview" aria-controls="preview" aria-selected="false">Preview</a>
           <a class="nav-link" role="tab" href="#faq" data-tab-target="faq" aria-controls="faq" aria-selected="false">FAQ</a>
         </nav>
+
+        <div class="nav-right">
+          <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch between Dark and White Liquid Glass theme" title="Switch Dark / White theme">
+            <svg id="theme-icon-sun" style="display: none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2" /><path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" /><path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+            <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+            </svg>
+          </button>
+          <a class="nav-cta" id="nav-dmg-cta" href="/download/dmg" download="BeaconMac-1.1.0-universal.dmg">Download .dmg</a>
+        </div>
       </div>
     </header>
 
     <div class="stage">
       <div class="tab-carousel" id="tab-carousel">
-      <main id="about" class="tab-panel is-active" role="tabpanel" aria-hidden="false">
-        <div class="meta-row">
-          <div class="meta-left">
-            <div class="traffic-lights" aria-hidden="true">
-              <span class="dot dot-red"></span>
-              <span class="dot dot-amber"></span>
-              <span class="dot dot-green"></span>
+        <!-- TAB 1: ABOUT -->
+        <main id="about" class="tab-panel is-active" role="tabpanel" aria-hidden="false">
+          <div class="about-grid">
+            <div class="hero-col">
+              <div class="meta-row">
+                <div class="traffic-lights" aria-hidden="true">
+                  <span class="dot dot-red"></span>
+                  <span class="dot dot-amber"></span>
+                  <span class="dot dot-green"></span>
+                </div>
+                <span class="platform-note" id="platform-meta">v1.1.0 · Universal · macOS 14+ · SwiftUI</span>
+              </div>
+
+              <h1>Local macOS apps, effortlessly live.</h1>
+
+              <p class="hero-copy">
+                BeaconMac is a native SwiftUI multi-app deployer, <strong>Built-In Node.js Server</strong>,
+                and traffic-light watchdog for macOS. Clone Git repositories, install missing toolchains
+                silently, publish any local app or <strong>Ollama LLM</strong> over HTTPS via
+                <strong>1-click Cloudflare Quick Tunnels</strong>, and supervise background services with
+                Apple <code>launchd</code> and IOKit keep-awake — all with GitHub tokens encrypted in macOS Keychain.
+              </p>
+
+              <div class="actions">
+                <a
+                  id="dmg-download-btn"
+                  class="btn btn-primary"
+                  href="/download/dmg"
+                  download="BeaconMac-1.1.0-universal.dmg"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <span id="dmg-download-label">Download BeaconMac v1.1.0 (.dmg)</span>
+                </a>
+
+                <a
+                  class="btn btn-secondary"
+                  href="https://github.com/arjunmarri/beacon"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  GitHub Repository
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="7" y1="17" x2="17" y2="7" />
+                    <polyline points="7 7 17 7 17 17" />
+                  </svg>
+                </a>
+              </div>
+
+              <div class="release-meta">
+                <span id="release-status">BeaconMac-1.1.0-universal.dmg · Apple Silicon &amp; Intel</span>
+                <div class="release-links">
+                  <button type="button" class="text-link" id="toggle-versions">Version History</button>
+                  <a class="text-link" href="/api/download-swift">Source &amp; Xcode (.zip)</a>
+                </div>
+              </div>
             </div>
-            <span class="platform-note" id="platform-meta">v1.1.0 · Universal · macOS 14+</span>
+
+            <div class="bento-grid" aria-label="Core BeaconMac capabilities">
+              <div class="bento-card">
+                <div class="bento-index"><span>01</span><span>DEPLOY</span></div>
+                <h3>Multi-App Watchdog</h3>
+                <p>Clone Vite, Node.js, or Next.js repos, detect scripts automatically, stream logs, and auto-restart crashed servers.</p>
+              </div>
+
+              <div class="bento-card">
+                <div class="bento-index"><span>02</span><span>HOST</span></div>
+                <h3>Built-In Node Server</h3>
+                <p>Serve static folders, SPAs, or local proxies directly on loopback <code>127.0.0.1:4173</code> with instant root switching.</p>
+              </div>
+
+              <div class="bento-card">
+                <div class="bento-index"><span>03</span><span>TUNNEL</span></div>
+                <h3>1-Click Cloudflare HTTPS</h3>
+                <p>Expose any managed app, Node host, custom port, or local Ollama model via instant <code>*.trycloudflare.com</code> Quick Tunnels.</p>
+              </div>
+
+              <div class="bento-card">
+                <div class="bento-index"><span>04</span><span>NATIVE</span></div>
+                <h3>launchd &amp; Keychain</h3>
+                <p>Run persistent macOS LaunchAgents with IOKit sleep prevention, real-time Dark/White Liquid Glass UI, and zero telemetry.</p>
+              </div>
+            </div>
           </div>
-          <span class="platform-note">Swift 5.10 · SwiftUI</span>
-        </div>
 
-        <h1>BeaconMac</h1>
-
-        <p>
-          A lightweight native macOS multi-app deployer, <strong>Built-In Node.js Server</strong>,
-          <strong>Inbuilt NGINX Reverse Proxy</strong> (path prefixes, <code>*.localhost</code>, and
-          optional LAN exposure with zero <code>sudo</code>), and traffic-light monitor built in
-          SwiftUI. Clone Git repos, silently install missing dependencies, inspect logs with
-          <strong>auto-scroll pause, per-entry copy, AI Help, and <code>.txt</code>/<code>.json</code> export</strong>,
-          switch between <strong>Dark &amp; White themes</strong> in real time, manage Apple
-          <code>launchd</code> + IOKit sleep prevention, and connect Ollama, ChatGPT, Gemini, Claude,
-          Cloudflare, Vercel, and Supabase — all encrypted in macOS Keychain.
-        </p>
-
-        <div class="actions">
-          <a
-            id="dmg-download-btn"
-            class="btn btn-primary"
-            href="/download/dmg"
-            download="BeaconMac-1.1.0-universal.dmg"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span id="dmg-download-label">Download BeaconMac v1.1.0 (.dmg)</span>
-          </a>
-
-          <a
-            class="btn btn-secondary"
-            href="https://github.com/arjunmarri/beacon"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            GitHub Repository
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="7" y1="17" x2="17" y2="7" />
-              <polyline points="7 7 17 7 17 17" />
-            </svg>
-          </a>
-        </div>
-
-        <div class="release-meta">
-          <span id="release-status">BeaconMac-1.1.0-universal.dmg · Apple Silicon &amp; Intel</span>
-          <div class="release-links">
-            <button type="button" class="text-link" id="toggle-versions">Version History</button>
-            <a class="text-link" href="/api/download-swift">Source &amp; Xcode (.zip)</a>
-          </div>
-        </div>
-
-        <div class="notice-box" id="build-notice" role="status">
-          <strong>macOS DMG Release Not Published Yet for <span id="notice-version">v1.1.0</span></strong><br />
-          Compiling a Universal macOS <code>.app</code> and <code>.dmg</code> requires Apple's macOS
-          14 toolchain. Push a version tag to trigger the included GitHub Actions
-          (<code>macos-14</code>) workflow — this button will automatically serve the signed
-          <code>.dmg</code> once published — or build locally on your Mac:
-          <pre id="notice-commands"># Auto-build, sign &amp; notarize DMG via GitHub Actions (macos-14):
+          <div class="notice-box" id="build-notice" role="status">
+            <strong>macOS DMG Release Not Published Yet for <span id="notice-version">v1.1.0</span></strong><br />
+            Compiling a Universal macOS <code>.app</code> and <code>.dmg</code> requires Apple's macOS
+            14 toolchain. Push a version tag to trigger the included GitHub Actions
+            (<code>macos-14</code>) workflow — this button will automatically serve the signed
+            <code>.dmg</code> once published — or build locally on your Mac:
+            <pre id="notice-commands"># Auto-build, sign &amp; notarize DMG via GitHub Actions (macos-14):
 git tag v1.1.0 &amp;&amp; git push origin v1.1.0
 
 # Or build releases/BeaconMac-1.1.0-universal.dmg locally on your Mac:
 ./swift-app/BeaconMac/Scripts/build-dmg.sh</pre>
-        </div>
-
-        <div class="versions-panel" id="versions-panel" aria-live="polite"></div>
-      </main>
-
-      <section id="preview" class="gallery-section tab-panel is-hidden-right" role="tabpanel" aria-hidden="true" aria-labelledby="gallery-heading">
-        <div class="gallery-header">
-          <div class="gallery-heading-group">
-            <h2 id="gallery-heading">See BeaconMac in Action</h2>
-            <span>Scroll horizontally or click any screenshot to inspect full-size</span>
           </div>
-          <div class="gallery-controls">
-            <span class="gallery-counter" id="gallery-counter">1 / 4</span>
-            <button type="button" class="icon-btn" id="gallery-prev" aria-label="Previous screenshot">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
-            </button>
-            <button type="button" class="icon-btn" id="gallery-next" aria-label="Next screenshot">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
+
+          <div class="versions-panel" id="versions-panel" aria-live="polite"></div>
+        </main>
+
+        <!-- TAB 2: PREVIEW -->
+        <section id="preview" class="tab-panel" role="tabpanel" aria-hidden="true" aria-labelledby="gallery-heading">
+          <div class="gallery-header">
+            <div class="gallery-heading-group">
+              <h2 id="gallery-heading">See BeaconMac in Action</h2>
+              <span>Scroll horizontally, use arrow keys, or click any screenshot to inspect full-size</span>
+            </div>
+            <div class="gallery-controls">
+              <span class="gallery-counter" id="gallery-counter">1 / 4</span>
+              <button type="button" class="icon-btn" id="gallery-prev" aria-label="Previous screenshot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+              <button type="button" class="icon-btn" id="gallery-next" aria-label="Next screenshot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="gallery-track" id="gallery-track" tabindex="0" aria-label="BeaconMac application screenshots">
-          <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg" data-lightbox-caption="01 · Multi-App Deployment & Watchdog Hub">
-              <img
-                src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg"
-                alt="BeaconMac Managed Local Apps Hub showing SoroWiz Web, Billing API, and Docs Portal with traffic lights and Clone & Deploy actions"
-                referrerpolicy="no-referrer"
-              />
-            </div>
-            <figcaption class="shot-caption">
-              <div class="shot-caption-title">
-                <span>Multi-App Deployment &amp; Watchdog Hub</span>
-                <span class="shot-step">01 / 04</span>
+          <div class="gallery-track" id="gallery-track" tabindex="0" aria-label="BeaconMac application screenshots">
+            <figure class="shot-card">
+              <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg" data-lightbox-caption="01 · Multi-App Deployment & Watchdog Hub">
+                <img
+                  src="/src/assets/images/beaconmac_hub_dark_1795439974565.jpg"
+                  alt="BeaconMac Managed Local Apps Hub showing local apps with traffic lights and Clone & Deploy actions"
+                  referrerpolicy="no-referrer"
+                />
               </div>
-              <p>
-                Monitor multiple local Vite, Node.js, and Next.js apps with real-time traffic-light
-                probes, one-click <strong>Load in Node Host</strong> and <strong>Expose via NGINX</strong>,
-                clean Stop controls, and real-time White/Dark theming with Blue section headers.
-              </p>
-            </figcaption>
-          </figure>
+              <figcaption class="shot-caption">
+                <div class="shot-caption-title">
+                  <span>Multi-App Deployment &amp; Watchdog Hub</span>
+                  <span class="shot-step">01 / 04</span>
+                </div>
+                <p>
+                  Monitor multiple local Vite, Node.js, and Next.js apps with real-time traffic-light
+                  probes, one-click <strong>Load in Node Host</strong> and
+                  <strong>Expose via Cloudflare Tunnel</strong>, clean Stop controls, and real-time
+                  White/Dark Liquid Glass theming.
+                </p>
+              </figcaption>
+            </figure>
 
-          <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg" data-lightbox-caption="02 · Keychain Secrets, Local Ollama & Cloud AI / Edge APIs">
-              <img
-                src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg"
-                alt="BeaconMac cards for GitHub Account via Keychain, Local LLM Ollama model switcher, and Cloud AI API health checkers"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-              />
-            </div>
-            <figcaption class="shot-caption">
-              <div class="shot-caption-title">
-                <span>Keychain Secrets, Ollama &amp; Cloud AI / Edge APIs</span>
-                <span class="shot-step">02 / 04</span>
+            <figure class="shot-card">
+              <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg" data-lightbox-caption="02 · GitHub Keychain Account & Local Ollama LLM">
+                <img
+                  src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg"
+                  alt="BeaconMac cards for GitHub Account via macOS Keychain and Local LLM Ollama model switcher with Cloudflare Tunnel exposure"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
               </div>
-              <p>
-                Connect GitHub, ChatGPT, Gemini, Claude, OpenRouter, Groq, Cloudflare, Vercel, and
-                Supabase encrypted in macOS Keychain alongside live local Ollama VRAM metrics.
-              </p>
-            </figcaption>
-          </figure>
+              <figcaption class="shot-caption">
+                <div class="shot-caption-title">
+                  <span>GitHub Keychain &amp; Local Ollama LLM</span>
+                  <span class="shot-step">02 / 04</span>
+                </div>
+                <p>
+                  Connect your GitHub Personal Access Token encrypted in macOS Keychain alongside live
+                  local Ollama VRAM metrics, model switching, and 1-click Cloudflare Quick Tunnel exposure.
+                </p>
+              </figcaption>
+            </figure>
 
-          <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg" data-lightbox-caption="03 · Auto-Scrolling Terminal, Activity Log & .txt/.json Export">
-              <img
-                src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg"
-                alt="BeaconMac Integrated Terminal Output streaming git pull, pnpm install, npm run build, and local deployment logs"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-              />
-            </div>
-            <figcaption class="shot-caption">
-              <div class="shot-caption-title">
-                <span>Terminal Output, Auto-Scroll &amp; Export Logs</span>
-                <span class="shot-step">03 / 04</span>
+            <figure class="shot-card">
+              <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg" data-lightbox-caption="03 · Auto-Scrolling Terminal, Activity Log & .txt/.json Export">
+                <img
+                  src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg"
+                  alt="BeaconMac Integrated Terminal Output streaming git pull, pnpm install, npm run build, and local deployment logs"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
               </div>
-              <p>
-                Stream live stdout/stderr with <strong>Pause auto-scroll</strong>, inline per-entry
-                <strong>Copy</strong>, <strong>AI Help</strong> diagnostics, Server Log Search, and
-                redacted <strong>Export Logs</strong> (<code>.txt</code> / <code>.json</code>).
-              </p>
-            </figcaption>
-          </figure>
+              <figcaption class="shot-caption">
+                <div class="shot-caption-title">
+                  <span>Terminal Output, Auto-Scroll &amp; Export Logs</span>
+                  <span class="shot-step">03 / 04</span>
+                </div>
+                <p>
+                  Stream live stdout/stderr with <strong>Pause auto-scroll</strong>, inline per-entry
+                  <strong>Copy</strong>, Server Log Search, and secret-redacted
+                  <strong>Export Logs</strong> (<code>.txt</code> / <code>.json</code>).
+                </p>
+              </figcaption>
+            </figure>
 
-          <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg" data-lightbox-caption="04 · Apple launchd Daemon, Live Logs & Sleep Prevention">
-              <img
-                src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg"
-                alt="BeaconMac macOS launchd Daemon panel with Launch at Login, Prevent Mac Sleep IOKit switch, and launchctl unload command"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-              />
-            </div>
-            <figcaption class="shot-caption">
-              <div class="shot-caption-title">
-                <span>Apple <code>launchd</code> Daemon &amp; Sleep Prevention</span>
-                <span class="shot-step">04 / 04</span>
+            <figure class="shot-card">
+              <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg" data-lightbox-caption="04 · Apple launchd Daemon, Live Logs & Sleep Prevention">
+                <img
+                  src="/src/assets/images/beaconmac_launchd_dark_1795439975506.jpg"
+                  alt="BeaconMac macOS launchd Daemon panel with Launch at Login, Prevent Mac Sleep IOKit switch, and launchctl unload command"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
               </div>
-              <p>
-                Install and unload <code>~/Library/LaunchAgents</code> daemons, tail persistent
-                <code>~/beaconmac/server.log</code> logs, and keep your Mac awake with IOKit and
-                <code>caffeinate -s</code>.
-              </p>
-            </figcaption>
-          </figure>
-        </div>
+              <figcaption class="shot-caption">
+                <div class="shot-caption-title">
+                  <span>Apple <code>launchd</code> Daemon &amp; Sleep Prevention</span>
+                  <span class="shot-step">04 / 04</span>
+                </div>
+                <p>
+                  Install and unload <code>~/Library/LaunchAgents</code> daemons, tail persistent
+                  <code>~/beaconmac/server.log</code> logs, and keep your Mac awake with IOKit and
+                  <code>caffeinate -s</code>.
+                </p>
+              </figcaption>
+            </figure>
+          </div>
 
-        <div class="gallery-dots" id="gallery-dots" role="tablist" aria-label="Select screenshot">
-          <button type="button" class="gallery-dot active" data-index="0" aria-label="Screenshot 1"></button>
-          <button type="button" class="gallery-dot" data-index="1" aria-label="Screenshot 2"></button>
-          <button type="button" class="gallery-dot" data-index="2" aria-label="Screenshot 3"></button>
-          <button type="button" class="gallery-dot" data-index="3" aria-label="Screenshot 4"></button>
-        </div>
-      </section>
+          <div class="gallery-dots" id="gallery-dots" role="tablist" aria-label="Select screenshot">
+            <button type="button" class="gallery-dot active" data-index="0" aria-label="Screenshot 1"></button>
+            <button type="button" class="gallery-dot" data-index="1" aria-label="Screenshot 2"></button>
+            <button type="button" class="gallery-dot" data-index="2" aria-label="Screenshot 3"></button>
+            <button type="button" class="gallery-dot" data-index="3" aria-label="Screenshot 4"></button>
+          </div>
+        </section>
 
-      <section id="faq" class="faq-section tab-panel is-hidden-right" role="tabpanel" aria-hidden="true" aria-labelledby="faq-heading">
-        <div class="faq-header">
-          <h2 id="faq-heading">Frequently Asked Questions</h2>
-          <a
-            class="text-link"
-            href="https://github.com/arjunmarri/beacon/blob/main/docs/setup-guide.md"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Full Setup Guide
-          </a>
-        </div>
+        <!-- TAB 3: FAQ -->
+        <section id="faq" class="tab-panel" role="tabpanel" aria-hidden="true" aria-labelledby="faq-heading">
+          <div class="faq-header">
+            <h2 id="faq-heading">Frequently Asked Questions</h2>
+            <a
+              class="text-link"
+              href="https://github.com/arjunmarri/beacon/blob/main/docs/setup-guide.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Full Setup Guide
+            </a>
+          </div>
 
-        <div class="faq-list">
-          <details class="faq-item">
-            <summary>
-              <span>How do I add a Git repository and deploy a local Vite or Node.js app?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Install BeaconMac's App-Sandbox hook scripts once, then click
-                <strong>+ Add Local App</strong> inside BeaconMac. Paste any HTTPS or SSH Git URL
-                (or pick directly from your connected GitHub repositories), choose a
-                <strong>Vite + Node</strong>, <strong>Node.js Server</strong>, or
-                <strong>Next.js</strong> preset, set your local folder and target local URL (such as
-                <code>http://localhost:5173</code> or <code>http://127.0.0.1:3000</code>), and click
-                <strong>Clone &amp; Deploy</strong>.
-              </p>
-              <pre>./swift-app/BeaconMac/Scripts/install-sandbox-scripts.sh com.beaconmac.app</pre>
-            </div>
-          </details>
+          <div class="faq-list">
+            <details class="faq-item" open>
+              <summary>
+                <span>How do I add a Git repository and deploy a local Vite or Node.js app?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Install BeaconMac's App-Sandbox hook scripts once, then click
+                  <strong>+ Add Local App</strong> inside BeaconMac. Paste any HTTPS or SSH Git URL
+                  (or pick directly from your connected GitHub repositories), choose a
+                  <strong>Vite + Node</strong>, <strong>Node.js Server</strong>, or
+                  <strong>Next.js</strong> preset, set your local folder and target local URL (such as
+                  <code>http://localhost:5173</code> or <code>http://127.0.0.1:3000</code>), and click
+                  <strong>Clone &amp; Deploy</strong>.
+                </p>
+                <pre>./swift-app/BeaconMac/Scripts/install-sandbox-scripts.sh com.beaconmac.app</pre>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How does the Inbuilt NGINX Reverse Proxy expose my local apps?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                BeaconMac runs a self-contained user-space NGINX instance under
-                <code>~/beaconmac/nginx/</code> with <strong>zero <code>sudo</code></strong>. Click
-                <strong>Expose via NGINX</strong> on any Managed Local App (or add custom routes) to
-                proxy any local port behind clean path prefixes
-                (<code>http://127.0.0.1:8080/&lt;slug&gt;/</code>), <code>*.localhost</code> virtual
-                hosts, or an Active Root (<code>/</code>) — complete with WebSocket/HMR headers,
-                live <code>nginx -t</code> validation, zero-downtime reloads, and an
-                <code>nginx.conf</code> viewer.
-              </p>
-              <p>
-                Need to test on a phone or share on your local network? Toggle
-                <strong>Expose LAN (<code>0.0.0.0</code>)</strong> to get a one-click Copy LAN URL
-                banner using your Mac's local IP. If NGINX isn't installed yet, click
-                <strong>Install NGINX</strong> inside BeaconMac to install it silently via Homebrew.
-              </p>
-            </div>
-          </details>
+            <details class="faq-item">
+              <summary>
+                <span>How do 1-click Cloudflare Quick Tunnels expose my local apps and Ollama?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Click <strong>Expose via Cloudflare Tunnel</strong> on any Managed Local App,
+                  <strong>Expose via Cloudflare</strong> on the <strong>Local LLM (Ollama)</strong>
+                  card, or <strong>Expose Node Host</strong> / <strong>Expose Port</strong> in the
+                  Cloudflare Tunnels view. BeaconMac silently installs <code>cloudflared</code> if
+                  missing, generates a sanitized <code>config.yml</code>, and publishes an instant
+                  HTTPS <code>*.trycloudflare.com</code> Quick Tunnel — with zero API token required.
+                </p>
+                <p>
+                  For local Ollama, BeaconMac automatically sets
+                  <code>--http-host-header localhost:&lt;port&gt;</code> so Ollama accepts tunneled
+                  requests cleanly over HTTPS.
+                </p>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How do I load an app directly into the Built-In Node.js Server?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Open the <strong>Built-In Node.js Server</strong> section (default
-                <code>http://127.0.0.1:4173</code>) and click <strong>Start Server</strong>. Then
-                click <strong>+ Load App</strong> — or click <strong>Load in Node Host</strong> on
-                any Managed Local App — to serve static/built folders (auto-detecting
-                <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>public/</code>, or
-                root <code>index.html</code> with SPA fallback) or proxy any local port. Browse all
-                mounted apps anytime at <code>http://127.0.0.1:4173/_beacon/</code>.
-              </p>
-            </div>
-          </details>
+            <details class="faq-item">
+              <summary>
+                <span>How do I load an app directly into the Built-In Node.js Server?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Open the <strong>Apps &amp; Node Host</strong> section (default
+                  <code>http://127.0.0.1:4173</code>) and click <strong>Start Server</strong>. Then
+                  click <strong>+ Load App Folder</strong> — or click <strong>Load in Node Host</strong>
+                  on any Managed Local App — to serve static/built folders (auto-detecting
+                  <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>public/</code>, or
+                  root <code>index.html</code> with SPA fallback) or proxy any local port. Browse all
+                  mounted apps anytime at <code>http://127.0.0.1:4173/_beacon/</code>.
+                </p>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How do Cloud AI APIs (ChatGPT, Gemini, Claude, Cloudflare) &amp; macOS Keychain work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                BeaconMac requires <strong>no <code>.env</code> file</strong>. Open
-                <strong>Settings → Cloud AI &amp; Platform Integrations</strong> to connect and
-                live-verify <strong>OpenAI (ChatGPT)</strong>, <strong>Google Gemini</strong>,
-                <strong>Anthropic Claude</strong>, <strong>OpenRouter</strong>,
-                <strong>Groq</strong>, <strong>Custom OpenAI-Compatible</strong> endpoints,
-                <strong>Cloudflare</strong>, <strong>Vercel</strong>, <strong>Supabase</strong>, and
-                your <strong>GitHub PAT</strong>. Every key is stored encrypted in your
-                <strong>macOS Keychain</strong> under <code>com.beaconmac.app</code>, displayed only
-                as masked hints, and redacted from all logs and exports.
-              </p>
-              <p>
-                After installing a new DMG update, macOS may prompt once for your
-                <code>login</code> keychain password to grant the updated binary access to
-                <code>com.beaconmac.app</code> — click <strong>Always Allow</strong> to restore your
-                saved tokens seamlessly.
-              </p>
-            </div>
-          </details>
+            <details class="faq-item">
+              <summary>
+                <span>How does BeaconMac store my GitHub token and keep credentials private?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  BeaconMac requires <strong>no <code>.env</code> file</strong>. Paste your
+                  <strong>GitHub Personal Access Token</strong> directly into the
+                  <strong>GitHub Account</strong> card — it is stored encrypted in your
+                  <strong>macOS Keychain</strong> under <code>com.beaconmac.app</code>, displayed only
+                  as a masked hint, and automatically redacted from all terminal output, activity logs,
+                  and exported files.
+                </p>
+                <p>
+                  BeaconMac collects zero analytics and never transmits local logs to third-party
+                  services. Read our <a class="text-link" href="/privacy">Privacy Policy</a> for full
+                  details.
+                </p>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How do private Git repositories authenticate during clone and pull?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                BeaconMac uses your Keychain GitHub token to list repositories and poll for new
-                commits via the GitHub API. Local <code>git clone</code> and <code>git pull</code>
-                commands executed by <code>beacon-deploy.sh</code> use your Mac's native Git
-                credentials — either an SSH key stored in Keychain or macOS's
-                <code>osxkeychain</code> credential helper:
-              </p>
-              <pre>ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+            <details class="faq-item">
+              <summary>
+                <span>How do private Git repositories authenticate during clone and pull?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  BeaconMac uses your Keychain GitHub token to list repositories and poll for new
+                  commits via the GitHub API. Local <code>git clone</code> and <code>git pull</code>
+                  commands executed by <code>beacon-deploy.sh</code> use your Mac's native Git
+                  credentials — either an SSH key stored in Keychain or macOS's
+                  <code>osxkeychain</code> credential helper:
+                </p>
+                <pre>ssh-add --apple-use-keychain ~/.ssh/id_ed25519
 # or for HTTPS clones:
 git config --global credential.helper osxkeychain</pre>
-            </div>
-          </details>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How can I verify if my local SSH agent is correctly authenticated for Git?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Verify that your macOS SSH agent has your private key loaded and test SSH
-                connectivity directly against <code>github.com</code> in Terminal. A properly
-                authenticated agent responds with
-                <code>Hi &lt;username&gt;! You've successfully authenticated</code>:
-              </p>
-              <pre># List keys currently loaded in your local SSH agent:
-ssh-add -l
-
-# Test SSH authentication to github.com:
+            <details class="faq-item">
+              <summary>
+                <span>How can I verify if my local SSH agent is correctly authenticated for Git?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Verify that your macOS SSH agent has your private key loaded and test SSH
+                  connectivity directly against <code>github.com</code> in Terminal:
+                </p>
+                <pre>ssh-add -l
 ssh -T git@github.com</pre>
-            </div>
-          </details>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>What should I do if Git clone fails with a permissions error?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                A <code>Permission denied (publickey)</code> error during <code>git clone</code>
-                usually means your SSH key is not loaded into your macOS <code>ssh-agent</code> or
-                its file permissions are too open. Check your active SSH identities, ensure your
-                private key is readable only by you, and register it with <code>ssh-add</code>:
-              </p>
-              <pre># 1. Check currently loaded SSH identities:
-ssh-add -l
-
-# 2. Start ssh-agent if needed and enforce private key permissions:
-eval "$(ssh-agent -s)"
+            <details class="faq-item">
+              <summary>
+                <span>What should I do if Git clone fails with a permissions error?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  A <code>Permission denied (publickey)</code> error during <code>git clone</code>
+                  usually means your SSH key is not loaded into your macOS <code>ssh-agent</code> or
+                  its file permissions are too open:
+                </p>
+                <pre>eval "$(ssh-agent -s)"
 chmod 600 ~/.ssh/id_ed25519
-
-# 3. Add your private key to ssh-agent (persisted in macOS Keychain):
 ssh-add --apple-use-keychain ~/.ssh/id_ed25519
-
-# 4. Re-verify identity against GitHub:
 ssh -T git@github.com</pre>
-            </div>
-          </details>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How does BeaconMac use Apple's launchd for background startup?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Toggle <strong>Startup</strong> on any managed app, then click
-                <strong>Install &amp; Start launchd</strong> in BeaconMac. It writes and loads
-                <code>~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</code> with
-                <code>RunAtLoad</code> and crash recovery so your local apps boot automatically even
-                when BeaconMac's window is closed.
-              </p>
-              <pre># Inspect the status, PID, and state of the loaded daemon:
-launchctl print gui/$(id -u)/com.beaconmac.app.supervisor
-
-# Stop the background launchd service anytime:
+            <details class="faq-item">
+              <summary>
+                <span>How does BeaconMac use Apple's launchd for background startup &amp; keep-awake?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Toggle <strong>Startup</strong> on any managed app, then click
+                  <strong>Install &amp; Start launchd</strong> in <strong>System &amp; launchd</strong>.
+                  BeaconMac loads <code>~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</code>
+                  with <code>RunAtLoad</code>, crash recovery, native IOKit power assertions, and
+                  <code>caffeinate -s</code> so your local servers remain reachable even with the display off.
+                </p>
+                <pre>tail -f ~/beaconmac/server.log
 launchctl unload ~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist</pre>
-            </div>
-          </details>
+              </div>
+            </details>
 
-          <details class="faq-item">
-            <summary>
-              <span>How do I watch live server logs and prevent my Mac from sleeping?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Click <strong>Watch Live Logs</strong> (or <strong>Tail Log</strong> on any app) to
-                open macOS <code>Terminal.app</code> with persistent logs under
-                <code>~/beaconmac/</code>. Keep <strong>Prevent Mac Sleep</strong> enabled to hold a
-                native IOKit power assertion while BeaconMac is open and run
-                <code>caffeinate -s</code> automatically under <code>launchd</code>:
-              </p>
-              <pre>tail -f ~/beaconmac/server.log
-caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
-            </div>
-          </details>
-
-          <details class="faq-item">
-            <summary>
-              <span>How do Export Logs, Pause Auto-Scroll, Per-Entry Copy, and White/Dark themes work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                The Activity Log, Terminal Output, and Server Log Search panels automatically scroll
-                to the newest entry and include a <strong>Pause auto-scroll</strong> button (with a
-                live unread count badge on <strong>Resume</strong>), inline per-entry
-                <strong>Copy</strong> icons, right-click menus, and an <strong>Export Logs</strong>
-                button to save all or filtered session logs (system, Git, services, deployment
-                output) as redacted <code>.txt</code> or <code>.json</code> files.
-              </p>
-              <p>
-                To switch between <strong>Dark</strong> and <strong>White (Light)</strong> mode in
-                real time, use the Theme switcher in the top toolbar, Settings, or Menu Bar — all
-                section headers stay highlighted in crisp <strong>Blue</strong> for fast scanning.
-              </p>
-            </div>
-          </details>
-
-          <details class="faq-item">
-            <summary>
-              <span>How does BeaconMac handle verified self-updates?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                BeaconMac checks the pinned <code>arjunmarri/beacon</code> GitHub Releases feed,
-                verifies the published <code>.sha256</code> checksum via <code>CryptoKit</code>
-                before mounting, validates the staged app's Apple Developer ID signature &amp;
-                Team ID via <code>SecStaticCodeCheckValidity</code>, <code>codesign</code>, and
-                Gatekeeper (<code>spctl</code>), preserves <code>com.apple.quarantine</code>, and
-                always asks for your explicit confirmation before replacing and relaunching.
-              </p>
-              <p>
-                Click the <strong>BeaconMac</strong> icon in the macOS <strong>Menu Bar</strong> and
-                select <strong>Check for Updates…</strong> anytime.
-              </p>
-            </div>
-          </details>
-
-          <details class="faq-item">
-            <summary>
-              <span>How can I install missing tools like pnpm, Bun, Yarn, or NGINX and troubleshoot logs?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </summary>
-            <div class="faq-answer">
-              <p>
-                Click <strong>Install Dependencies</strong> in BeaconMac's top bar, Managed Local
-                Apps header, or Menu Bar, pick your project type (such as <strong>Node.js + pnpm</strong>,
-                <strong>Node.js + Yarn</strong>, <strong>Bun</strong>, <strong>Python (python3 + uv)</strong>,
-                <strong>Go</strong>, or <strong>Custom</strong> including <strong>NGINX</strong>),
-                and BeaconMac silently installs missing tools via Homebrew or verified direct
-                official downloads without leaving the app.
-              </p>
-              <p>
-                Every log panel also includes inline <strong>Copy</strong> and <strong>AI Help</strong>
-                buttons to analyze redacted errors directly with your Local Ollama model or any
-                connected Cloud AI provider (ChatGPT, Gemini, Claude, OpenRouter, Groq, or Custom).
-              </p>
-            </div>
-          </details>
-        </div>
-      </section>
+            <details class="faq-item">
+              <summary>
+                <span>How can I install missing tools like pnpm, Bun, Yarn, Python, Go, or cloudflared?</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="faq-answer">
+                <p>
+                  Click <strong>Install Dependencies</strong> in BeaconMac's top bar or Menu Bar, pick
+                  your project preset (<strong>Node.js + pnpm</strong>, <strong>Node.js + Yarn</strong>,
+                  <strong>Bun</strong>, <strong>Python (python3 + uv)</strong>, <strong>Go</strong>,
+                  or <strong>Custom</strong>), and BeaconMac silently installs missing tools via Homebrew
+                  or verified official downloads without leaving the app.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -1440,9 +1562,73 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
       <a href="/privacy">Privacy Policy</a>
     </footer>
 
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot preview">
+      <div class="lightbox-inner">
+        <img id="lightbox-img" src="" alt="" referrerpolicy="no-referrer" />
+        <div class="lightbox-bar">
+          <span id="lightbox-caption"></span>
+          <button type="button" class="text-link" id="lightbox-close">Close (Esc)</button>
+        </div>
+      </div>
+    </div>
+
     <script>
+      /* Real-Time Dark / White Liquid Glass Theme Toggle */
+      (function () {
+        const root = document.documentElement;
+        const btn = document.getElementById('theme-toggle');
+        const sun = document.getElementById('theme-icon-sun');
+        const moon = document.getElementById('theme-icon-moon');
+
+        function applyTheme(theme) {
+          root.setAttribute('data-theme', theme);
+          if (sun && moon) {
+            sun.style.display = theme === 'dark' ? 'block' : 'none';
+            moon.style.display = theme === 'light' ? 'block' : 'none';
+          }
+          try {
+            localStorage.setItem('beaconmac-theme-v2', theme);
+          } catch (_) {}
+        }
+
+        let initial = 'light';
+        try {
+          const saved = localStorage.getItem('beaconmac-theme-v2');
+          if (saved === 'light' || saved === 'dark') initial = saved;
+        } catch (_) {}
+        applyTheme(initial);
+
+        if (btn) {
+          btn.addEventListener('click', () => {
+            const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+            applyTheme(current === 'light' ? 'dark' : 'light');
+          });
+        }
+      })();
+
+      /* Subtle Pointer-Reactive Liquid Glass Specular Glint */
+      (function () {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const panels = document.querySelectorAll('.tab-panel');
+        panels.forEach((panel) => {
+          panel.addEventListener(
+            'pointermove',
+            (e) => {
+              const rect = panel.getBoundingClientRect();
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              panel.style.setProperty('--mx', x.toFixed(1) + '%');
+              panel.style.setProperty('--my', y.toFixed(1) + '%');
+            },
+            { passive: true }
+          );
+        });
+      })();
+
+      /* Release Metadata & DMG Download Handler */
       (function () {
         const dmgBtn = document.getElementById('dmg-download-btn');
+        const navCta = document.getElementById('nav-dmg-cta');
         const dmgLabel = document.getElementById('dmg-download-label');
         const platformMeta = document.getElementById('platform-meta');
         const releaseStatus = document.getElementById('release-status');
@@ -1513,16 +1699,23 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
             .join('');
         }
 
-        toggleVersionsBtn.addEventListener('click', () => {
-          versionsPanel.classList.toggle('visible');
-        });
+        if (toggleVersionsBtn) {
+          toggleVersionsBtn.addEventListener('click', () => {
+            versionsPanel.classList.toggle('visible');
+          });
+        }
 
-        dmgBtn.addEventListener('click', (event) => {
+        function handleDownloadClick(event) {
           if (!releaseState.dmgReady) {
             event.preventDefault();
-            buildNotice.classList.toggle('visible');
+            if (window.beaconSwitchTab) window.beaconSwitchTab('about');
+            buildNotice.classList.add('visible');
+            buildNotice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
-        });
+        }
+
+        if (dmgBtn) dmgBtn.addEventListener('click', handleDownloadClick);
+        if (navCta) navCta.addEventListener('click', handleDownloadClick);
 
         fetch('/api/releases')
           .then((r) => (r.ok ? r.json() : null))
@@ -1533,10 +1726,14 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
             const latestObj = (data.releases || []).find((r) => r.version === latest) || data.releases?.[0];
             const filename = latestObj?.dmgFilename || 'BeaconMac-' + latest + '-universal.dmg';
 
-            platformMeta.textContent = 'v' + latest + ' · Universal · macOS ' + (latestObj?.minMacOS || '14.0') + '+';
+            platformMeta.textContent = 'v' + latest + ' · Universal · macOS ' + (latestObj?.minMacOS || '14.0') + '+ · SwiftUI';
             dmgLabel.textContent = 'Download BeaconMac v' + latest + ' (.dmg)';
             dmgBtn.setAttribute('href', data.latestDownloadUrl || '/download/dmg');
             dmgBtn.setAttribute('download', filename);
+            if (navCta) {
+              navCta.setAttribute('href', data.latestDownloadUrl || '/download/dmg');
+              navCta.setAttribute('download', filename);
+            }
 
             const sizePart = latestObj?.sizeBytes ? ' · ' + formatBytes(latestObj.sizeBytes) : '';
             releaseStatus.textContent = filename + sizePart + (data.dmgReady ? ' · Ready' : ' · macOS 14+');
@@ -1557,18 +1754,8 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
           })
           .catch(() => {});
       })();
-    </script>
-    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot preview">
-      <div class="lightbox-inner">
-        <img id="lightbox-img" src="" alt="" referrerpolicy="no-referrer" />
-        <div class="lightbox-bar">
-          <span id="lightbox-caption"></span>
-          <button type="button" class="text-link" id="lightbox-close">Close (Esc)</button>
-        </div>
-      </div>
-    </div>
 
-    <script>
+      /* Screenshot Gallery & Lightbox */
       (function () {
         const track = document.getElementById('gallery-track');
         const prevBtn = document.getElementById('gallery-prev');
@@ -1651,323 +1838,71 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
           if (e.key === 'Escape') closeLightbox();
         });
       })();
-    </script>
 
-    <script>
-      /* 3-Tab Directional Carousel (About / Preview / FAQ — exact same size, Preview & FAQ hidden by default) */
+      /* Liquid Glass Segmented Tab Controller with Animated Thumb */
       (function () {
         const tabOrder = ['about', 'preview', 'faq'];
         const navLinks = Array.from(document.querySelectorAll('.nav-link'));
         const triggers = Array.from(document.querySelectorAll('[data-tab-target]'));
-        const panels = Object.fromEntries(
-          tabOrder.map((id) => [id, document.getElementById(id)])
-        );
+        const thumb = document.getElementById('nav-seg-thumb');
+        const panels = Object.fromEntries(tabOrder.map((id) => [id, document.getElementById(id)]));
 
         let activeId = 'about';
-        let cleanupTimer = null;
 
-        function updateNav(targetId) {
+        function positionThumb(targetId) {
+          if (!thumb) return;
+          const activeLink = navLinks.find((l) => l.getAttribute('data-tab-target') === targetId);
+          if (!activeLink) return;
+          thumb.style.width = activeLink.offsetWidth + 'px';
+          thumb.style.transform = 'translateX(' + (activeLink.offsetLeft - 4) + 'px)';
+        }
+
+        function switchTab(targetId) {
+          if (!panels[targetId]) return;
+          activeId = targetId;
+
           navLinks.forEach((link) => {
-            const isMatch = link.getAttribute('data-tab-target') === targetId;
-            link.classList.toggle('active', isMatch);
-            link.setAttribute('aria-selected', isMatch ? 'true' : 'false');
-            if (isMatch) {
-              link.setAttribute('aria-current', 'page');
-            } else {
-              link.removeAttribute('aria-current');
-            }
+            const match = link.getAttribute('data-tab-target') === targetId;
+            link.classList.toggle('active', match);
+            link.setAttribute('aria-selected', match ? 'true' : 'false');
+            if (match) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
           });
-        }
 
-        function setRestClasses(currentId) {
-          const currentIdx = tabOrder.indexOf(currentId);
-          tabOrder.forEach((id, idx) => {
-            const panel = panels[id];
-            if (!panel) return;
-            panel.classList.remove(
-              'no-transition',
-              'is-active',
-              'is-hidden-left',
-              'is-hidden-right',
-              'is-exiting-left',
-              'is-exiting-right'
-            );
-            if (idx === currentIdx) {
-              panel.classList.add('is-active');
-              panel.setAttribute('aria-hidden', 'false');
-            } else if (idx < currentIdx) {
-              panel.classList.add('is-hidden-left');
-              panel.setAttribute('aria-hidden', 'true');
-            } else {
-              panel.classList.add('is-hidden-right');
-              panel.setAttribute('aria-hidden', 'true');
-            }
-          });
-        }
-
-        function switchToTab(targetId, animate = true) {
-          if (!panels[targetId] || targetId === activeId) {
-            updateNav(targetId);
-            return;
-          }
-
-          if (cleanupTimer) {
-            clearTimeout(cleanupTimer);
-            cleanupTimer = null;
-          }
-
-          const fromIdx = tabOrder.indexOf(activeId);
-          const toIdx = tabOrder.indexOf(targetId);
-          const goingForward = toIdx > fromIdx;
-
-          const currentPanel = panels[activeId];
-          const nextPanel = panels[targetId];
-
-          if (!animate) {
-            activeId = targetId;
-            updateNav(targetId);
-            setRestClasses(targetId);
-            return;
-          }
-
-          // Hide any unrelated third panel immediately
-          tabOrder.forEach((id, idx) => {
-            if (id === activeId || id === targetId) return;
+          tabOrder.forEach((id) => {
             const p = panels[id];
             if (!p) return;
-            p.classList.add('no-transition');
-            p.classList.remove('is-active', 'is-exiting-left', 'is-exiting-right', 'is-hidden-left', 'is-hidden-right');
-            p.classList.add(idx < toIdx ? 'is-hidden-left' : 'is-hidden-right');
-            p.setAttribute('aria-hidden', 'true');
-            void p.offsetWidth;
-            p.classList.remove('no-transition');
+            const isTarget = id === targetId;
+            p.classList.toggle('is-active', isTarget);
+            p.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
           });
 
-          // Stage incoming panel on the right (forward) or left (backward) without transition
-          nextPanel.classList.add('no-transition');
-          nextPanel.classList.remove('is-active', 'is-exiting-left', 'is-exiting-right', 'is-hidden-left', 'is-hidden-right');
-          nextPanel.classList.add(goingForward ? 'is-hidden-right' : 'is-hidden-left');
-          nextPanel.style.visibility = 'visible';
-          void nextPanel.offsetWidth;
-          nextPanel.classList.remove('no-transition');
-
-          // Slide current panel out to left (forward) / right (backward) and incoming panel into center
-          currentPanel.classList.remove('is-active', 'is-hidden-left', 'is-hidden-right', 'is-exiting-left', 'is-exiting-right');
-          currentPanel.classList.add(goingForward ? 'is-exiting-left' : 'is-exiting-right');
-          currentPanel.setAttribute('aria-hidden', 'true');
-
-          nextPanel.classList.remove('is-hidden-left', 'is-hidden-right', 'is-exiting-left', 'is-exiting-right');
-          nextPanel.classList.add('is-active');
-          nextPanel.style.visibility = '';
-          nextPanel.setAttribute('aria-hidden', 'false');
-
-          activeId = targetId;
-          updateNav(targetId);
+          positionThumb(targetId);
 
           if (history.replaceState) {
             history.replaceState(null, '', '#' + targetId);
           }
-
-          cleanupTimer = setTimeout(() => {
-            setRestClasses(activeId);
-            cleanupTimer = null;
-          }, 540);
         }
+
+        window.beaconSwitchTab = switchTab;
 
         triggers.forEach((el) => {
           el.addEventListener('click', (event) => {
             const targetId = el.getAttribute('data-tab-target');
             if (!targetId || !panels[targetId]) return;
             event.preventDefault();
-            switchToTab(targetId, true);
+            switchTab(targetId);
           });
         });
 
-        // Default to About visible with Preview & FAQ hidden (unless hash explicitly selects one)
+        window.addEventListener('resize', () => positionThumb(activeId));
+
         const initialHash = window.location.hash.replace('#', '');
-        if (tabOrder.includes(initialHash) && initialHash !== 'about') {
-          switchToTab(initialHash, false);
-        } else {
-          setRestClasses('about');
-          updateNav('about');
-        }
+        switchTab(tabOrder.includes(initialHash) ? initialHash : 'about');
+        requestAnimationFrame(() => positionThumb(activeId));
       })();
 
-      /* Constantly Animating Dark Beacon Constellation & Ambient Glow Canvas */
-      (function () {
-        const canvas = document.getElementById('bg-canvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        let width = window.innerWidth;
-        let height = window.innerHeight;
-        let dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-        const pointer = { x: -9999, y: -9999, active: false };
-        const orbs = [
-          { xRatio: 0.22, yRatio: 0.24, r: 340, color: '56, 189, 248', alpha: 0.11, speedX: 0.22, speedY: 0.17, phase: 0 },
-          { xRatio: 0.78, yRatio: 0.34, r: 380, color: '99, 102, 241', alpha: 0.10, speedX: -0.19, speedY: 0.21, phase: 2.1 },
-          { xRatio: 0.52, yRatio: 0.78, r: 320, color: '52, 211, 153', alpha: 0.075, speedX: 0.15, speedY: -0.16, phase: 4.2 }
-        ];
-
-        let nodes = [];
-        const pulses = [];
-        let lastPulseTime = 0;
-
-        function createNodes() {
-          const count = Math.max(36, Math.min(82, Math.floor((width * height) / 22000)));
-          nodes = Array.from({ length: count }, (_, i) => {
-            const palette =
-              i % 7 === 0 ? '52, 211, 153' : i % 3 === 0 ? '129, 140, 248' : '56, 189, 248';
-            return {
-              x: Math.random() * width,
-              y: Math.random() * height,
-              vx: (Math.random() - 0.5) * 0.42,
-              vy: (Math.random() - 0.5) * 0.42,
-              radius: 1.2 + Math.random() * 1.6,
-              color: palette,
-              twinklePhase: Math.random() * Math.PI * 2,
-              twinkleSpeed: 0.8 + Math.random() * 1.4
-            };
-          });
-        }
-
-        function resize() {
-          width = window.innerWidth;
-          height = window.innerHeight;
-          dpr = Math.min(window.devicePixelRatio || 1, 2);
-          canvas.width = Math.floor(width * dpr);
-          canvas.height = Math.floor(height * dpr);
-          canvas.style.width = width + 'px';
-          canvas.style.height = height + 'px';
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          createNodes();
-        }
-
-        window.addEventListener('resize', resize);
-        window.addEventListener(
-          'mousemove',
-          (e) => {
-            pointer.x = e.clientX;
-            pointer.y = e.clientY;
-            pointer.active = true;
-          },
-          { passive: true }
-        );
-        window.addEventListener('mouseleave', () => {
-          pointer.active = false;
-        });
-
-        resize();
-
-        let lastTs = performance.now();
-        function frame(now) {
-          const dt = Math.min(0.05, (now - lastTs) / 1000);
-          lastTs = now;
-          const t = now * 0.001;
-
-          ctx.clearRect(0, 0, width, height);
-
-          // 1. Slow drifting ambient aurora glow fields
-          for (const orb of orbs) {
-            const ox = width * orb.xRatio + Math.sin(t * orb.speedX + orb.phase) * Math.min(180, width * 0.14);
-            const oy = height * orb.yRatio + Math.cos(t * orb.speedY + orb.phase) * Math.min(130, height * 0.12);
-            const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, orb.r);
-            grad.addColorStop(0, 'rgba(' + orb.color + ', ' + orb.alpha + ')');
-            grad.addColorStop(1, 'rgba(' + orb.color + ', 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(ox, oy, orb.r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // 2. Periodically spawn a subtle beacon pulse ring from a random node
-          if (now - lastPulseTime > 2200 && nodes.length > 0) {
-            lastPulseTime = now;
-            const origin = nodes[Math.floor(Math.random() * nodes.length)];
-            pulses.push({
-              x: origin.x,
-              y: origin.y,
-              radius: 2,
-              maxRadius: 85 + Math.random() * 75,
-              color: origin.color
-            });
-          }
-
-          for (let i = pulses.length - 1; i >= 0; i--) {
-            const p = pulses[i];
-            p.radius += 34 * dt;
-            const progress = p.radius / p.maxRadius;
-            if (progress >= 1) {
-              pulses.splice(i, 1);
-              continue;
-            }
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(' + p.color + ', ' + ((1 - progress) * 0.24).toFixed(3) + ')';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-
-          // 3. Advance beacon nodes smoothly across viewport
-          const speedScale = dt * 60;
-          for (const n of nodes) {
-            n.x += n.vx * speedScale;
-            n.y += n.vy * speedScale;
-
-            if (pointer.active) {
-              const dx = pointer.x - n.x;
-              const dy = pointer.y - n.y;
-              const distSq = dx * dx + dy * dy;
-              if (distSq > 400 && distSq < 28000) {
-                n.x += (dx / Math.sqrt(distSq)) * 0.14 * speedScale;
-                n.y += (dy / Math.sqrt(distSq)) * 0.14 * speedScale;
-              }
-            }
-
-            if (n.x < -20) n.x = width + 20;
-            if (n.x > width + 20) n.x = -20;
-            if (n.y < -20) n.y = height + 20;
-            if (n.y > height + 20) n.y = -20;
-          }
-
-          // 4. Draw delicate constellation filaments between nearby nodes
-          const maxLinkDist = 148;
-          const maxLinkDistSq = maxLinkDist * maxLinkDist;
-          ctx.lineWidth = 0.85;
-          for (let i = 0; i < nodes.length; i++) {
-            const a = nodes[i];
-            for (let j = i + 1; j < nodes.length; j++) {
-              const b = nodes[j];
-              const dx = a.x - b.x;
-              const dy = a.y - b.y;
-              const dSq = dx * dx + dy * dy;
-              if (dSq < maxLinkDistSq) {
-                const alpha = (1 - Math.sqrt(dSq) / maxLinkDist) * 0.19;
-                ctx.strokeStyle = 'rgba(125, 211, 252, ' + alpha.toFixed(3) + ')';
-                ctx.beginPath();
-                ctx.moveTo(a.x, a.y);
-                ctx.lineTo(b.x, b.y);
-                ctx.stroke();
-              }
-            }
-          }
-
-          // 5. Render glowing beacon dots
-          for (const n of nodes) {
-            const pulseAlpha = 0.42 + 0.34 * Math.sin(t * n.twinkleSpeed + n.twinklePhase);
-            ctx.fillStyle = 'rgba(' + n.color + ', ' + pulseAlpha.toFixed(3) + ')';
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          window.requestAnimationFrame(frame);
-        }
-
-        window.requestAnimationFrame(frame);
-      })();
     </script>
+    <script src="/src/assets/js/undersea-ray.js" defer></script>
   </body>
 </html>

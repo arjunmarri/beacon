@@ -90,11 +90,15 @@ struct ActivityLogView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    BeaconSectionHeaderText(title: "Real-Time Activity Log", fontSize: 15.5)
-                    Text("Flat file: \(controller.flatFileStore.logFileURL.lastPathComponent) · \(ByteCountFormatter.string(fromByteCount: controller.logFileBytes, countStyle: .file)) · Hover or right-click any entry to copy or ask AI")
+                    BeaconSectionHeaderText(
+                        title: "Real-Time Activity Log",
+                        fontSize: 15.5,
+                        systemImage: "list.bullet.rectangle.portrait.fill"
+                    )
+                    Text("Flat file: \(controller.flatFileStore.logFileURL.lastPathComponent) · \(ByteCountFormatter.string(fromByteCount: controller.logFileBytes, countStyle: .file)) · Hover or right-click any entry to copy or export")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -105,12 +109,8 @@ struct ActivityLogView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .foregroundStyle(palette.primaryText)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .frame(width: 160)
-                    .background(palette.input)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .frame(width: 165)
+                    .beaconGlassInput(cornerRadius: 8.5, horizontalPadding: 10, verticalPadding: 6)
 
                 Button {
                     autoScrollEnabled.toggle()
@@ -131,10 +131,10 @@ struct ActivityLogView: View {
                     .padding(.vertical, 6)
                     .background(autoScrollEnabled ? palette.chipFill : Color.orange.opacity(palette.isLight ? 0.14 : 0.16))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(autoScrollEnabled ? palette.inputBorder : Color.orange.opacity(0.45))
+                        RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                            .strokeBorder(autoScrollEnabled ? palette.border : Color.orange.opacity(0.45), lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
@@ -193,11 +193,11 @@ struct ActivityLogView: View {
                             .foregroundStyle(palette.secondaryText)
                     }
                     .foregroundStyle(palette.primaryText)
-                    .padding(.horizontal, 11)
+                    .padding(.horizontal, 11.5)
                     .padding(.vertical, 6)
                     .background(palette.chipFill)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 8.5, style: .continuous).strokeBorder(palette.border, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -261,7 +261,7 @@ struct ActivityLogView: View {
                                         .foregroundStyle(
                                             isCopied
                                                 ? palette.successText
-                                                : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.65))
+                                                : (isHovered ? palette.primaryText : palette.secondaryText.opacity(0.60))
                                         )
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -270,17 +270,17 @@ struct ActivityLogView: View {
                                                 ? palette.successText.opacity(0.14)
                                                 : (isHovered ? palette.chipFill : Color.clear)
                                         )
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                     .help("Copy this log entry")
                                 }
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .monospacedDigit()
-                                .padding(.vertical, 3)
-                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .padding(.horizontal, 9)
                                 .background(isHovered ? palette.hoverFill : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                 .onHover { hovering in
                                     if hovering {
                                         hoveredEntryID = entry.id
@@ -314,7 +314,7 @@ struct ActivityLogView: View {
                             .frame(height: 1)
                             .id(bottomAnchorID)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 }
                 .onAppear {
                     if autoScrollEnabled && !filteredLogs.isEmpty {
@@ -354,31 +354,30 @@ struct ActivityLogView: View {
                     }
                 }
             }
-            .frame(height: 240)
-            .background(palette.console)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(height: 255)
+            .beaconGlassWell(cornerRadius: 11)
         }
-        .padding(18)
-        .background(palette.card)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: palette.cardShadow, radius: 6, y: 2)
+        .beaconGlassCard(cornerRadius: 16, padding: 20)
     }
 
     private func filterButton(label: String, source: LogSource?) -> some View {
         let active = selectedSource == source
         return Button(label) {
-            selectedSource = source
+            withAnimation(.easeOut(duration: 0.15)) {
+                selectedSource = source
+            }
         }
         .buttonStyle(.plain)
         .font(.system(size: 11, weight: active ? .semibold : .medium))
         .foregroundStyle(active ? palette.sectionHeader : palette.secondaryText)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4.5)
         .background(active ? palette.activeChipFill : palette.chipFill)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? palette.sectionHeader.opacity(0.4) : palette.subtleBorder))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7.5, style: .continuous)
+                .strokeBorder(active ? palette.sectionHeader.opacity(0.42) : palette.subtleBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7.5, style: .continuous))
     }
 
     private func sourceColor(_ source: LogSource) -> Color {
@@ -387,7 +386,6 @@ struct ActivityLogView: View {
             case .vite: return Color(red: 0.06, green: 0.42, blue: 0.78)
             case .git: return Color(red: 0.48, green: 0.18, blue: 0.78)
             case .ollama: return Color(red: 0.05, green: 0.50, blue: 0.28)
-            case .claude: return Color(red: 0.76, green: 0.36, blue: 0.04)
             case .terminal: return Color(red: 0.04, green: 0.52, blue: 0.48)
             case .startup: return Color(red: 0.06, green: 0.46, blue: 0.56)
             case .alerts: return Color(red: 0.68, green: 0.48, blue: 0.0)
@@ -398,7 +396,6 @@ struct ActivityLogView: View {
         case .vite: return .cyan
         case .git: return .purple
         case .ollama: return .green
-        case .claude: return .orange
         case .terminal: return .mint
         case .startup: return .teal
         case .alerts: return .yellow
