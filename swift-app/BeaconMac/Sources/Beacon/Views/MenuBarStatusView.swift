@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MenuBarStatusView: View {
@@ -7,6 +8,7 @@ struct MenuBarStatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("BeaconMac Monitor")
                 .font(.headline)
+                .foregroundStyle(Color(red: 0.23, green: 0.56, blue: 0.98))
 
             Divider()
 
@@ -24,6 +26,8 @@ struct MenuBarStatusView: View {
             Divider()
 
             statusRow(name: "launchd Daemon", light: controller.launchd.light, detail: controller.launchd.statusLabel)
+            statusRow(name: "NGINX Reverse Proxy", light: controller.nginxProxy.light, detail: controller.nginxProxy.statusLabel)
+            statusRow(name: "Cloudflare Tunnels", light: controller.cloudflareTunnel.light, detail: controller.cloudflareTunnel.statusLabel)
             statusRow(
                 name: "Prevent Mac Sleep",
                 light: controller.launchd.sleepAssertionActive ? .green : .amber,
@@ -33,7 +37,35 @@ struct MenuBarStatusView: View {
             statusRow(name: "Local LLM (Ollama)", light: controller.ollama.light, detail: controller.ollama.statusLabel)
             statusRow(name: "Claude API", light: controller.claude.light, detail: controller.claude.statusLabel)
 
+            let connectedCloudCount = CloudProviderKind.allCases.filter { controller.cloudProviderState(for: $0).isConnected }.count
+            if connectedCloudCount > 0 {
+                statusRow(
+                    name: "Cloud AI & APIs",
+                    light: .green,
+                    detail: "\(connectedCloudCount) connected"
+                )
+            }
+
             Divider()
+
+            let liveTunnels = controller.cloudflareTunnel.activeTunnels.filter { $0.isRunning && $0.publicURL != nil }
+            if !liveTunnels.isEmpty {
+                ForEach(liveTunnels) { tunnel in
+                    if let pubURL = tunnel.publicURL {
+                        Button("Copy \(tunnel.label) Public URL") {
+                            controller.copyTunnelURL(pubURL)
+                        }
+                    }
+                }
+                Button("Stop All Cloudflare Tunnels") {
+                    Task { await controller.stopAllCloudflareTunnels() }
+                }
+                Divider()
+            }
+
+            Button(controller.config.appearanceMode == .light ? "Switch to Dark Theme" : "Switch to White Theme") {
+                controller.toggleAppearanceMode()
+            }
 
             Button(controller.config.startupSchedule.preventSleep ? "Allow Mac Sleep" : "Prevent Mac Sleep (IOKit)") {
                 controller.togglePreventSleep(!controller.config.startupSchedule.preventSleep)

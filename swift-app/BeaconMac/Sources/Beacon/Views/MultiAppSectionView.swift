@@ -2,23 +2,29 @@ import SwiftUI
 
 struct MultiAppSectionView: View {
     @Bindable var controller: BeaconController
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var showingAddSheet = false
     @State private var editingApp: ManagedApp?
+    @State private var copiedTunnelAppID: UUID?
+    @State private var inspectedConfigTunnel: CloudflareTunnelEntry?
 
-    private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
-    private let rowBackground = Color(red: 0.048, green: 0.056, blue: 0.070)
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
+
+    private var activeScheme: ColorScheme {
+        controller.config.appearanceMode == .light ? .light : .dark
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Managed Local Apps (\(controller.config.managedApps.count))")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "Managed Local Apps (\(controller.config.managedApps.count))", fontSize: 16)
                     Text("Clone remote Git repos, check required Vite/Node libraries, build, deploy locally, and monitor multiple apps simultaneously.")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 }
 
                 Spacer()
@@ -44,23 +50,23 @@ struct MultiAppSectionView: View {
                 HStack(spacing: 14) {
                     Text("Runtime tools:")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     ForEach(visibleTools) { tool in
                         HStack(spacing: 5) {
                             Circle()
-                                .fill(tool.available ? Color.green : Color.orange.opacity(0.7))
+                                .fill(tool.available ? palette.successText : palette.warningText.opacity(0.8))
                                 .frame(width: 6, height: 6)
                             Text("\(tool.name) \(tool.available ? tool.detail : "missing")")
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(tool.available ? .white.opacity(0.82) : .secondary)
+                                .foregroundStyle(tool.available ? palette.bodyText : palette.secondaryText)
                         }
                     }
                     Spacer()
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(rowBackground)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.06)))
+                .background(palette.row)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.subtleBorder))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -68,10 +74,10 @@ struct MultiAppSectionView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("No local apps configured yet.")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(palette.primaryText)
                     Text("Add any locally deployed Vite, Node.js, or custom app with its remote Git repository URL, local folder, and localhost port. BeaconMac will clone it, check & install required dependencies, build it, and monitor its health.")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     Button("Add Your First Local App") {
                         showingAddSheet = true
                     }
@@ -79,8 +85,8 @@ struct MultiAppSectionView: View {
                 }
                 .padding(18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(rowBackground)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08)))
+                .background(palette.row)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             } else {
                 VStack(spacing: 12) {
@@ -91,14 +97,25 @@ struct MultiAppSectionView: View {
             }
         }
         .padding(18)
-        .background(cardBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
+        .background(palette.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: palette.cardShadow, radius: 6, y: 2)
         .sheet(isPresented: $showingAddSheet) {
             AppEditorSheet(controller: controller, existingApp: nil)
+                .preferredColorScheme(activeScheme)
         }
         .sheet(item: $editingApp) { app in
             AppEditorSheet(controller: controller, existingApp: app)
+                .preferredColorScheme(activeScheme)
+        }
+        .sheet(item: $inspectedConfigTunnel) { tunnel in
+            CloudflareConfigInspectorSheet(
+                title: "\(tunnel.label) · cloudflared config.yml",
+                configPath: tunnel.configFilePath ?? "",
+                configText: controller.generatedCloudflaredConfig(for: tunnel.id) ?? "# No config.yml generated yet."
+            )
+            .preferredColorScheme(activeScheme)
         }
     }
 
@@ -111,20 +128,20 @@ struct MultiAppSectionView: View {
                     HStack(spacing: 8) {
                         Text(app.name)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(palette.primaryText)
                         Text(app.stackPreset.rawValue)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                         if app.runOnStartup {
                             Text("· Startup/Cron")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.cyan)
+                                .foregroundStyle(palette.accentLink)
                         }
                     }
 
                     Text("\(app.monitorURL)  ·  \(app.repoURL.isEmpty ? "Local only" : "\(app.repoURL) (\(app.branch))")")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                 }
 
@@ -133,13 +150,20 @@ struct MultiAppSectionView: View {
                 TrafficLightLampView(active: state.light, label: state.statusLabel)
             }
 
+            let isPendingOrStopped = state.isManuallyStopped
+                || state.isDeploying
+                || state.statusLabel == "Idle"
+                || state.statusLabel == "Not Deployed"
+                || state.statusLabel == "Starting..."
+                || state.statusLabel == "Stopping..."
+
             HStack(spacing: 22) {
                 miniMetric(
                     "HTTP Probe",
                     state.isHealthy
                         ? "\(state.httpStatus ?? 200) · \(state.responseTimeMs ?? 1) ms"
-                        : (state.httpStatus.map { "HTTP \($0)" } ?? "Unreachable"),
-                    color: state.isHealthy ? .green : .red
+                        : (isPendingOrStopped ? "—" : (state.httpStatus.map { "HTTP \($0)" } ?? "Unreachable")),
+                    color: state.isHealthy ? palette.successText : (isPendingOrStopped ? palette.secondaryText : palette.errorText)
                 )
                 miniMetric("Commit", state.commitHash)
                 miniMetric("Dependencies", state.dependencySummary)
@@ -147,11 +171,11 @@ struct MultiAppSectionView: View {
                 Spacer()
             }
 
-            if let err = state.lastError, !state.isHealthy {
+            if let err = state.lastError, !err.isEmpty, !state.isHealthy, !isPendingOrStopped {
                 HStack(spacing: 10) {
                     Text(err)
                         .font(.system(size: 11))
-                        .foregroundStyle(.red.opacity(0.88))
+                        .foregroundStyle(palette.errorText)
                         .textSelection(.enabled)
                         .lineLimit(2)
                     Spacer()
@@ -177,94 +201,187 @@ struct MultiAppSectionView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Button(state.isDeploying ? "Deploying..." : "Clone & Deploy") {
-                    Task { await controller.cloneBuildAndDeploy(app: app, trigger: "manual") }
+            let tunnel = controller.cloudflareTunnelEntry(for: app)
+            if let tunnel, tunnel.isRunning || tunnel.isStarting || (tunnel.lastError != nil) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(tunnel.isRunning ? palette.successText : (tunnel.isStarting ? palette.warningText : palette.errorText))
+                        .frame(width: 7, height: 7)
+
+                    if let pubURL = tunnel.publicURL, tunnel.isRunning {
+                        Text(tunnel.mode == .apiManaged ? "Cloudflare API:" : "Public URL:")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(palette.successText)
+                        Text(pubURL)
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(palette.accentLink)
+                            .textSelection(.enabled)
+                            .lineLimit(1)
+                        Spacer()
+                        if tunnel.configFilePath != nil {
+                            Button("config.yml") {
+                                inspectedConfigTunnel = tunnel
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+                        }
+                        Button(copiedTunnelAppID == app.id ? "Copied" : "Copy URL") {
+                            controller.copyTunnelURL(pubURL)
+                            copiedTunnelAppID = app.id
+                            Task {
+                                try? await Task.sleep(for: .seconds(1.8))
+                                if copiedTunnelAppID == app.id {
+                                    copiedTunnelAppID = nil
+                                }
+                            }
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+
+                        Button("Open Online") {
+                            controller.openTunnelURL(pubURL)
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+
+                        Button("Stop Tunnel") {
+                            Task { await controller.stopCloudflareTunnel(key: tunnel.id) }
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+                    } else if tunnel.isStarting {
+                        Text("Cloudflare Tunnel: \(tunnel.statusLabel)")
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundStyle(palette.warningText)
+                        Spacer()
+                    } else if let tErr = tunnel.lastError {
+                        Text("Cloudflare Tunnel error: \(tErr)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(palette.errorText)
+                            .lineLimit(2)
+                        Spacer()
+                        Button("Retry") {
+                            Task { await controller.toggleCloudflareTunnel(for: app) }
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
+                    }
                 }
-                .disabled(state.isDeploying || controller.busyAction != nil)
-                .buttonStyle(BeaconPrimaryButtonStyle())
-
-                Button("Check Deps") {
-                    Task { await controller.checkDependencies(for: app) }
-                }
-                .disabled(controller.busyAction != nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Install Dependencies") {
-                    controller.openDependencyInstaller(for: app)
-                }
-                .disabled(controller.busyAction != nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Restart") {
-                    Task { await controller.restartManagedApp(app, reason: "manual") }
-                }
-                .disabled(controller.busyAction != nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Stop") {
-                    Task { await controller.stopManagedApp(app) }
-                }
-                .disabled(controller.busyAction != nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Open Terminal") {
-                    controller.openInTerminal(app: app)
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Tail Log") {
-                    controller.tailLogsInTerminal(app: app)
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Copy Cmd") {
-                    controller.copyDeployCommand(for: app)
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Button("Load in Node Host") {
-                    Task { await controller.loadManagedAppIntoBuiltInServer(app) }
-                }
-                .disabled(controller.busyAction != nil)
-                .buttonStyle(BeaconSecondaryButtonStyle())
-
-                Spacer()
-
-                Toggle("Startup", isOn: Binding(
-                    get: { app.runOnStartup },
-                    set: { _ in controller.toggleAppStartup(app) }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(tunnel.isRunning
+                    ? (palette.isLight ? Color(red: 0.91, green: 0.98, blue: 0.94) : Color(red: 0.06, green: 0.16, blue: 0.13))
+                    : palette.card)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(
+                    tunnel.isRunning ? palette.successText.opacity(0.38) : palette.subtleBorder
                 ))
-                .toggleStyle(.switch)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
 
-                Button("Edit") {
-                    editingApp = app
-                }
-                .buttonStyle(BeaconSecondaryButtonStyle())
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button(state.isDeploying ? "Deploying..." : "Clone & Deploy") {
+                        Task { await controller.cloneBuildAndDeploy(app: app, trigger: "manual") }
+                    }
+                    .disabled(state.isDeploying || controller.busyAction != nil)
+                    .buttonStyle(BeaconPrimaryButtonStyle())
 
-                Button("Remove") {
-                    controller.deleteManagedApp(app)
+                    Button(state.isManuallyStopped ? "Start" : "Restart") {
+                        Task { await controller.restartManagedApp(app, reason: "manual") }
+                    }
+                    .disabled(controller.busyAction != nil)
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Stop") {
+                        Task { await controller.stopManagedApp(app) }
+                    }
+                    .disabled(controller.busyAction != nil || (state.isManuallyStopped && !state.isHealthy))
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    let appTunnel = controller.cloudflareTunnelEntry(for: app)
+                    Button(appTunnel?.isStarting == true
+                        ? "Exposing…"
+                        : (appTunnel?.isRunning == true ? "Stop Cloudflare Tunnel" : "Expose via Cloudflare Tunnel")) {
+                        Task { await controller.toggleCloudflareTunnel(for: app) }
+                    }
+                    .disabled(appTunnel?.isStarting == true)
+                    .buttonStyle(BeaconPrimaryButtonStyle())
+
+                    Button("Expose via NGINX") {
+                        Task { await controller.exposeManagedAppViaNginx(app) }
+                    }
+                    .disabled(controller.busyAction != nil)
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Load in Node Host") {
+                        Task { await controller.loadManagedAppIntoBuiltInServer(app) }
+                    }
+                    .disabled(controller.busyAction != nil)
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Spacer()
+
+                    Toggle("Startup", isOn: Binding(
+                        get: { app.runOnStartup },
+                        set: { _ in controller.toggleAppStartup(app) }
+                    ))
+                    .toggleStyle(.switch)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.secondaryText)
+
+                    Button("Edit") {
+                        editingApp = app
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Remove") {
+                        controller.deleteManagedApp(app)
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
                 }
-                .buttonStyle(BeaconSecondaryButtonStyle())
+
+                HStack(spacing: 8) {
+                    Button("Check Deps") {
+                        Task { await controller.checkDependencies(for: app) }
+                    }
+                    .disabled(controller.busyAction != nil)
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Install Dependencies") {
+                        controller.openDependencyInstaller(for: app)
+                    }
+                    .disabled(controller.busyAction != nil)
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Open Terminal") {
+                        controller.openInTerminal(app: app)
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Tail Log") {
+                        controller.tailLogsInTerminal(app: app)
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Button("Copy Cmd") {
+                        controller.copyDeployCommand(for: app)
+                    }
+                    .buttonStyle(BeaconSecondaryButtonStyle())
+
+                    Spacer()
+                }
             }
         }
         .padding(14)
-        .background(rowBackground)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08)))
+        .background(palette.row)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private func miniMetric(_ title: String, _ value: String, color: Color = .white) -> some View {
+    private func miniMetric(_ title: String, _ value: String, color: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 10.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
             Text(value)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .foregroundStyle(color ?? palette.primaryText)
                 .lineLimit(1)
         }
     }

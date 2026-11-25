@@ -2,31 +2,31 @@ import SwiftUI
 
 struct StartupScheduleView: View {
     @Bindable var controller: BeaconController
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var cronExpression: String = "@reboot"
     @State private var autoDeployOnStartup: Bool = false
     @State private var cronEnabled: Bool = false
     @State private var showLegacyCron: Bool = false
 
-    private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
-    private let inputBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("macOS launchd Daemon, Live Logs & Sleep Prevention")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "macOS launchd Daemon, Live Logs & Sleep Prevention", fontSize: 15.5)
                     Text("Native Apple launchd background supervision (~/Library/LaunchAgents), IOKit + caffeinate -s keep-awake, and persistent ~/beaconmac/server.log.")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 }
                 Spacer()
                 TrafficLightLampView(active: controller.launchd.light, label: controller.launchd.statusLabel)
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(palette.border)
 
             // Native macOS ecosystem toggles
             HStack(spacing: 22) {
@@ -60,7 +60,7 @@ struct StartupScheduleView: View {
                 Spacer()
             }
             .font(.system(size: 12))
-            .foregroundStyle(.white.opacity(0.88))
+            .foregroundStyle(palette.bodyText)
 
             // Primary launchd, live logs, and Energy Settings actions
             HStack(spacing: 8) {
@@ -105,12 +105,12 @@ struct StartupScheduleView: View {
                 HStack {
                     Text("macOS Native Commands (\(controller.config.managedApps.filter(\.runOnStartup).count) startup app(s) configured)")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     Spacer()
                     if controller.launchd.sleepAssertionActive || controller.launchd.caffeinateActive {
                         Text("Awake protection active — local servers remain reachable while display is off")
                             .font(.system(size: 11))
-                            .foregroundStyle(.green.opacity(0.9))
+                            .foregroundStyle(palette.successText)
                     }
                 }
 
@@ -146,11 +146,12 @@ struct StartupScheduleView: View {
                         TextField("@reboot", text: $cronExpression)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(palette.primaryText)
                             .frame(width: 170)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(inputBackground)
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.12)))
+                            .background(palette.input)
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
                             .clipShape(RoundedRectangle(cornerRadius: 7))
 
                         Button("Save Schedule") {
@@ -171,25 +172,26 @@ struct StartupScheduleView: View {
 
                     Text(controller.startupService.buildCrontabLine(cronExpression: cronExpression))
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .textSelection(.enabled)
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(inputBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.08)))
+                        .background(palette.input)
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.border))
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                 }
                 .padding(.top, 8)
             } label: {
                 Text("Optional Legacy crontab Schedule (if preferred over launchd)")
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
             }
         }
         .padding(18)
-        .background(cardBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
+        .background(palette.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: palette.cardShadow, radius: 6, y: 2)
         .onAppear {
             cronExpression = controller.config.startupSchedule.cronExpression
             autoDeployOnStartup = controller.config.startupSchedule.autoDeployOnStartup
@@ -206,12 +208,12 @@ struct StartupScheduleView: View {
         HStack(spacing: 10) {
             Text(step)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
                 .frame(width: 165, alignment: .leading)
 
             Text(command)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(palette.bodyText)
                 .textSelection(.enabled)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,8 +223,8 @@ struct StartupScheduleView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(inputBackground)
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.07)))
+        .background(palette.input)
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.subtleBorder))
         .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }

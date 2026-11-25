@@ -140,6 +140,7 @@ fi
 # Bundle helper scripts inside BeaconMac.app/Contents/Resources/Scripts BEFORE code signing
 mkdir -p "$APP_BUNDLE/Contents/Resources/Scripts"
 cp "$SWIFT_DIR/Scripts/"*.sh "$APP_BUNDLE/Contents/Resources/Scripts/"
+cp "$SWIFT_DIR/Scripts/"*.mjs "$APP_BUNDLE/Contents/Resources/Scripts/" 2>/dev/null || true
 chmod +x "$APP_BUNDLE/Contents/Resources/Scripts/"*.sh
 
 # Code signing — ALWAYS pass --entitlements and --options runtime on every signing path

@@ -1,8 +1,8 @@
 # BeaconMac
 
-**BeaconMac** is an open-source, lightweight native macOS **multi-app local deployer and traffic-light monitor** built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** and **signed, notarized Universal DMG** distribution.
+**BeaconMac** is an open-source, lightweight native macOS **multi-app local deployer, reverse proxy, Node.js app host, and traffic-light monitor** built in **Swift 5.10 & SwiftUI (macOS 14+)** for **Mac App Store** and **signed, notarized Universal DMG** distribution.
 
-Add any number of locally deployed **Vite, Node.js, Next.js, or custom apps** — BeaconMac clones each remote Git repository, audits and **silently installs missing dependencies** (`node`, `pnpm`, `yarn`, `bun`, `python3`, `uv`, `go`, `git`) by project type via Homebrew or verified direct official downloads, builds and deploys locally, streams live output to its **integrated Terminal console** (with one-click copy, **Server Log Search**, and **AI Help** log troubleshooting via local Ollama or Claude API), manages background startup natively via **Apple `launchd`** (`~/Library/LaunchAgents`) + **`SMAppService`**, prevents Mac sleep via **IOKit Power Management** and **`caffeinate -s`**, verifies self-updates cryptographically (SHA-256, Developer ID Team ID pinning, `codesign`, and Gatekeeper `spctl`), and monitors **Ollama** local LLMs and **Claude API** health — all backed by encrypted **macOS Keychain** storage and local **flat-file logs** (zero database, zero login screen).
+Add any number of locally deployed **Vite, Node.js, Next.js, or custom apps** — BeaconMac clones each remote Git repository, audits and **silently installs missing dependencies** (`node`, `pnpm`, `yarn`, `bun`, `python3`, `uv`, `go`, `nginx`, `git`) by project type via Homebrew or verified direct official downloads, builds and deploys locally, hosts static/built apps or local proxies on its **Built-In Node.js Server** (`http://127.0.0.1:4173`), exposes any local app over clean path prefixes, `*.localhost` virtual hosts, or LAN URLs via its **Inbuilt NGINX Reverse Proxy** (user-space `~/beaconmac/nginx`, zero `sudo`), streams live output to its **integrated Terminal & Activity Log consoles** (with **auto-scroll + Pause/Resume**, **per-entry copy**, **Export Logs to `.txt`/`.json`**, **Server Log Search**, and **AI Help** log troubleshooting), switches seamlessly between **Dark & White (Light) themes in real time** with high-contrast **Blue section headers**, manages background startup natively via **Apple `launchd`** (`~/Library/LaunchAgents`) + **`SMAppService`**, prevents Mac sleep via **IOKit Power Management** and **`caffeinate -s`**, verifies self-updates cryptographically (SHA-256, Developer ID Team ID pinning, `codesign`, and Gatekeeper `spctl`), and connects **Ollama**, **OpenAI (ChatGPT)**, **Google Gemini**, **Anthropic Claude**, **OpenRouter**, **Groq**, **Custom OpenAI-compatible APIs**, **Cloudflare**, **Vercel**, and **Supabase** — all backed by encrypted **macOS Keychain** storage and local **flat-file logs** (zero database, zero login screen).
 
 ---
 
@@ -10,10 +10,10 @@ Add any number of locally deployed **Vite, Node.js, Next.js, or custom apps** �
 
 All project documentation is organized in the [`docs/`](./docs/) folder:
 
-- **[Setup Guide](./docs/setup-guide.md)** — Step-by-step configuration for Git repositories, macOS Keychain secrets, local `launchd` daemons, live logs, and sleep prevention
-- **[Features](./docs/FEATURES.md)** — Multi-app clone/build/deploy pipeline, Vite/Node dependency auditing, Terminal integration, native `launchd` daemon, sleep prevention (`IOKit` + `caffeinate -s`), Ollama switcher, and Claude API health checker
-- **[Architecture](./docs/ARCHITECTURE.md)** — System diagram, App Sandbox + `NSUserUnixTask` boundary, `launchd` + `IOKit` integration, Keychain security, and flat-file layout
-- **[Context](./docs/CONTEXT.md)** — Problem statement, design decisions, and visual guidelines
+- **[Setup Guide](./docs/setup-guide.md)** — Step-by-step configuration for Git repositories, macOS Keychain secrets (GitHub, Cloud AI & Cloud/Edge APIs), Built-In Node.js Server, Inbuilt NGINX Reverse Proxy, local `launchd` daemons, live logs, Export Logs, White/Dark themes, and sleep prevention
+- **[Features](./docs/FEATURES.md)** — Full feature breakdown covering Multi-App Deploy, Inbuilt NGINX Reverse Proxy, Built-In Node.js Server, Silent Dependency Installer, Log Auto-Scroll / Copy / Export, AI Help & Cloud AI/Edge APIs, Blue Headers & Real-Time Theme Switcher, `launchd`, and sleep prevention
+- **[Architecture](./docs/ARCHITECTURE.md)** — System diagram, App Sandbox + `NSUserUnixTask` boundary (10 embedded scripts), Built-In Node Host & User-Space NGINX architecture, `launchd` + `IOKit`, Keychain security, and flat-file layout
+- **[Context](./docs/CONTEXT.md)** — Problem statement, product decisions, and Dark/White + Blue-header design system
 - **[App Store Guide](./docs/APP-STORE.md)** — Step-by-step XcodeGen, code signing, sandbox scripts installer, and App Store Connect submission
 - **[Contributing](./docs/CONTRIBUTING.md)** — Local macOS development workflow and coding guidelines
 
@@ -37,8 +37,8 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
 │   ├── CONTEXT.md                       # Product philosophy & design decisions
 │   ├── CONTRIBUTING.md                  # Contribution guidelines
 │   ├── FEATURES.md                      # Detailed feature breakdown
-│   └── setup-guide.md                   # Step-by-step Git, Keychain & launchd setup guide
-├── index.html                           # Standalone dark DMG download portal & version history
+│   └── setup-guide.md                   # Step-by-step Git, Keychain, Node Host, NGINX & launchd guide
+├── index.html                           # Standalone dark DMG download portal, preview & FAQ
 ├── server.ts                            # Serves index.html, versioned DMG downloads & source ZIP
 └── swift-app/BeaconMac/                 # Native SwiftUI macOS 14+ App Store project
     ├── Package.swift
@@ -47,14 +47,17 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
     │   ├── build-dmg.sh                 # Compiles Universal BeaconMac.app & packages versioned .dmg
     │   ├── bump-version.sh              # Bumps version across version.json, project.yml, releases.json & CHANGELOG.md
     │   ├── generate-xcode-project.sh    # Generates & opens BeaconMac.xcodeproj
-    │   ├── install-sandbox-scripts.sh   # Installs all NSUserUnixTask hooks in one command
-    │   ├── beacon-launchd.sh            # Native macOS launchd install/load/unload/status
+    │   ├── install-sandbox-scripts.sh   # Installs all 10 NSUserUnixTask hooks in one command
+    │   ├── beacon-launchd.sh            # Native macOS launchd install/load/unload/status + server.log grep
     │   ├── beacon-startup.sh            # launchd supervisor -> ~/beaconmac/server.log + caffeinate -s
     │   ├── beacon-deploy.sh             # Clone/pull -> check deps -> install -> build -> deploy
-    │   ├── beacon-check-deps.sh         # Audits & silently installs runtimes (Homebrew/direct) & project deps
+    │   ├── beacon-check-deps.sh         # Audits & silently installs runtimes (incl. nginx) & project deps
     │   ├── beacon-restart.sh            # Restarts a managed local app on its port
-    │   ├── beacon-stop.sh               # Stops a managed local app by port
-    │   └── beacon-git-pull.sh           # Standalone git fetch/pull helper
+    │   ├── beacon-stop.sh               # Cleanly stops a managed local app by port
+    │   ├── beacon-git-pull.sh           # Standalone git fetch/pull helper
+    │   ├── beacon-node-server.sh        # Starts/stops/reloads the Built-In Node.js Server
+    │   ├── beacon-node-host.mjs         # Zero-dependency Node.js multi-app static & proxy host
+    │   └── beacon-nginx.sh              # User-space NGINX reverse proxy (~/beaconmac/nginx, zero sudo)
     └── Sources/Beacon/
         ├── BeaconApp.swift
         ├── Models/BeaconModels.swift
@@ -63,13 +66,17 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
         │   ├── AppDeploymentService.swift
         │   ├── AppUpdateService.swift
         │   ├── BeaconController.swift
+        │   ├── BuiltInNodeServerService.swift
         │   ├── ClaudeService.swift
+        │   ├── CloudProviderService.swift
         │   ├── EmbeddedScripts.swift
         │   ├── FlatFileStore.swift
         │   ├── GitDeployService.swift
         │   ├── KeychainStore.swift
         │   ├── LocalProcessService.swift
+        │   ├── LogExportService.swift
         │   ├── LogTroubleshootingService.swift
+        │   ├── NginxProxyService.swift
         │   ├── OllamaService.swift
         │   ├── ServerLogSearchService.swift
         │   ├── SleepPreventionService.swift
@@ -79,10 +86,13 @@ All project documentation is organized in the [`docs/`](./docs/) folder:
         │   ├── AILogHelpSheet.swift
         │   ├── ActivityLogView.swift
         │   ├── AppEditorSheet.swift
+        │   ├── BeaconTheme.swift
+        │   ├── BuiltInNodeServerView.swift
         │   ├── ConfigurationView.swift
         │   ├── ContentView.swift
         │   ├── MenuBarStatusView.swift
         │   ├── MultiAppSectionView.swift
+        │   ├── NginxReverseProxyView.swift
         │   ├── PrerequisiteInstallerSheet.swift
         │   ├── ServerLogSearchView.swift
         │   ├── ServiceCardsView.swift
@@ -103,7 +113,7 @@ BeaconMac maintains semantic versions via `version.json`, `releases/releases.jso
 
 ### Distribution Entitlements
 - **Mac App Store (`Sources/Beacon/Resources/Beacon.entitlements`)**: Ships with `com.apple.security.app-sandbox = true` and uses `NSUserUnixTask` hook scripts in `~/Library/Application Scripts/<bundle-id>/`.
-- **Direct Developer ID DMG (`Sources/Beacon/Resources/Beacon-DMG.entitlements`)**: Ships intentionally unsandboxed (`com.apple.security.app-sandbox = false`) with **Hardened Runtime** enabled so direct DMG users can run local toolchains (`git`, `node`, `npm`, `launchctl`) directly and use the verified self-updater (which checks SHA-256, Developer ID Team ID pinning, `codesign --verify --deep --strict`, and Gatekeeper `spctl`). Set `BEACONMAC_SANDBOX_DMG=1` if you want to package a sandboxed DMG instead.
+- **Direct Developer ID DMG (`Sources/Beacon/Resources/Beacon-DMG.entitlements`)**: Ships intentionally unsandboxed (`com.apple.security.app-sandbox = false`) with **Hardened Runtime** enabled so direct DMG users can run local toolchains (`git`, `node`, `npm`, `nginx`, `launchctl`) directly and use the verified self-updater (which checks SHA-256, Developer ID Team ID pinning, `codesign --verify --deep --strict`, and Gatekeeper `spctl`). Set `BEACONMAC_SANDBOX_DMG=1` if you want to package a sandboxed DMG instead.
 
 ### Option A — Automated Signed & Notarized DMG via GitHub Actions (Recommended)
 Configure these repository secrets under **Settings → Secrets and variables → Actions** before tagging a public release (the workflow intentionally fails if any signing or notarization secret is missing):
@@ -140,19 +150,26 @@ This outputs `releases/BeaconMac-<version>-universal.dmg` + `.sha256` and update
 
 ---
 
-## Native macOS Operations (`launchd`, Logs & Sleep Prevention)
+## Native macOS Operations (`launchd`, Reverse Proxy, Logs & Sleep Prevention)
 
-1. **Watch live logs**:
+1. **Expose local apps via Inbuilt NGINX Reverse Proxy** (zero `sudo`, runs in `~/beaconmac/nginx/`):
+   - Start NGINX inside BeaconMac, click **Expose via NGINX** on any Managed Local App (or add custom upstream routes), access apps via path prefixes (`http://127.0.0.1:8080/<slug>/`), `*.localhost` virtual hosts (`http://<slug>.localhost:8080`), or toggle **Expose LAN (`0.0.0.0`)** to share on your local network.
+2. **Load apps directly into the Built-In Node.js Server**:
+   - Mount any static/built folder (`dist/`, `build/`, `out/`, `public/`, or root `index.html` with SPA fallback) or local proxy port onto `http://127.0.0.1:4173` — or click **Load in Node Host** on any managed app.
+3. **Watch live logs or export session logs**:
    ```bash
    tail -f ~/beaconmac/server.log
    # or per-app logs:
    tail -f ~/beaconmac/logs/<app>-<port>.log
+   # or inbuilt NGINX logs:
+   tail -f ~/beaconmac/nginx/logs/access.log ~/beaconmac/nginx/logs/error.log
    ```
-2. **Stop the `launchd` background service**:
+   Inside BeaconMac, use **Pause auto-scroll**, per-entry **Copy**, and **Export Logs** (`.txt` or `.json`) in the Activity Log panel.
+4. **Stop the `launchd` background service**:
    ```bash
    launchctl unload ~/Library/LaunchAgents/com.beaconmac.app.supervisor.plist
    ```
-3. **Prevent Mac from sleeping** (so local servers stay reachable):
+5. **Prevent Mac from sleeping** (so local servers stay reachable):
    - Toggle **Prevent Mac Sleep (IOKit + `caffeinate -s`)** inside BeaconMac (holds a native IOKit power assertion while BeaconMac is open, and runs `caffeinate -s` automatically inside the `launchd` supervisor), or run `caffeinate -s` manually / click **Energy Settings** to adjust *System Settings → Energy / Displays → Prevent automatic sleeping when display is off*.
 
 ---
@@ -168,7 +185,7 @@ chmod +x Scripts/*.sh
 *(Or run directly with Swift Package Manager: `swift run`)*
 
 ### 2. Install App Sandbox Hook Scripts (One Command)
-To enable local `git clone`, Vite/Node dependency checks, builds, restarts, stops, and native `launchd` background management while remaining 100% Mac App Store App Sandbox compliant (`NSUserUnixTask`):
+To enable local `git clone`, dependency installs, builds, restarts, stops, the Built-In Node.js Server, the Inbuilt NGINX Reverse Proxy, and native `launchd` background management while remaining 100% Mac App Store App Sandbox compliant (`NSUserUnixTask`):
 
 ```bash
 ./Scripts/install-sandbox-scripts.sh com.beaconmac.app
@@ -185,7 +202,7 @@ To enable local `git clone`, Vite/Node dependency checks, builds, restarts, stop
 
 ## Secrets & Environment Variables
 
-**No `.env` file is required for BeaconMac.** Paste your GitHub Personal Access Token and Anthropic Claude API key directly inside the macOS app — both are saved encrypted in your **macOS Keychain** (`Security.framework`) and restored automatically across restarts.
+**No `.env` file is required for BeaconMac.** Paste your **GitHub Personal Access Token**, **Anthropic Claude**, **OpenAI (ChatGPT)**, **Google Gemini**, **OpenRouter**, **Groq**, **Custom OpenAI-Compatible**, **Cloudflare**, **Vercel**, and **Supabase** API keys directly inside the macOS app — every secret is stored encrypted in your **macOS Keychain** (`Security.framework`, service `com.beaconmac.app`), automatically redacted from logs and exports, and restored seamlessly across restarts.
 
 ---
 

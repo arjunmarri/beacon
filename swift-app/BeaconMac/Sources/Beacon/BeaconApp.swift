@@ -7,7 +7,7 @@ struct BeaconApp: App {
     var body: some Scene {
         WindowGroup("BeaconMac") {
             ContentView(controller: controller)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(controller.config.appearanceMode == .light ? .light : .dark)
                 .frame(minWidth: 940, minHeight: 680)
         }
         .windowStyle(.titleBar)

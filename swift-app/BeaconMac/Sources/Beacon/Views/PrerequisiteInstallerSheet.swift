@@ -5,6 +5,7 @@ struct PrerequisiteInstallerSheet: View {
     @Bindable var controller: BeaconController
     @State var selectedAppID: UUID?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedProjectType: DependencyProjectType = .nodejsPnpm
     @State private var installStrategy: DependencyInstallStrategy = .auto
@@ -16,9 +17,9 @@ struct PrerequisiteInstallerSheet: View {
     @State private var copiedOutput = false
     @State private var didInitializePreset = false
 
-    private let canvasBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
-    private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
-    private let terminalBackground = Color(red: 0.031, green: 0.037, blue: 0.047)
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
 
     private let installableTools: [(id: String, label: String, subtitle: String)] = [
         ("node", "Node.js + npm", "Homebrew or official Node.js LTS tarball"),
@@ -28,6 +29,8 @@ struct PrerequisiteInstallerSheet: View {
         ("python3", "Python 3 + pip", "Homebrew Python for requirements.txt"),
         ("uv", "uv", "Homebrew or astral.sh direct installer"),
         ("go", "Go", "Homebrew Go toolchain"),
+        ("nginx", "NGINX", "Homebrew reverse proxy server"),
+        ("cloudflared", "Cloudflare Tunnel (cloudflared)", "Homebrew or direct official macOS binary"),
         ("git", "Git", "Homebrew or Xcode Command Line Tools")
     ]
 
@@ -45,13 +48,11 @@ struct PrerequisiteInstallerSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Install Dependencies")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "Install Dependencies", fontSize: 16)
                     Text("Select your project type to silently install missing tools (Node.js, pnpm, Yarn, Bun, Python, uv, Go) via Homebrew or direct official download.")
                         .font(.system(size: 11.5))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 }
 
                 Spacer()
@@ -68,7 +69,7 @@ struct PrerequisiteInstallerSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Project Type")
                             .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                         Picker("Project Type", selection: $selectedProjectType) {
                             ForEach(DependencyProjectType.allCases) { projectType in
                                 Text(projectType.rawValue).tag(projectType)
@@ -85,7 +86,7 @@ struct PrerequisiteInstallerSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Silent Install Method")
                             .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                         Picker("Silent Install Method", selection: $installStrategy) {
                             ForEach(DependencyInstallStrategy.allCases) { strategy in
                                 Text(strategy.label).tag(strategy)
@@ -99,14 +100,14 @@ struct PrerequisiteInstallerSheet: View {
 
                 Text(selectedProjectType.subtitle)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
 
-                Divider().overlay(Color.white.opacity(0.06))
+                Divider().overlay(palette.subtleBorder)
 
                 HStack(spacing: 10) {
                     Text("Project Folder (optional):")
                         .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
 
                     Picker("Target App", selection: $selectedAppID) {
                         Text("Tools Only (no project folder)").tag(UUID?.none)
@@ -134,12 +135,12 @@ struct PrerequisiteInstallerSheet: View {
                     let state = controller.runtimeState(for: app.id)
                     Text("Detected project status: \(state.dependencySummary)")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.cyan.opacity(0.9))
+                        .foregroundStyle(palette.accentLink)
                 }
             }
             .padding(12)
-            .background(cardBackground)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+            .background(palette.card)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             // 2. Tools Status & Overrides
@@ -147,16 +148,16 @@ struct PrerequisiteInstallerSheet: View {
                 HStack {
                     Text("Tools Included in Selection")
                         .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.sectionHeader)
 
                     if !missingSelectedTools.isEmpty {
                         Text("· \(missingSelectedTools.count) missing (\(missingSelectedTools.joined(separator: ", ")))")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.orange.opacity(0.95))
+                            .foregroundStyle(palette.warningText)
                     } else if !selectedTools.isEmpty {
                         Text("· All selected tools already installed")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.green.opacity(0.9))
+                            .foregroundStyle(palette.successText)
                     }
 
                     Spacer()
@@ -191,25 +192,25 @@ struct PrerequisiteInstallerSheet: View {
                                 VStack(alignment: .leading, spacing: 1) {
                                     HStack(spacing: 6) {
                                         Circle()
-                                            .fill(isInstalled ? Color.green : (isChecked ? Color.orange : Color.gray.opacity(0.45)))
+                                            .fill(isInstalled ? palette.successText : (isChecked ? palette.warningText : Color.gray.opacity(0.45)))
                                             .frame(width: 6, height: 6)
                                         Text(tool.label)
                                             .font(.system(size: 12, weight: .medium))
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(palette.primaryText)
                                         if isInstalled, let detail = status?.detail {
                                             Text(detail)
                                                 .font(.system(size: 10.5, design: .monospaced))
-                                                .foregroundStyle(.green.opacity(0.85))
+                                                .foregroundStyle(palette.successText)
                                                 .lineLimit(1)
                                         } else if isChecked {
                                             Text("Will install")
                                                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                                .foregroundStyle(.orange.opacity(0.95))
+                                                .foregroundStyle(palette.warningText)
                                         }
                                     }
                                     Text(tool.subtitle)
                                         .font(.system(size: 10.5))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(palette.secondaryText)
                                 }
                             }
                             .toggleStyle(.checkbox)
@@ -217,15 +218,18 @@ struct PrerequisiteInstallerSheet: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(terminalBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(isChecked ? Color.cyan.opacity(0.42) : Color.white.opacity(0.06)))
+                        .background(palette.row)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(isChecked ? palette.sectionHeader.opacity(0.45) : palette.subtleBorder)
+                        )
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                     }
                 }
             }
             .padding(12)
-            .background(cardBackground)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+            .background(palette.card)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             // 3. Action row
@@ -242,7 +246,7 @@ struct PrerequisiteInstallerSheet: View {
                 } else if let status = lastStatus {
                     Text(status)
                         .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(lastSucceeded ? .green : .red.opacity(0.92))
+                        .foregroundStyle(lastSucceeded ? palette.successText : palette.errorText)
                         .lineLimit(1)
                 }
 
@@ -280,13 +284,13 @@ struct PrerequisiteInstallerSheet: View {
                     if installOutput.isEmpty {
                         Text("Runs silently in the background with zero terminal popups (NONINTERACTIVE=1). Missing tools install automatically via Homebrew or verified direct official downloads, and output is also mirrored to Integrated Terminal Output.")
                             .font(.system(size: 11.5, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                             .padding(10)
                     } else {
                         ForEach(Array(installOutput.enumerated()), id: \.offset) { _, line in
                             Text(line)
                                 .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundStyle(line.localizedCaseInsensitiveContains("error") ? .red.opacity(0.92) : .white.opacity(0.9))
+                                .foregroundStyle(line.localizedCaseInsensitiveContains("error") ? palette.errorText : palette.bodyText)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10)
@@ -297,13 +301,13 @@ struct PrerequisiteInstallerSheet: View {
                 .padding(.vertical, 6)
             }
             .frame(minHeight: 145, maxHeight: .infinity)
-            .background(terminalBackground)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+            .background(palette.console)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .padding(20)
         .frame(minWidth: 780, minHeight: 640)
-        .background(canvasBackground)
+        .background(palette.sheetCanvas)
         .onAppear {
             if !didInitializePreset {
                 didInitializePreset = true

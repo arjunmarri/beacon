@@ -59,6 +59,8 @@ targets:
       - sdk: UserNotifications.framework
       - sdk: ServiceManagement.framework
       - sdk: IOKit.framework
+      - sdk: UniformTypeIdentifiers.framework
+      - sdk: CryptoKit.framework
 schemes:
   BeaconMac:
     build:

@@ -13,8 +13,11 @@ public final class BeaconController {
     public var git = GitDeployState()
     public var ollama = OllamaState()
     public var claude = ClaudeState()
+    public var cloudProviderStates: [CloudProviderKind: CloudProviderRuntimeState] = [:]
     public var launchd = LaunchdDaemonState()
     public var builtInServer = BuiltInServerState()
+    public var nginxProxy = NginxProxyState()
+    public var cloudflareTunnel = CloudflareTunnelState()
     public var update = AppUpdateState()
     public var scriptsInstalled: Bool = false
     public var serverLogSearchResult: ServerLogSearchResult?
@@ -38,12 +41,15 @@ public final class BeaconController {
     private let processService = LocalProcessService()
     private let deploymentService = AppDeploymentService()
     private let builtInServerService: BuiltInNodeServerService
+    private let nginxProxyService: NginxProxyService
+    private let cloudflareTunnelService: CloudflareTunnelService
     private let serverLogSearchService = ServerLogSearchService()
     private let aiTroubleshootingService = LogTroubleshootingService()
     private let updateService = AppUpdateService()
     private let gitService = GitDeployService()
     private let ollamaService = OllamaService()
     private let claudeService = ClaudeService()
+    private let cloudProviderService = CloudProviderService()
     private let alertService = AlertService()
 
     private var pollingTask: Task<Void, Never>?
@@ -61,9 +67,14 @@ public final class BeaconController {
     public init() {
         let loaded = flatFileStore.loadConfig()
         self.builtInServerService = BuiltInNodeServerService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
+        self.nginxProxyService = NginxProxyService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
+        self.cloudflareTunnelService = CloudflareTunnelService(dataDirectoryURL: flatFileStore.dataDirectoryURL)
         self.config = loaded
         self.config.startupSchedule.launchAtLogin = startupService.isLaunchAtLoginEnabled
         self.builtInServer.port = loaded.builtInServer.port
+        self.nginxProxy.listenPort = loaded.nginxProxy.listenPort
+        self.nginxProxy.configPath = self.nginxProxyService.configFileURL.path
+        self.nginxProxy.lanAddress = NginxProxyService.detectPrimaryLANIPv4()
         self.ollama.endpoint = loaded.ollamaEndpoint
         self.ollama.activeModel = loaded.ollamaActiveModel
         self.logs = flatFileStore.loadRecentLogs()
@@ -74,6 +85,7 @@ public final class BeaconController {
         }
 
         self.builtInServerService.writeRegistry(from: loaded.builtInServer)
+        self.nginxProxyService.writeConfig(from: loaded.nginxProxy)
         self.launchd.plistPath = startupService.launchdPlistTildePath
         self.launchd.serverLogPath = startupService.serverLogTildePath
         self.scriptsInstalled = EmbeddedScripts.autoInstallIfNotSandboxed()
@@ -96,6 +108,43 @@ public final class BeaconController {
 
     public func runtimeState(for appID: UUID) -> ManagedAppRuntimeState {
         appStates[appID] ?? ManagedAppRuntimeState()
+    }
+
+    public func cloudProviderConfig(for kind: CloudProviderKind) -> CloudProviderConfig {
+        config.cloudProviders[kind.rawValue] ?? CloudProviderConfig(selectedModel: kind.defaultModel)
+    }
+
+    public func cloudProviderState(for kind: CloudProviderKind) -> CloudProviderRuntimeState {
+        cloudProviderStates[kind] ?? CloudProviderRuntimeState()
+    }
+
+    public var hasAnyConnectedAIProvider: Bool {
+        if claude.isConnected || ollama.isConnected || keychain.read(.claudeAPIKey) != nil {
+            return true
+        }
+        for kind in CloudProviderKind.allCases where kind.supportsAIHelp {
+            if cloudProviderState(for: kind).isConnected || keychain.read(kind.keychainAccount) != nil {
+                if kind == .cloudflare {
+                    if !cloudProviderConfig(for: .cloudflare).accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return true
+                    }
+                } else {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    public func setAppearanceMode(_ mode: BeaconAppearanceMode) {
+        guard config.appearanceMode != mode else { return }
+        config.appearanceMode = mode
+        flatFileStore.saveConfig(config)
+        log(.system, .info, "Switched dashboard theme to \(mode.label)")
+    }
+
+    public func toggleAppearanceMode() {
+        setAppearanceMode(config.appearanceMode == .dark ? .light : .dark)
     }
 
     public func log(_ source: LogSource, _ level: LogLevel, _ message: String) {
@@ -129,6 +178,11 @@ public final class BeaconController {
         if config.builtInServer.autoStart && !builtInServer.isRunning {
             await startBuiltInNodeServer()
         }
+        await probeNginxProxy(logTransitions: false)
+        if config.nginxProxy.autoStart && nginxProxy.isInstalled && !nginxProxy.isRunning {
+            await startNginxProxy()
+        }
+        await probeCloudflareTunnels(logTransitions: false)
         await probeOllama(logResult: true)
 
         if let savedGitToken = keychain.read(.githubToken), !savedGitToken.isEmpty {
@@ -139,6 +193,15 @@ public final class BeaconController {
         if let savedClaudeKey = keychain.read(.claudeAPIKey), !savedClaudeKey.isEmpty {
             claude.keyHint = SecretMasker.mask(savedClaudeKey)
             await probeClaude(logResult: true)
+        }
+
+        for kind in CloudProviderKind.allCases {
+            if let savedSecret = keychain.read(kind.keychainAccount), !savedSecret.isEmpty {
+                var st = cloudProviderState(for: kind)
+                st.keyHint = SecretMasker.mask(savedSecret)
+                cloudProviderStates[kind] = st
+                await probeCloudProvider(kind, logResult: false)
+            }
         }
 
         // Automatically start or deploy any app marked runOnStartup
@@ -170,6 +233,10 @@ public final class BeaconController {
 
                 if self.tickCount % 3 == 0 {
                     await self.probeBuiltInNodeServer(logTransitions: true)
+                    await self.probeNginxProxy(logTransitions: true)
+                    if self.cloudflareTunnel.activeCount > 0 {
+                        await self.probeCloudflareTunnels(logTransitions: true)
+                    }
                 }
 
                 if self.tickCount % 5 == 0 {
@@ -234,6 +301,10 @@ public final class BeaconController {
     }
 
     public func deleteManagedApp(_ app: ManagedApp) {
+        let tunnelKey = cloudflareTunnelKey(for: app)
+        if cloudflareTunnel.tunnels[tunnelKey]?.isRunning == true {
+            Task { await stopCloudflareTunnel(key: tunnelKey) }
+        }
         config.managedApps.removeAll { $0.id == app.id }
         appStates.removeValue(forKey: app.id)
         flatFileStore.saveConfig(config)
@@ -254,20 +325,53 @@ public final class BeaconController {
         }
     }
 
+    private func isAppConfiguredForErrorReporting(_ app: ManagedApp, state: ManagedAppRuntimeState) -> Bool {
+        if state.hasEverBeenHealthy || state.lastDeployedAt != nil {
+            return true
+        }
+        let trimmedPath = app.localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            return false
+        }
+        // Only treat an un-deployed app as configured once its local directory actually exists on disk
+        // and has been started/deployed at least once (or has already responded healthy).
+        return false
+    }
+
+    private static func isStderrLineActualError(_ line: String, commandSucceeded: Bool) -> Bool {
+        if !commandSucceeded {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("Cloning into ") || trimmed.hasPrefix("From ") || trimmed.hasPrefix("* branch") {
+                return false
+            }
+            return true
+        }
+        let lower = line.lowercased()
+        return lower.contains("error:") || lower.contains("fatal:") || lower.contains("err!")
+    }
+
     public func probeManagedApp(_ app: ManagedApp, logTransition: Bool) async {
         var state = runtimeState(for: app.id)
         if state.isDeploying { return }
 
         let wasHealthy = state.isHealthy
         let result = await processService.probe(urlString: app.monitorURL)
+
+        // Re-read state after async await so concurrent Stop or Deploy actions are never clobbered
+        state = runtimeState(for: app.id)
+        if state.isDeploying { return }
+
         state.lastCheckedAt = Date()
         state.httpStatus = result.httpStatus
         state.responseTimeMs = result.responseTimeMs
         state.isHealthy = result.healthy
-        state.lastError = result.error
 
         if result.healthy {
             state.consecutiveFailures = 0
+            state.isManuallyStopped = false
+            state.hasEverBeenHealthy = true
+            state.startupGraceUntil = nil
+            state.lastError = nil
             state.light = .green
             state.statusLabel = "Healthy"
             if state.healthySince == nil {
@@ -277,27 +381,64 @@ public final class BeaconController {
                 log(.vite, .info, "[\(app.name)] Reachable at \(app.monitorURL) (HTTP \(result.httpStatus ?? 200), \(result.responseTimeMs ?? 1) ms)")
             }
             appStates[app.id] = state
-        } else {
-            state.healthySince = nil
-            state.consecutiveFailures += 1
-            state.light = .red
-            state.statusLabel = "Down"
-            appStates[app.id] = state
+            return
+        }
 
-            if state.consecutiveFailures == 3 {
-                log(.vite, .error, "[\(app.name)] Failed 3 consecutive health checks at \(app.monitorURL)")
-                if config.notifyOnCrash {
-                    let note = await alertService.sendAlert(
-                        title: "\(app.name) Down",
-                        body: "\(app.monitorURL) stopped responding.",
-                        recipientEmail: config.recipientEmail,
-                        emailEnabled: config.emailEnabled
-                    )
-                    log(.email, .info, note)
-                }
-                if app.autoRestart && !app.localPath.isEmpty && state.restartCount < config.maxRestarts {
-                    await restartManagedApp(app, reason: "auto-recovery #\(state.restartCount + 1)")
-                }
+        state.healthySince = nil
+
+        // 1. Respect manual Stop: never report errors or auto-restart a stopped app
+        if state.isManuallyStopped {
+            state.consecutiveFailures = 0
+            state.lastError = nil
+            state.light = .amber
+            state.statusLabel = "Stopped"
+            appStates[app.id] = state
+            return
+        }
+
+        // 2. Respect startup grace period right after Deploy or Start/Restart
+        if let graceUntil = state.startupGraceUntil, Date() < graceUntil {
+            state.consecutiveFailures = 0
+            state.lastError = nil
+            state.light = .amber
+            state.statusLabel = "Starting..."
+            appStates[app.id] = state
+            return
+        }
+        state.startupGraceUntil = nil
+
+        // 3. Until an app is fully configured / deployed (or has been seen healthy), stay blank & silent
+        if !isAppConfiguredForErrorReporting(app, state: state) {
+            state.consecutiveFailures = 0
+            state.lastError = nil
+            state.light = .amber
+            let trimmedPath = app.localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let folderExists = !trimmedPath.isEmpty && FileManager.default.fileExists(atPath: trimmedPath)
+            state.statusLabel = (!trimmedPath.isEmpty && !folderExists && !app.repoURL.isEmpty) ? "Not Deployed" : "Idle"
+            appStates[app.id] = state
+            return
+        }
+
+        // 4. Configured / previously running app is unreachable
+        state.lastError = result.error
+        state.consecutiveFailures += 1
+        state.light = .red
+        state.statusLabel = "Down"
+        appStates[app.id] = state
+
+        if state.consecutiveFailures == 3 {
+            log(.vite, .error, "[\(app.name)] Failed 3 consecutive health checks at \(app.monitorURL)")
+            if config.notifyOnCrash {
+                let note = await alertService.sendAlert(
+                    title: "\(app.name) Down",
+                    body: "\(app.monitorURL) stopped responding.",
+                    recipientEmail: config.recipientEmail,
+                    emailEnabled: config.emailEnabled
+                )
+                log(.email, .info, note)
+            }
+            if app.autoRestart && !app.localPath.isEmpty && state.restartCount < config.maxRestarts {
+                await restartManagedApp(app, reason: "auto-recovery #\(state.restartCount + 1)")
             }
         }
     }
@@ -378,7 +519,11 @@ public final class BeaconController {
             appendTerminal(appName: targetLabel, text: line)
         }
         for line in res.stderrLines {
-            appendTerminal(appName: targetLabel, text: line, isError: true)
+            appendTerminal(
+                appName: targetLabel,
+                text: line,
+                isError: Self.isStderrLineActualError(line, commandSucceeded: res.ok)
+            )
         }
 
         if res.ok {
@@ -414,6 +559,30 @@ public final class BeaconController {
         isAnalyzingLogs = true
         defer { isAnalyzingLogs = false }
 
+        let openaiCfg = cloudProviderConfig(for: .openai)
+        let geminiCfg = cloudProviderConfig(for: .gemini)
+        let openrouterCfg = cloudProviderConfig(for: .openrouter)
+        let groqCfg = cloudProviderConfig(for: .groq)
+        let cloudflareCfg = cloudProviderConfig(for: .cloudflare)
+        let customCfg = cloudProviderConfig(for: .customOpenAI)
+
+        let cloudBundle = AICloudCredentialsBundle(
+            openaiKey: keychain.read(.openaiAPIKey),
+            openaiModel: openaiCfg.selectedModel.isEmpty ? CloudProviderKind.openai.defaultModel : openaiCfg.selectedModel,
+            geminiKey: keychain.read(.geminiAPIKey),
+            geminiModel: geminiCfg.selectedModel.isEmpty ? CloudProviderKind.gemini.defaultModel : geminiCfg.selectedModel,
+            openrouterKey: keychain.read(.openrouterAPIKey),
+            openrouterModel: openrouterCfg.selectedModel.isEmpty ? CloudProviderKind.openrouter.defaultModel : openrouterCfg.selectedModel,
+            groqKey: keychain.read(.groqAPIKey),
+            groqModel: groqCfg.selectedModel.isEmpty ? CloudProviderKind.groq.defaultModel : groqCfg.selectedModel,
+            cloudflareToken: keychain.read(.cloudflareAPIToken),
+            cloudflareAccountID: cloudflareCfg.accountID,
+            cloudflareModel: cloudflareCfg.selectedModel.isEmpty ? CloudProviderKind.cloudflare.defaultModel : cloudflareCfg.selectedModel,
+            customKey: keychain.read(.customAIAPIKey),
+            customBaseURL: customCfg.baseURL,
+            customModel: customCfg.selectedModel.isEmpty ? CloudProviderKind.customOpenAI.defaultModel : customCfg.selectedModel
+        )
+
         let result = await aiTroubleshootingService.analyze(
             context: context,
             followUp: followUp,
@@ -423,7 +592,8 @@ public final class BeaconController {
             ollamaEndpoint: config.ollamaEndpoint,
             ollamaModel: ollama.activeModel,
             ollamaConnected: ollama.isConnected,
-            claudeConnected: claude.isConnected
+            claudeConnected: claude.isConnected,
+            cloudBundle: cloudBundle
         )
 
         aiHelpResult = result
@@ -440,6 +610,8 @@ public final class BeaconController {
 
         var state = runtimeState(for: app.id)
         state.isDeploying = true
+        state.isManuallyStopped = false
+        state.consecutiveFailures = 0
         state.light = .amber
         state.statusLabel = "Deploying"
         state.lastError = nil
@@ -453,15 +625,23 @@ public final class BeaconController {
             appendTerminal(appName: app.name, text: line)
         }
         for line in res.stderrLines {
-            appendTerminal(appName: app.name, text: line, isError: true)
+            appendTerminal(
+                appName: app.name,
+                text: line,
+                isError: Self.isStderrLineActualError(line, commandSucceeded: res.ok)
+            )
         }
 
         state = runtimeState(for: app.id)
         state.isDeploying = false
+        state.consecutiveFailures = 0
 
         if res.ok {
             state.lastDeployedAt = Date()
+            state.startupGraceUntil = Date().addingTimeInterval(15)
             state.lastError = nil
+            state.light = .amber
+            state.statusLabel = "Starting..."
             state.dependencySummary = "Deps verified & built"
             appStates[app.id] = state
             log(.git, .info, "[\(app.name)] \(res.summary)")
@@ -477,6 +657,7 @@ public final class BeaconController {
             try? await Task.sleep(for: .seconds(2))
             await probeManagedApp(app, logTransition: true)
         } else {
+            state.startupGraceUntil = nil
             state.light = .red
             state.statusLabel = "Deploy Failed"
             state.lastError = res.summary
@@ -491,23 +672,42 @@ public final class BeaconController {
         defer { busyAction = nil }
 
         var state = runtimeState(for: app.id)
+        state.isDeploying = true
+        state.isManuallyStopped = false
+        state.consecutiveFailures = 0
         state.light = .amber
-        state.statusLabel = "Restarting"
+        state.statusLabel = "Starting..."
+        state.lastError = nil
         appStates[app.id] = state
 
         appendTerminal(appName: app.name, text: "$ beacon-restart.sh \"\(app.localPath)\" \(app.port) (\(reason))")
         let res = await deploymentService.restartApp(app)
         for line in res.stdoutLines { appendTerminal(appName: app.name, text: line) }
-        for line in res.stderrLines { appendTerminal(appName: app.name, text: line, isError: true) }
+        for line in res.stderrLines {
+            appendTerminal(
+                appName: app.name,
+                text: line,
+                isError: Self.isStderrLineActualError(line, commandSucceeded: res.ok)
+            )
+        }
+
+        state = runtimeState(for: app.id)
+        state.isDeploying = false
+        state.consecutiveFailures = 0
 
         if res.ok {
             state.restartCount += 1
+            state.lastDeployedAt = state.lastDeployedAt ?? Date()
+            state.startupGraceUntil = Date().addingTimeInterval(15)
             state.lastError = nil
+            state.light = .amber
+            state.statusLabel = "Starting..."
             appStates[app.id] = state
-            log(.vite, .info, "[\(app.name)] Restarted on port \(app.port) (\(reason))")
+            log(.vite, .info, "[\(app.name)] Started on port \(app.port) (\(reason))")
             try? await Task.sleep(for: .seconds(2))
             await probeManagedApp(app, logTransition: true)
         } else {
+            state.startupGraceUntil = nil
             state.light = .red
             state.statusLabel = "Action Needed"
             state.lastError = res.summary
@@ -520,16 +720,34 @@ public final class BeaconController {
         busyAction = "stop-\(app.id.uuidString)"
         defer { busyAction = nil }
 
+        // Mark manually stopped BEFORE running the script so polling never races and auto-restarts
+        var preState = runtimeState(for: app.id)
+        preState.isManuallyStopped = true
+        preState.startupGraceUntil = nil
+        preState.consecutiveFailures = 0
+        preState.isHealthy = false
+        preState.healthySince = nil
+        preState.lastError = nil
+        preState.light = .amber
+        preState.statusLabel = "Stopping..."
+        appStates[app.id] = preState
+
         appendTerminal(appName: app.name, text: "$ beacon-stop.sh \(app.port)")
-        let res = await deploymentService.stopApp(port: app.port)
+        let res = await deploymentService.stopApp(port: app.port, workingDir: app.localPath)
         for line in res.stdoutLines { appendTerminal(appName: app.name, text: line) }
-        for line in res.stderrLines { appendTerminal(appName: app.name, text: line, isError: true) }
+        for line in res.stderrLines { appendTerminal(appName: app.name, text: line, isError: !res.ok) }
 
         var state = runtimeState(for: app.id)
+        state.isManuallyStopped = true
+        state.startupGraceUntil = nil
+        state.consecutiveFailures = 0
         state.light = .amber
         state.statusLabel = "Stopped"
         state.isHealthy = false
         state.healthySince = nil
+        state.httpStatus = nil
+        state.responseTimeMs = nil
+        state.lastError = nil
         appStates[app.id] = state
         log(.vite, .info, "[\(app.name)] \(res.summary)")
     }
@@ -539,7 +757,7 @@ public final class BeaconController {
         for app in config.managedApps where app.autoDeploy {
             guard let fullName = app.githubFullName else { continue }
             var state = runtimeState(for: app.id)
-            if state.isDeploying { continue }
+            if state.isDeploying || state.isManuallyStopped { continue }
 
             if let commit = try? await gitService.fetchLatestCommit(repoFullName: fullName, branch: app.branch, token: token) {
                 let previous = state.commitHash
@@ -933,6 +1151,129 @@ public final class BeaconController {
         log(.claude, .info, "Cleared Claude API key from macOS Keychain")
     }
 
+    // MARK: - Cloud AI & Platform API Integrations (OpenAI, Gemini, OpenRouter, Groq, Cloudflare, Vercel, Supabase)
+
+    @discardableResult
+    public func connectCloudProvider(
+        _ kind: CloudProviderKind,
+        apiKey: String,
+        baseURL: String = "",
+        accountID: String = "",
+        selectedModel: String = ""
+    ) async -> Bool {
+        busyAction = "cloud-connect-\(kind.rawValue)"
+        bannerError = nil
+        defer { busyAction = nil }
+
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedKey.count >= 8, !trimmedKey.contains(where: \.isWhitespace) else {
+            bannerError = "Paste a valid \(kind.displayName) API key or token."
+            return false
+        }
+
+        var cfg = cloudProviderConfig(for: kind)
+        let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAccount = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind.supportsBaseURL {
+            cfg.baseURL = trimmedBase
+        }
+        if kind.supportsAccountID {
+            cfg.accountID = trimmedAccount
+        }
+        if !trimmedModel.isEmpty {
+            cfg.selectedModel = trimmedModel
+        } else if cfg.selectedModel.isEmpty {
+            cfg.selectedModel = kind.defaultModel
+        }
+        config.cloudProviders[kind.rawValue] = cfg
+        flatFileStore.saveConfig(config)
+
+        keychain.save(trimmedKey, for: kind.keychainAccount)
+        var st = cloudProviderState(for: kind)
+        st.keyHint = SecretMasker.mask(trimmedKey)
+        cloudProviderStates[kind] = st
+
+        return await probeCloudProvider(kind, logResult: true)
+    }
+
+    public func updateCloudProviderSettings(
+        _ kind: CloudProviderKind,
+        baseURL: String? = nil,
+        accountID: String? = nil,
+        selectedModel: String? = nil
+    ) {
+        var cfg = cloudProviderConfig(for: kind)
+        if let baseURL { cfg.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let accountID { cfg.accountID = accountID.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let selectedModel { cfg.selectedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines) }
+        config.cloudProviders[kind.rawValue] = cfg
+        flatFileStore.saveConfig(config)
+    }
+
+    @discardableResult
+    public func probeCloudProvider(_ kind: CloudProviderKind, logResult: Bool) async -> Bool {
+        guard let secret = keychain.read(kind.keychainAccount), !secret.isEmpty else {
+            cloudProviderStates[kind] = CloudProviderRuntimeState()
+            return false
+        }
+
+        let cfg = cloudProviderConfig(for: kind)
+        var st = cloudProviderState(for: kind)
+        st.keyHint = SecretMasker.mask(secret)
+        st.light = .amber
+        st.statusLabel = "Checking"
+        cloudProviderStates[kind] = st
+
+        let res = await cloudProviderService.probe(
+            kind: kind,
+            apiKey: secret,
+            baseURL: cfg.baseURL,
+            accountID: cfg.accountID
+        )
+
+        st.lastCheckedAt = Date()
+        st.httpStatus = res.httpStatus
+        st.latencyMs = res.latencyMs
+        st.isConnected = res.connected
+        st.accountLabel = res.accountLabel
+        st.lastError = res.error
+
+        if res.connected {
+            st.light = .green
+            st.statusLabel = "Connected"
+            st.models = res.models
+            if !res.models.isEmpty {
+                var updatedCfg = cfg
+                if updatedCfg.selectedModel.isEmpty || (!res.models.contains(updatedCfg.selectedModel) && kind != .customOpenAI) {
+                    updatedCfg.selectedModel = res.models.first(where: { $0 == kind.defaultModel }) ?? res.models.first ?? kind.defaultModel
+                    config.cloudProviders[kind.rawValue] = updatedCfg
+                    flatFileStore.saveConfig(config)
+                }
+            }
+            cloudProviderStates[kind] = st
+            if logResult {
+                log(.system, .info, "\(kind.displayName) connected (HTTP \(res.httpStatus ?? 200), \(res.latencyMs) ms\(res.accountLabel.map { ", \($0)" } ?? ""))")
+            }
+            return true
+        } else {
+            st.light = .red
+            st.statusLabel = "Error"
+            cloudProviderStates[kind] = st
+            if logResult {
+                bannerError = res.error
+                log(.system, .error, "\(kind.displayName) check failed (\(res.error ?? "Unknown error"))")
+            }
+            return false
+        }
+    }
+
+    public func disconnectCloudProvider(_ kind: CloudProviderKind) {
+        keychain.delete(kind.keychainAccount)
+        cloudProviderStates[kind] = CloudProviderRuntimeState()
+        log(.system, .info, "Cleared \(kind.displayName) credentials from macOS Keychain")
+    }
+
     // MARK: - Batch & Utility Actions
 
     public func refreshAllServices() async {
@@ -940,9 +1281,14 @@ public final class BeaconController {
         defer { busyAction = nil }
         await probeAllManagedApps(logTransitions: true)
         await probeBuiltInNodeServer(logTransitions: true)
+        await probeNginxProxy(logTransitions: true)
+        await probeCloudflareTunnels(logTransitions: true)
         await probeOllama(logResult: true)
         if keychain.read(.claudeAPIKey) != nil {
             await probeClaude(logResult: true)
+        }
+        for kind in CloudProviderKind.allCases where keychain.read(kind.keychainAccount) != nil {
+            await probeCloudProvider(kind, logResult: false)
         }
     }
 
@@ -1175,6 +1521,804 @@ public final class BeaconController {
         } else {
             urlString = "\(base)/"
         }
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Inbuilt NGINX Reverse Proxy
+
+    public var currentNginxConfigText: String {
+        nginxProxyService.generateConfigText(from: config.nginxProxy)
+    }
+
+    public func probeNginxProxy(logTransitions: Bool = false) async {
+        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
+        nginxProxy.listenPort = port
+        nginxProxy.configPath = nginxProxyService.configFileURL.path
+        nginxProxy.lanAddress = NginxProxyService.detectPrimaryLANIPv4()
+        let wasRunning = nginxProxy.isRunning
+
+        if let health = await nginxProxyService.probeHealth(port: port), health.ok {
+            nginxProxy.isInstalled = true
+            nginxProxy.isRunning = true
+            nginxProxy.light = .green
+            nginxProxy.statusLabel = config.nginxProxy.exposeOnLAN ? "LAN :\(port)" : "Running :\(port)"
+            nginxProxy.lastError = nil
+            nginxProxy.lastCheckedAt = Date()
+            if nginxProxy.nginxVersion == nil || nginxProxy.pid == nil {
+                let statusProbe = await deploymentService.runNginxAction(
+                    "status",
+                    configPath: nginxProxyService.configFileURL.path,
+                    port: port
+                )
+                if let ver = statusProbe.version { nginxProxy.nginxVersion = ver }
+                if let pid = statusProbe.pid { nginxProxy.pid = pid }
+            }
+            if logTransitions && !wasRunning {
+                log(.system, .info, "Inbuilt NGINX reverse proxy is online at \(nginxProxy.baseURL)")
+            }
+            return
+        }
+
+        let statusProbe = await deploymentService.runNginxAction(
+            "status",
+            configPath: nginxProxyService.configFileURL.path,
+            port: port
+        )
+        let installed = statusProbe.isInstalled ?? systemTools.first(where: { $0.name == "nginx" })?.available ?? false
+        nginxProxy.isInstalled = installed
+        if let ver = statusProbe.version {
+            nginxProxy.nginxVersion = ver
+        }
+        nginxProxy.isRunning = false
+        nginxProxy.pid = nil
+        nginxProxy.lastCheckedAt = Date()
+
+        if !installed {
+            nginxProxy.light = .amber
+            nginxProxy.statusLabel = "Not Installed"
+        } else {
+            nginxProxy.light = .amber
+            nginxProxy.statusLabel = "Stopped"
+        }
+
+        if logTransitions && wasRunning {
+            log(.system, .warn, "Inbuilt NGINX reverse proxy on port \(port) stopped responding")
+        }
+    }
+
+    public func startNginxProxy(restart: Bool = false) async {
+        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
+        config.nginxProxy.listenPort = port
+        nginxProxy.listenPort = port
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+        flatFileStore.saveConfig(config)
+
+        let action = restart ? "restart" : "start"
+        busyAction = "nginx-\(action)"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh \(action) \"\(nginxProxyService.configFileURL.path)\" \(port)")
+        let probe = await deploymentService.runNginxAction(
+            action,
+            configPath: nginxProxyService.configFileURL.path,
+            port: port
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: true) }
+
+        if probe.result.ok {
+            nginxProxy.lastError = nil
+            if let ver = probe.version { nginxProxy.nginxVersion = ver }
+            if let pid = probe.pid { nginxProxy.pid = pid }
+            await probeNginxProxy(logTransitions: false)
+            log(.system, .info, "Inbuilt NGINX reverse proxy running on \(nginxProxy.baseURL) (\(config.nginxProxy.routes.filter(\.enabled).count) active route(s))")
+        } else {
+            nginxProxy.isRunning = false
+            nginxProxy.light = .red
+            nginxProxy.statusLabel = "Start Failed"
+            nginxProxy.lastError = probe.result.summary
+            bannerError = probe.result.summary
+            log(.system, .error, "Inbuilt NGINX reverse proxy failed to start: \(probe.result.summary)")
+        }
+    }
+
+    public func reloadNginxProxy() async {
+        let port = NginxProxyService.clampedPort(config.nginxProxy.listenPort, fallback: 8080)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+
+        busyAction = "nginx-reload"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh reload \"\(nginxProxyService.configFileURL.path)\" \(port)")
+        let probe = await deploymentService.runNginxAction(
+            "reload",
+            configPath: nginxProxyService.configFileURL.path,
+            port: port
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: true) }
+
+        if probe.result.ok {
+            nginxProxy.lastError = nil
+            if let ver = probe.version { nginxProxy.nginxVersion = ver }
+            if let pid = probe.pid { nginxProxy.pid = pid }
+            await probeNginxProxy(logTransitions: false)
+            log(.system, .info, "Reloaded inbuilt NGINX reverse proxy configuration")
+        } else {
+            nginxProxy.lastError = probe.result.summary
+            bannerError = probe.result.summary
+            log(.system, .error, "NGINX reload failed: \(probe.result.summary)")
+        }
+    }
+
+    public func stopNginxProxy() async {
+        let port = config.nginxProxy.listenPort
+        busyAction = "nginx-stop"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh stop \"\(nginxProxyService.configFileURL.path)\" \(port)")
+        let probe = await deploymentService.runNginxAction(
+            "stop",
+            configPath: nginxProxyService.configFileURL.path,
+            port: port
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: !probe.result.ok) }
+
+        nginxProxy.isRunning = false
+        nginxProxy.pid = nil
+        nginxProxy.light = .amber
+        nginxProxy.statusLabel = nginxProxy.isInstalled ? "Stopped" : "Not Installed"
+        nginxProxy.lastError = nil
+        log(.system, .info, "Stopped inbuilt NGINX reverse proxy on port \(port)")
+    }
+
+    public func testNginxConfig() async {
+        let port = config.nginxProxy.listenPort
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+
+        busyAction = "nginx-test"
+        defer { busyAction = nil }
+
+        appendTerminal(appName: "nginx", text: "$ beacon-nginx.sh test \"\(nginxProxyService.configFileURL.path)\" \(port)")
+        let probe = await deploymentService.runNginxAction(
+            "test",
+            configPath: nginxProxyService.configFileURL.path,
+            port: port
+        )
+        for line in probe.result.stdoutLines { appendTerminal(appName: "nginx", text: line) }
+        for line in probe.result.stderrLines { appendTerminal(appName: "nginx", text: line, isError: !probe.result.ok) }
+
+        if probe.result.ok {
+            nginxProxy.lastError = nil
+            log(.system, .info, "NGINX configuration syntax check passed (nginx -t)")
+        } else {
+            nginxProxy.lastError = probe.result.summary
+            bannerError = probe.result.summary
+            log(.system, .error, "NGINX config test failed: \(probe.result.summary)")
+        }
+    }
+
+    public func installNginxSilently() async {
+        let res = await installPrerequisitesAndDependencies(
+            for: nil,
+            requestedTools: ["nginx"],
+            strategy: .auto
+        )
+        await probeNginxProxy(logTransitions: false)
+        if res.ok && nginxProxy.isInstalled {
+            log(.system, .info, "Installed NGINX silently (\(nginxProxy.nginxVersion ?? "ready"))")
+        }
+    }
+
+    public func updateNginxSettings(listenPort: Int, exposeOnLAN: Bool, autoStart: Bool) async {
+        let clampedPort = NginxProxyService.clampedPort(listenPort, fallback: 8080)
+        let bindChanged = config.nginxProxy.listenPort != clampedPort || config.nginxProxy.exposeOnLAN != exposeOnLAN
+        config.nginxProxy.listenPort = clampedPort
+        config.nginxProxy.exposeOnLAN = exposeOnLAN
+        config.nginxProxy.autoStart = autoStart
+        nginxProxy.listenPort = clampedPort
+        flatFileStore.saveConfig(config)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+
+        if nginxProxy.isRunning {
+            if bindChanged {
+                await startNginxProxy(restart: true)
+            } else {
+                await reloadNginxProxy()
+            }
+        }
+    }
+
+    public func upsertNginxRoute(
+        _ route: NginxProxyRoute,
+        makeActiveRoot: Bool = false,
+        autoStartOrReload: Bool = true
+    ) async {
+        var sanitized = route
+        sanitized.name = route.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sanitized.name.isEmpty {
+            sanitized.name = "Local :\(route.targetPort)"
+        }
+        sanitized.pathPrefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: sanitized.name)
+        sanitized.serverName = NginxProxyService.sanitizeServerName(route.serverName)
+        sanitized.targetHost = NginxProxyService.sanitizeTargetHost(route.targetHost)
+        sanitized.targetPort = max(1, min(65535, route.targetPort))
+
+        if let idx = config.nginxProxy.routes.firstIndex(where: { $0.id == sanitized.id }) {
+            config.nginxProxy.routes[idx] = sanitized
+            log(.system, .info, "Updated NGINX proxy route \"\(sanitized.name)\" (\(sanitized.pathPrefix) → \(sanitized.targetHost):\(sanitized.targetPort))")
+        } else {
+            // Ensure unique pathPrefix among existing routes
+            let existingPrefixes = Set(config.nginxProxy.routes.map(\.pathPrefix))
+            if existingPrefixes.contains(sanitized.pathPrefix) {
+                var n = 2
+                while existingPrefixes.contains("\(sanitized.pathPrefix)-\(n)") {
+                    n += 1
+                }
+                sanitized.pathPrefix = "\(sanitized.pathPrefix)-\(n)"
+            }
+            config.nginxProxy.routes.append(sanitized)
+            log(.system, .info, "Added NGINX proxy route \"\(sanitized.name)\" (\(sanitized.pathPrefix) → \(sanitized.targetHost):\(sanitized.targetPort))")
+        }
+
+        if makeActiveRoot || config.nginxProxy.activeRootRouteID == nil {
+            config.nginxProxy.activeRootRouteID = sanitized.id
+        }
+
+        flatFileStore.saveConfig(config)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+
+        if autoStartOrReload {
+            if nginxProxy.isRunning {
+                await reloadNginxProxy()
+            } else if nginxProxy.isInstalled {
+                await startNginxProxy()
+            }
+        }
+    }
+
+    public func exposeManagedAppViaNginx(_ app: ManagedApp) async {
+        let slug = BuiltInNodeServerService.makeSlug(from: app.name, existingSlugs: [])
+        if let existing = config.nginxProxy.routes.first(where: { $0.targetPort == app.port && $0.targetHost == "127.0.0.1" }) {
+            var updated = existing
+            updated.name = app.name
+            updated.enabled = true
+            await upsertNginxRoute(updated, makeActiveRoot: false, autoStartOrReload: true)
+            return
+        }
+
+        let route = NginxProxyRoute(
+            name: app.name,
+            pathPrefix: "/\(slug)",
+            serverName: "\(slug).localhost",
+            targetHost: "127.0.0.1",
+            targetPort: app.port,
+            webSocketsEnabled: true,
+            stripPrefix: true,
+            enabled: true
+        )
+        await upsertNginxRoute(route, makeActiveRoot: config.nginxProxy.routes.isEmpty, autoStartOrReload: true)
+    }
+
+    public func toggleNginxRoute(_ route: NginxProxyRoute) async {
+        guard let idx = config.nginxProxy.routes.firstIndex(where: { $0.id == route.id }) else { return }
+        config.nginxProxy.routes[idx].enabled.toggle()
+        flatFileStore.saveConfig(config)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+        log(.system, .info, "\(config.nginxProxy.routes[idx].enabled ? "Enabled" : "Disabled") NGINX route \"\(route.name)\"")
+        if nginxProxy.isRunning {
+            await reloadNginxProxy()
+        }
+    }
+
+    public func setNginxRootRoute(_ routeID: UUID?) async {
+        config.nginxProxy.activeRootRouteID = routeID
+        flatFileStore.saveConfig(config)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+        if let routeID, let match = config.nginxProxy.routes.first(where: { $0.id == routeID }) {
+            log(.system, .info, "Set \"\(match.name)\" as active NGINX root route at \(nginxProxy.baseURL)/")
+        } else {
+            log(.system, .info, "Cleared active NGINX root route (showing route directory on /)")
+        }
+        if nginxProxy.isRunning {
+            await reloadNginxProxy()
+        }
+    }
+
+    public func deleteNginxRoute(_ route: NginxProxyRoute) async {
+        config.nginxProxy.routes.removeAll { $0.id == route.id }
+        if config.nginxProxy.activeRootRouteID == route.id {
+            config.nginxProxy.activeRootRouteID = config.nginxProxy.routes.first?.id
+        }
+        flatFileStore.saveConfig(config)
+        nginxProxyService.writeConfig(from: config.nginxProxy)
+        log(.system, .info, "Removed NGINX proxy route \"\(route.name)\"")
+        if nginxProxy.isRunning {
+            await reloadNginxProxy()
+        }
+    }
+
+    public func primaryURL(for route: NginxProxyRoute) -> String {
+        let port = config.nginxProxy.listenPort
+        if !route.serverName.isEmpty {
+            return port == 80 ? "http://\(route.serverName)/" : "http://\(route.serverName):\(port)/"
+        }
+        if config.nginxProxy.activeRootRouteID == route.id {
+            return "\(nginxProxy.baseURL)/"
+        }
+        let prefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: route.name)
+        return "\(nginxProxy.baseURL)\(prefix)/"
+    }
+
+    public func pathURL(for route: NginxProxyRoute) -> String {
+        if config.nginxProxy.activeRootRouteID == route.id {
+            return "\(nginxProxy.baseURL)/"
+        }
+        let prefix = NginxProxyService.sanitizePathPrefix(route.pathPrefix, fallbackName: route.name)
+        return "\(nginxProxy.baseURL)\(prefix)/"
+    }
+
+    public func openNginxRouteInBrowser(_ route: NginxProxyRoute? = nil, useVHost: Bool = false) {
+        let urlString: String
+        if let route {
+            urlString = useVHost ? primaryURL(for: route) : pathURL(for: route)
+        } else {
+            urlString = "\(nginxProxy.baseURL)/"
+        }
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - One-Click Cloudflare Tunnels (Keychain API + Dynamic cloudflared Config)
+
+    public var hasCloudflareAPITokenInKeychain: Bool {
+        if let token = keychain.read(.cloudflareAPIToken), !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return false
+    }
+
+    public func cloudflareTunnelKey(for app: ManagedApp) -> String {
+        "app-\(app.id.uuidString.lowercased())"
+    }
+
+    public func cloudflareTunnelEntry(for key: String) -> CloudflareTunnelEntry? {
+        cloudflareTunnel.tunnels[key]
+    }
+
+    public func cloudflareTunnelEntry(for app: ManagedApp) -> CloudflareTunnelEntry? {
+        cloudflareTunnel.tunnels[cloudflareTunnelKey(for: app)]
+    }
+
+    public func generatedCloudflaredConfig(for key: String) -> String? {
+        cloudflareTunnelService.readGeneratedConfig(for: key)
+    }
+
+    public func probeCloudflareTunnels(logTransitions: Bool = false) async {
+        let probe = await deploymentService.runCloudflaredAction("status", tunnelID: "all")
+        let installed = probe.isInstalled ?? systemTools.first(where: { $0.name == "cloudflared" })?.available ?? false
+        cloudflareTunnel.isInstalled = installed
+        if let ver = probe.version, !ver.isEmpty {
+            cloudflareTunnel.version = ver
+        }
+        cloudflareTunnel.lastCheckedAt = Date()
+
+        let previousRunningIDs = Set(cloudflareTunnel.tunnels.values.filter(\.isRunning).map(\.id))
+        var discoveredIDs = Set<String>()
+
+        for item in probe.entries {
+            discoveredIDs.insert(item.tunnelID)
+            let existing = cloudflareTunnel.tunnels[item.tunnelID]
+            let targetURL = item.targetURL ?? existing?.targetURL ?? "http://127.0.0.1:3000"
+            let parsedPort = LocalProcessService.extractPort(from: targetURL, fallback: existing?.targetPort ?? 3000)
+
+            var label = existing?.label ?? "Local :\(parsedPort)"
+            var targetKind = existing?.targetKind ?? .customPort
+            var appID = existing?.appID
+
+            if item.tunnelID == "nginx" {
+                label = "NGINX Reverse Proxy"
+                targetKind = .nginxProxy
+            } else if item.tunnelID == "node-host" {
+                label = "Built-In Node.js Server"
+                targetKind = .builtInNode
+            } else if item.tunnelID.hasPrefix("app-") {
+                let rawUUID = String(item.tunnelID.dropFirst(4))
+                if let matchedApp = config.managedApps.first(where: { $0.id.uuidString.lowercased() == rawUUID }) {
+                    label = matchedApp.name
+                    targetKind = .managedApp
+                    appID = matchedApp.id
+                }
+            }
+
+            let configPath = existing?.configFilePath ?? cloudflareTunnelService.configFileURL(for: item.tunnelID).path
+            let entry = CloudflareTunnelEntry(
+                id: item.tunnelID,
+                label: label,
+                targetKind: targetKind,
+                appID: appID,
+                targetPort: parsedPort,
+                targetURL: targetURL,
+                publicURL: item.publicURL ?? existing?.publicURL,
+                mode: item.mode,
+                configFilePath: FileManager.default.fileExists(atPath: configPath) ? configPath : existing?.configFilePath,
+                cloudflareTunnelID: existing?.cloudflareTunnelID,
+                isRunning: true,
+                isStarting: false,
+                pid: item.pid,
+                startedAt: existing?.startedAt ?? Date(),
+                lastError: nil,
+                light: .green,
+                statusLabel: "Live"
+            )
+            cloudflareTunnel.tunnels[item.tunnelID] = entry
+        }
+
+        // Clear any previously running tunnels that exited outside BeaconMac
+        for (id, existing) in cloudflareTunnel.tunnels where existing.isRunning && !existing.isStarting && !discoveredIDs.contains(id) {
+            cloudflareTunnel.tunnels.removeValue(forKey: id)
+            if logTransitions && previousRunningIDs.contains(id) {
+                log(.system, .warn, "Cloudflare tunnel for \"\(existing.label)\" stopped responding")
+            }
+        }
+    }
+
+    @discardableResult
+    public func installCloudflaredSilently() async -> Bool {
+        cloudflareTunnel.isInstalling = true
+        cloudflareTunnel.lastError = nil
+        defer { cloudflareTunnel.isInstalling = false }
+
+        let res = await installPrerequisitesAndDependencies(
+            for: nil,
+            requestedTools: ["cloudflared"],
+            strategy: .auto
+        )
+        await probeCloudflareTunnels(logTransitions: false)
+        if res.ok && cloudflareTunnel.isInstalled {
+            log(.system, .info, "Installed cloudflared silently (\(cloudflareTunnel.version ?? "ready"))")
+            return true
+        }
+        let errMsg = res.summary.isEmpty ? "Failed to install cloudflared." : res.summary
+        cloudflareTunnel.lastError = errMsg
+        bannerError = errMsg
+        return false
+    }
+
+    public func toggleCloudflareTunnel(for app: ManagedApp) async {
+        let key = cloudflareTunnelKey(for: app)
+        if cloudflareTunnel.tunnels[key]?.isRunning == true {
+            await stopCloudflareTunnel(key: key)
+        } else {
+            await startCloudflareTunnel(
+                key: key,
+                label: app.name,
+                targetKind: .managedApp,
+                appID: app.id,
+                targetPort: app.port
+            )
+        }
+    }
+
+    public func toggleNginxCloudflareTunnel() async {
+        let key = "nginx"
+        if cloudflareTunnel.tunnels[key]?.isRunning == true {
+            await stopCloudflareTunnel(key: key)
+        } else {
+            if !nginxProxy.isRunning && nginxProxy.isInstalled {
+                await startNginxProxy()
+            }
+            await startCloudflareTunnel(
+                key: key,
+                label: "NGINX Reverse Proxy",
+                targetKind: .nginxProxy,
+                targetPort: config.nginxProxy.listenPort
+            )
+        }
+    }
+
+    public func toggleBuiltInServerCloudflareTunnel() async {
+        let key = "node-host"
+        if cloudflareTunnel.tunnels[key]?.isRunning == true {
+            await stopCloudflareTunnel(key: key)
+        } else {
+            if !builtInServer.isRunning {
+                await startBuiltInNodeServer()
+            }
+            await startCloudflareTunnel(
+                key: key,
+                label: "Built-In Node.js Server",
+                targetKind: .builtInNode,
+                targetPort: config.builtInServer.port
+            )
+        }
+    }
+
+    public func exposeCustomPortViaCloudflare(port: Int, label: String = "") async {
+        let clampedPort = max(1, min(65535, port))
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedLabel = trimmedLabel.isEmpty ? "Local :\(clampedPort)" : trimmedLabel
+        await startCloudflareTunnel(
+            key: "port-\(clampedPort)",
+            label: resolvedLabel,
+            targetKind: .customPort,
+            targetPort: clampedPort
+        )
+    }
+
+    public func startCloudflareTunnel(
+        key: String,
+        label: String,
+        targetKind: CloudflareTunnelTargetKind,
+        appID: UUID? = nil,
+        targetPort: Int
+    ) async {
+        let clampedPort = max(1, min(65535, targetPort))
+        let targetURL = "http://127.0.0.1:\(clampedPort)"
+        let apiToken = keychain.read(.cloudflareAPIToken)
+        let hasKeychainToken = !(apiToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let initialStatus: String
+        if !cloudflareTunnel.isInstalled {
+            initialStatus = "Installing cloudflared…"
+        } else if hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI {
+            initialStatus = "Provisioning via Cloudflare API…"
+        } else {
+            initialStatus = "Generating config & connecting…"
+        }
+
+        cloudflareTunnel.lastError = nil
+        cloudflareTunnel.tunnels[key] = CloudflareTunnelEntry(
+            id: key,
+            label: label,
+            targetKind: targetKind,
+            appID: appID,
+            targetPort: clampedPort,
+            targetURL: targetURL,
+            publicURL: nil,
+            mode: (hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI) ? .apiManaged : .quickTunnel,
+            configFilePath: nil,
+            cloudflareTunnelID: nil,
+            isRunning: false,
+            isStarting: true,
+            pid: nil,
+            startedAt: Date(),
+            lastError: nil,
+            light: .amber,
+            statusLabel: initialStatus
+        )
+
+        // Step 1: Ensure cloudflared binary is installed (silent auto-install if missing)
+        if !cloudflareTunnel.isInstalled {
+            await probeCloudflareTunnels(logTransitions: false)
+        }
+        if !cloudflareTunnel.isInstalled {
+            if config.cloudflareTunnel.autoInstallCloudflared {
+                log(.system, .info, "[\(label)] cloudflared not found — installing silently for one-click Cloudflare Tunnel...")
+                let installedOK = await installCloudflaredSilently()
+                if !installedOK {
+                    var failed = cloudflareTunnel.tunnels[key] ?? CloudflareTunnelEntry(
+                        id: key,
+                        label: label,
+                        targetKind: targetKind,
+                        appID: appID,
+                        targetPort: clampedPort,
+                        targetURL: targetURL
+                    )
+                    failed.isStarting = false
+                    failed.isRunning = false
+                    failed.light = .red
+                    failed.statusLabel = "Install Failed"
+                    failed.lastError = cloudflareTunnel.lastError ?? "Could not install cloudflared."
+                    cloudflareTunnel.tunnels[key] = failed
+                    return
+                }
+            } else {
+                let msg = "cloudflared is not installed. Click \"Install cloudflared\" first."
+                var failed = cloudflareTunnel.tunnels[key]!
+                failed.isStarting = false
+                failed.light = .red
+                failed.statusLabel = "Not Installed"
+                failed.lastError = msg
+                cloudflareTunnel.tunnels[key] = failed
+                bannerError = msg
+                return
+            }
+        }
+
+        // Step 2: Use existing Cloudflare API integration in Keychain to dynamically provision
+        // the tunnel & DNS route and generate cloudflared config.yml (with automatic Quick Tunnel fallback).
+        if var pending = cloudflareTunnel.tunnels[key] {
+            pending.statusLabel = (hasKeychainToken && config.cloudflareTunnel.preferCloudflareAPI)
+                ? "Generating config via Cloudflare API…"
+                : "Generating cloudflared config…"
+            cloudflareTunnel.tunnels[key] = pending
+        }
+
+        let cfConfig = cloudProviderConfig(for: .cloudflare)
+        let provision = await cloudflareTunnelService.prepareTunnelSession(
+            tunnelKey: key,
+            appName: label,
+            targetPort: clampedPort,
+            protocolChoice: config.cloudflareTunnel.preferredProtocol,
+            preferCloudflareAPI: config.cloudflareTunnel.preferCloudflareAPI,
+            customBaseDomain: config.cloudflareTunnel.customBaseDomain,
+            apiToken: apiToken,
+            configuredAccountID: cfConfig.accountID
+        )
+
+        // Persist auto-discovered Cloudflare Account ID if it wasn't previously entered
+        if let resolvedAcct = provision.resolvedAccountID, !resolvedAcct.isEmpty, cfConfig.accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            updateCloudProviderSettings(.cloudflare, accountID: resolvedAcct)
+        }
+
+        appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] \(provision.detailMessage)")
+        appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] Generated config: \(provision.configFilePath)")
+        if let fallback = provision.fallbackReason, !fallback.isEmpty {
+            appendTerminal(appName: "cloudflare", text: "[beacon-cloudflare] Note: \(fallback)")
+            log(.system, .warn, "[\(label)] Cloudflare API fallback to Quick Tunnel: \(fallback)")
+        }
+
+        // Step 3: Trigger the detached cloudflared session using the generated config/token
+        if var pending = cloudflareTunnel.tunnels[key] {
+            pending.mode = provision.mode
+            pending.configFilePath = provision.configFilePath
+            pending.cloudflareTunnelID = provision.cloudflareTunnelID
+            pending.statusLabel = provision.usedCloudflareAPI ? "Starting API Tunnel…" : "Connecting Quick Tunnel…"
+            cloudflareTunnel.tunnels[key] = pending
+        }
+
+        let probe: AppDeploymentService.CloudflareTunnelProbeResult
+        switch provision.launchMode {
+        case .localConfigRun:
+            let expectedURL = provision.publicURL ?? ""
+            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start-config \(key) \"\(provision.configFilePath)\" \(expectedURL) \(targetURL)")
+            probe = await deploymentService.runCloudflaredAction(
+                "start-config",
+                tunnelID: key,
+                extraArgs: [provision.configFilePath, expectedURL, targetURL]
+            )
+        case .remoteTokenRun:
+            let expectedURL = provision.publicURL ?? ""
+            let tokenFile = provision.tokenFilePath ?? ""
+            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start-token \(key) [keychain-token-file] \(expectedURL) \(targetURL)")
+            probe = await deploymentService.runCloudflaredAction(
+                "start-token",
+                tunnelID: key,
+                extraArgs: [tokenFile, expectedURL, targetURL]
+            )
+        case .quickTunnel:
+            let proto = config.cloudflareTunnel.preferredProtocol.rawValue
+            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start \(key) \(targetURL) \(proto)")
+            probe = await deploymentService.runCloudflaredAction(
+                "start",
+                tunnelID: key,
+                extraArgs: [targetURL, proto]
+            )
+        }
+
+        for line in probe.result.stdoutLines { appendTerminal(appName: "cloudflare", text: line) }
+        for line in probe.result.stderrLines {
+            appendTerminal(
+                appName: "cloudflare",
+                text: line,
+                isError: Self.isStderrLineActualError(line, commandSucceeded: probe.result.ok)
+            )
+        }
+
+        if let ver = probe.version, !ver.isEmpty {
+            cloudflareTunnel.version = ver
+            cloudflareTunnel.isInstalled = true
+        }
+
+        let resolvedPublicURL = probe.publicURL ?? provision.publicURL
+        if probe.result.ok, let publicURL = resolvedPublicURL, !publicURL.isEmpty {
+            let entry = CloudflareTunnelEntry(
+                id: key,
+                label: label,
+                targetKind: targetKind,
+                appID: appID,
+                targetPort: clampedPort,
+                targetURL: targetURL,
+                publicURL: publicURL,
+                mode: provision.mode,
+                configFilePath: provision.configFilePath,
+                cloudflareTunnelID: provision.cloudflareTunnelID,
+                isRunning: true,
+                isStarting: false,
+                pid: probe.pid,
+                startedAt: Date(),
+                lastError: nil,
+                light: .green,
+                statusLabel: "Live"
+            )
+            cloudflareTunnel.tunnels[key] = entry
+            cloudflareTunnel.lastError = nil
+
+            if config.cloudflareTunnel.autoCopyURLOnStart {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(publicURL, forType: .string)
+            }
+
+            let copySuffix = config.cloudflareTunnel.autoCopyURLOnStart ? " (copied to clipboard)" : ""
+            log(.system, .info, "[\(label)] Exposed via \(provision.mode.badgeLabel): \(publicURL) → \(targetURL)\(copySuffix)")
+        } else {
+            let errText = probe.result.summary
+            var failed = cloudflareTunnel.tunnels[key] ?? CloudflareTunnelEntry(
+                id: key,
+                label: label,
+                targetKind: targetKind,
+                appID: appID,
+                targetPort: clampedPort,
+                targetURL: targetURL
+            )
+            failed.isRunning = false
+            failed.isStarting = false
+            failed.mode = provision.mode
+            failed.configFilePath = provision.configFilePath
+            failed.light = .red
+            failed.statusLabel = "Tunnel Failed"
+            failed.lastError = errText
+            cloudflareTunnel.tunnels[key] = failed
+            cloudflareTunnel.lastError = errText
+            bannerError = "[\(label)] Cloudflare Tunnel failed: \(errText)"
+            log(.system, .error, "[\(label)] Cloudflare Tunnel failed: \(errText)")
+        }
+    }
+
+    public func stopCloudflareTunnel(key: String) async {
+        let label = cloudflareTunnel.tunnels[key]?.label ?? key
+        appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh stop \(key)")
+        let probe = await deploymentService.runCloudflaredAction("stop", tunnelID: key)
+        for line in probe.result.stdoutLines { appendTerminal(appName: "cloudflare", text: line) }
+        for line in probe.result.stderrLines {
+            appendTerminal(appName: "cloudflare", text: line, isError: !probe.result.ok)
+        }
+        cloudflareTunnel.tunnels.removeValue(forKey: key)
+        log(.system, .info, "[\(label)] Stopped Cloudflare Tunnel")
+    }
+
+    public func stopAllCloudflareTunnels() async {
+        appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh stop-all")
+        let probe = await deploymentService.runCloudflaredAction("stop-all", tunnelID: "all")
+        for line in probe.result.stdoutLines { appendTerminal(appName: "cloudflare", text: line) }
+        for line in probe.result.stderrLines {
+            appendTerminal(appName: "cloudflare", text: line, isError: !probe.result.ok)
+        }
+        cloudflareTunnel.tunnels.removeAll()
+        log(.system, .info, "Stopped all active Cloudflare Tunnels")
+    }
+
+    public func updateCloudflareTunnelSettings(
+        preferredProtocol: CloudflareTunnelProtocol,
+        autoInstallCloudflared: Bool,
+        autoCopyURLOnStart: Bool,
+        preferCloudflareAPI: Bool? = nil,
+        customBaseDomain: String? = nil
+    ) {
+        config.cloudflareTunnel.preferredProtocol = preferredProtocol
+        config.cloudflareTunnel.autoInstallCloudflared = autoInstallCloudflared
+        config.cloudflareTunnel.autoCopyURLOnStart = autoCopyURLOnStart
+        if let preferCloudflareAPI {
+            config.cloudflareTunnel.preferCloudflareAPI = preferCloudflareAPI
+        }
+        if let customBaseDomain {
+            config.cloudflareTunnel.customBaseDomain = CloudflareTunnelService.sanitizeDomain(customBaseDomain)
+        }
+        flatFileStore.saveConfig(config)
+        log(.system, .info, "Updated Cloudflare Tunnel settings (protocol: \(preferredProtocol.rawValue), key-API: \(config.cloudflareTunnel.preferCloudflareAPI))")
+    }
+
+    public func copyTunnelURL(_ urlString: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(urlString, forType: .string)
+        log(.system, .info, "Copied public Cloudflare Tunnel URL: \(urlString)")
+    }
+
+    public func openTunnelURL(_ urlString: String) {
         if let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)
         }

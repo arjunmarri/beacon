@@ -220,7 +220,7 @@ if [ -f "package.json" ]; then
       esac
     else
       echo "[beacon-deploy] Running install command: $INSTALL_CMD"
-      /bin/zsh -lc "$INSTALL_CMD"
+      /bin/bash -c "$INSTALL_CMD"
     fi
   else
     echo "[beacon-deploy] Dependencies up to date (node_modules present)."
@@ -242,23 +242,41 @@ if [ -n "$BUILD_CMD_TRIMMED" ] && [ "$BUILD_CMD_TRIMMED" != "skip" ]; then
     echo "[beacon-deploy] WARNING: \"$BUILD_CMD_TRIMMED\" requested, but package.json has no \"build\" script (available: $(pkg_script_names)). Skipping build step."
   else
     echo "[beacon-deploy] Building application: $BUILD_CMD_TRIMMED"
-    /bin/zsh -lc "$BUILD_CMD_TRIMMED"
+    /bin/bash -c "$BUILD_CMD_TRIMMED"
   fi
 fi
 
-# 5. Restart / deploy process locally on target port
+# 5. Stop any previous instance (tracked PID group or listener on target port)
+LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
+LOG_DIR="$HOME/beaconmac/logs"
+PID_DIR="$HOME/beaconmac/pids"
+mkdir -p "$LOG_DIR" "$PID_DIR"
+APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
+PID_FILE="$PID_DIR/${LOG_SLUG:-app}-${PORT}.pid"
+SERVER_LOG="$HOME/beaconmac/server.log"
+
+if [ -f "$PID_FILE" ]; then
+  OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "[beacon-deploy] Stopping previous tracked instance (PID $OLD_PID)..."
+    kill -TERM -- "-$OLD_PID" 2>/dev/null || true
+    pkill -TERM -P "$OLD_PID" 2>/dev/null || true
+    kill -TERM "$OLD_PID" 2>/dev/null || true
+    sleep 0.6
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+      kill -KILL -- "-$OLD_PID" 2>/dev/null || true
+      kill -KILL "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PID_FILE"
+fi
+
 EXISTING_PID=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$EXISTING_PID" ]; then
   echo "[beacon-deploy] Stopping previous process on port $PORT (PID $EXISTING_PID)..."
-  kill -TERM "$EXISTING_PID" 2>/dev/null || true
+  kill -TERM $EXISTING_PID 2>/dev/null || true
   sleep 1
 fi
-
-LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
-LOG_DIR="$HOME/beaconmac/logs"
-mkdir -p "$LOG_DIR"
-APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
-SERVER_LOG="$HOME/beaconmac/server.log"
 
 START_CMD_TRIMMED=$(printf '%s' "$START_CMD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 FINAL_START_CMD=""
@@ -283,16 +301,47 @@ else
   echo "[beacon-deploy] Starting app on port $PORT: $FINAL_START_CMD"
 fi
 
-PORT="$PORT" nohup /bin/zsh -lc "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+echo "=== [beacon-deploy] $(date -u +"%Y-%m-%dT%H:%M:%SZ") starting (PORT=$PORT): $FINAL_START_CMD ===" >> "$APP_LOG"
+if [ -x /usr/bin/perl ]; then
+  PORT="$PORT" nohup /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+else
+  PORT="$PORT" nohup /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+fi
 
 NEW_PID=$!
+echo "$NEW_PID" > "$PID_FILE"
 disown "$NEW_PID" 2>/dev/null || true
-sleep 1
-if ! kill -0 "$NEW_PID" 2>/dev/null; then
+
+# Poll up to 2 seconds to catch immediate exits and allow stdout/stderr buffers to flush
+EXITED_EARLY=0
+for _ in 1 2 3 4 5 6 7 8; do
+  if ! kill -0 "$NEW_PID" 2>/dev/null; then
+    EXITED_EARLY=1
+    break
+  fi
+  sleep 0.25
+done
+
+if [ "$EXITED_EARLY" -eq 1 ]; then
+  rm -f "$PID_FILE"
+  sleep 0.25
   echo "[beacon-deploy] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
-  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  tail -n 25 "$APP_LOG" 2>/dev/null >&2 || true
   exit 15
 fi
+
+# Detect if the launched app actually bound to a different local port than $PORT
+BOUND_PORTS=$(lsof -Pan -p "$NEW_PID" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $9}' | sed -E 's/.*:([0-9]+)$/\1/' | sort -u | tr '\n' ' ' || true)
+CHILD_PIDS=$(pgrep -P "$NEW_PID" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || true)
+if [ -n "$CHILD_PIDS" ]; then
+  CHILD_PORTS=$(lsof -Pan -p "$CHILD_PIDS" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $9}' | sed -E 's/.*:([0-9]+)$/\1/' | sort -u | tr '\n' ' ' || true)
+  BOUND_PORTS="$BOUND_PORTS $CHILD_PORTS"
+fi
+BOUND_PORTS=$(echo "$BOUND_PORTS" | xargs 2>/dev/null || true)
+if [ -n "$BOUND_PORTS" ] && ! echo " $BOUND_PORTS " | grep -q " $PORT "; then
+  echo "[beacon-deploy] NOTE: App is listening on port(s) [$BOUND_PORTS] instead of configured port $PORT. Check if your server hardcodes its port or update Monitor URL in Edit App."
+fi
+
 SUMMARY="[beacon-deploy] Deployed commit $CURRENT_SHA on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $SUMMARY" >> "$SERVER_LOG"

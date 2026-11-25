@@ -24,7 +24,9 @@ let package = Package(
                 .linkedFramework("Network"),
                 .linkedFramework("UserNotifications"),
                 .linkedFramework("ServiceManagement"),
-                .linkedFramework("IOKit")
+                .linkedFramework("IOKit"),
+                .linkedFramework("UniformTypeIdentifiers"),
+                .linkedFramework("CryptoKit")
             ]
         )
     ]

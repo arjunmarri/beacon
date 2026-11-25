@@ -3,6 +3,9 @@ import SwiftUI
 struct TrafficLightLampView: View {
     let active: TrafficLightColor
     let label: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var palette: BeaconPalette { BeaconPalette(colorScheme: colorScheme) }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -13,10 +16,10 @@ struct TrafficLightLampView: View {
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 5)
-            .background(Color(red: 0.043, green: 0.051, blue: 0.063))
+            .background(palette.isLight ? Color(red: 0.93, green: 0.945, blue: 0.97) : Color(red: 0.043, green: 0.051, blue: 0.063))
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(palette.border, lineWidth: 1)
             )
             .clipShape(Capsule())
 
@@ -31,16 +34,16 @@ struct TrafficLightLampView: View {
 
     private func lampDot(color: Color, lit: Bool) -> some View {
         Circle()
-            .fill(lit ? color : Color.white.opacity(0.12))
+            .fill(lit ? color : (palette.isLight ? Color.black.opacity(0.12) : Color.white.opacity(0.12)))
             .frame(width: 8, height: 8)
-            .shadow(color: lit ? color.opacity(0.75) : .clear, radius: 4)
+            .shadow(color: lit ? color.opacity(palette.isLight ? 0.45 : 0.75) : .clear, radius: 4)
     }
 
     private var labelColor: Color {
         switch active {
-        case .green: return Color(red: 0.20, green: 0.83, blue: 0.60)
-        case .amber: return Color(red: 0.98, green: 0.75, blue: 0.14)
-        case .red: return Color(red: 0.98, green: 0.44, blue: 0.52)
+        case .green: return palette.successText
+        case .amber: return palette.warningText
+        case .red: return palette.errorText
         }
     }
 }

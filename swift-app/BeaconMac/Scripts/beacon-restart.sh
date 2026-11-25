@@ -28,7 +28,7 @@ fi
 # Stop any existing listener on the target app's port
 EXISTING_PID=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$EXISTING_PID" ]; then
-  kill -TERM "$EXISTING_PID" 2>/dev/null || true
+  kill -TERM $EXISTING_PID 2>/dev/null || true
   sleep 1
 fi
 
@@ -147,9 +147,26 @@ resolve_auto_start_cmd() {
 
 LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
 LOG_DIR="$HOME/beaconmac/logs"
-mkdir -p "$LOG_DIR"
+PID_DIR="$HOME/beaconmac/pids"
+mkdir -p "$LOG_DIR" "$PID_DIR"
 APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
+PID_FILE="$PID_DIR/${LOG_SLUG:-app}-${PORT}.pid"
 SERVER_LOG="$HOME/beaconmac/server.log"
+
+if [ -f "$PID_FILE" ]; then
+  OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill -TERM -- "-$OLD_PID" 2>/dev/null || true
+    pkill -TERM -P "$OLD_PID" 2>/dev/null || true
+    kill -TERM "$OLD_PID" 2>/dev/null || true
+    sleep 0.6
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+      kill -KILL -- "-$OLD_PID" 2>/dev/null || true
+      kill -KILL "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PID_FILE"
+fi
 
 PM=$(detect_pm)
 CUSTOM_CMD_TRIMMED=$(printf '%s' "$CUSTOM_CMD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -174,15 +191,34 @@ else
   FINAL_START_CMD="$CUSTOM_CMD_TRIMMED"
 fi
 
-PORT="$PORT" nohup /bin/zsh -lc "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+echo "=== [beacon-restart] $(date -u +"%Y-%m-%dT%H:%M:%SZ") starting (PORT=$PORT): $FINAL_START_CMD ===" >> "$APP_LOG"
+if [ -x /usr/bin/perl ]; then
+  PORT="$PORT" nohup /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+else
+  PORT="$PORT" nohup /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+fi
+
 NEW_PID=$!
+echo "$NEW_PID" > "$PID_FILE"
 disown "$NEW_PID" 2>/dev/null || true
-sleep 1
-if ! kill -0 "$NEW_PID" 2>/dev/null; then
+
+EXITED_EARLY=0
+for _ in 1 2 3 4 5 6 7 8; do
+  if ! kill -0 "$NEW_PID" 2>/dev/null; then
+    EXITED_EARLY=1
+    break
+  fi
+  sleep 0.25
+done
+
+if [ "$EXITED_EARLY" -eq 1 ]; then
+  rm -f "$PID_FILE"
+  sleep 0.25
   echo "[beacon-restart] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
-  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  tail -n 25 "$APP_LOG" 2>/dev/null >&2 || true
   exit 15
 fi
+
 SUMMARY="Restarted target local app in $WORKDIR on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") [beacon-restart] $SUMMARY" >> "$SERVER_LOG"

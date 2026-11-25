@@ -78,7 +78,7 @@ public final class AppDeploymentService: Sendable {
         var tools: [DependencyToolStatus] = []
         var appNotes: [String] = []
 
-        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun", "python3", "uv", "go"]
+        let optionalToolNames: Set<String> = ["pnpm", "yarn", "bun", "python3", "uv", "go", "nginx", "cloudflared"]
 
         for line in res.stdoutLines {
             let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
@@ -107,7 +107,7 @@ public final class AppDeploymentService: Sendable {
         requestedTools: [String],
         strategy: DependencyInstallStrategy = .auto
     ) async -> ScriptExecutionResult {
-        let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git"]
+        let allowedTools: Set<String> = ["node", "npm", "pnpm", "yarn", "bun", "python3", "uv", "go", "cargo", "rust", "git", "nginx", "cloudflared"]
         let safeTools = requestedTools
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { allowedTools.contains($0) }
@@ -137,8 +137,13 @@ public final class AppDeploymentService: Sendable {
         return await runUnixScript(named: "beacon-restart.sh", arguments: args)
     }
 
-    public func stopApp(port: Int) async -> ScriptExecutionResult {
-        await runUnixScript(named: "beacon-stop.sh", arguments: [String(port)])
+    public func stopApp(port: Int, workingDir: String = "") async -> ScriptExecutionResult {
+        var args = [String(port)]
+        let trimmed = workingDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            args.append(trimmed)
+        }
+        return await runUnixScript(named: "beacon-stop.sh", arguments: args)
     }
 
     public struct LaunchdProbeResult: Sendable {
@@ -225,6 +230,148 @@ public final class AppDeploymentService: Sendable {
         await runUnixScript(
             named: "beacon-node-server.sh",
             arguments: [action, String(port), registryPath]
+        )
+    }
+
+    public struct NginxScriptProbeResult: Sendable {
+        public let result: ScriptExecutionResult
+        public let isInstalled: Bool?
+        public let isRunning: Bool?
+        public let pid: Int?
+        public let version: String?
+    }
+
+    public func runNginxAction(
+        _ action: String,
+        configPath: String,
+        port: Int
+    ) async -> NginxScriptProbeResult {
+        let res = await runUnixScript(
+            named: "beacon-nginx.sh",
+            arguments: [action, configPath, String(port)]
+        )
+        var installed: Bool?
+        var running: Bool?
+        var pid: Int?
+        var version: String?
+
+        for line in res.stdoutLines {
+            let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 4, parts[0] == "NGINX" else { continue }
+            switch parts[1] {
+            case "INSTALLED":
+                installed = (parts[2] == "YES")
+                if parts[2] == "YES" {
+                    version = parts[3]
+                }
+            case "RUNNING":
+                running = (parts[2] == "YES")
+                if parts[2] == "YES" {
+                    pid = Int(parts[3].trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            default:
+                break
+            }
+        }
+
+        return NginxScriptProbeResult(
+            result: res,
+            isInstalled: installed,
+            isRunning: running,
+            pid: pid,
+            version: version
+        )
+    }
+
+    public struct CloudflareTunnelScriptEntry: Sendable {
+        public let tunnelID: String
+        public let pid: Int
+        public let publicURL: String?
+        public let targetURL: String?
+        public let mode: CloudflareTunnelMode
+    }
+
+    public struct CloudflareTunnelProbeResult: Sendable {
+        public let result: ScriptExecutionResult
+        public let isInstalled: Bool?
+        public let version: String?
+        public let isRunning: Bool?
+        public let pid: Int?
+        public let publicURL: String?
+        public let entries: [CloudflareTunnelScriptEntry]
+    }
+
+    public func runCloudflaredAction(
+        _ action: String,
+        tunnelID: String = "all",
+        extraArgs: [String] = []
+    ) async -> CloudflareTunnelProbeResult {
+        var args: [String] = [action, tunnelID]
+        args.append(contentsOf: extraArgs)
+        let res = await runUnixScript(
+            named: "beacon-cloudflared.sh",
+            arguments: args
+        )
+
+        var installed: Bool?
+        var version: String?
+        var running: Bool?
+        var pid: Int?
+        var publicURL: String?
+        var entries: [CloudflareTunnelScriptEntry] = []
+
+        for line in res.stdoutLines {
+            if line.hasPrefix("CLOUDFLARED:INSTALLED:") {
+                let parts = line.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
+                if parts.count == 4 {
+                    installed = (parts[2] == "YES")
+                    if parts[2] == "YES" {
+                        version = parts[3]
+                    }
+                }
+            } else if line.hasPrefix("TUNNEL:RUNNING:") {
+                let parts = line.split(separator: ":", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+                if parts.count >= 4 {
+                    running = (parts[2] == "YES")
+                    if parts[2] == "YES" {
+                        pid = Int(parts[3].trimmingCharacters(in: .whitespacesAndNewlines))
+                        if parts.count >= 5 {
+                            let urlCandidate = parts[4].trimmingCharacters(in: .whitespacesAndNewlines)
+                            if urlCandidate.hasPrefix("https://") {
+                                publicURL = urlCandidate
+                            }
+                        }
+                    }
+                }
+            } else if line.hasPrefix("TUNNEL:ENTRY:") {
+                // Format: TUNNEL:ENTRY:<tid>:<pid>:<pub_url>|<tgt_url>|<mode>
+                let parts = line.split(separator: ":", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+                if parts.count == 5, let parsedPID = Int(parts[3].trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    let tid = parts[2]
+                    let payload = parts[4].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    let pub = payload.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let tgt = payload.count > 1 ? payload[1].trimmingCharacters(in: .whitespacesAndNewlines) : nil
+                    let rawMode = payload.count > 2 ? payload[2].trimmingCharacters(in: .whitespacesAndNewlines) : "quick"
+                    let mode: CloudflareTunnelMode = (rawMode == "api") ? .apiManaged : .quickTunnel
+                    entries.append(CloudflareTunnelScriptEntry(
+                        tunnelID: tid,
+                        pid: parsedPID,
+                        publicURL: (pub?.hasPrefix("https://") == true) ? pub : nil,
+                        targetURL: (tgt?.isEmpty == false) ? tgt : nil,
+                        mode: mode
+                    ))
+                }
+            }
+        }
+
+        return CloudflareTunnelProbeResult(
+            result: res,
+            isInstalled: installed,
+            version: version,
+            isRunning: running,
+            pid: pid,
+            publicURL: publicURL,
+            entries: entries
         )
     }
 

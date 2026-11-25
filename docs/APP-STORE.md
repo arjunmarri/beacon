@@ -38,9 +38,9 @@ swift run
 ---
 
 ## Step 2: Install App Sandbox Hook Scripts (Mac App Store Builds)
-Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, or `launchctl`. BeaconMac uses Apple's official **`NSUserUnixTask`** API with all 7 helper scripts embedded inside the app:
+Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spawning host binaries like `git`, `node`, `npm`, `pnpm`, `yarn`, `bun`, `nginx`, or `launchctl`. BeaconMac uses Apple's official **`NSUserUnixTask`** API with all 10 helper scripts embedded inside the app:
 
-- **Inside BeaconMac (1-Click):** Click **Install Hook Scripts** in the setup banner to write all 7 scripts into `~/Library/Application Scripts/<your-bundle-id>/` via macOS's `NSOpenPanel`.
+- **Inside BeaconMac (1-Click):** Click **Install Hook Scripts** in the setup banner to write all 10 scripts into `~/Library/Application Scripts/<your-bundle-id>/` via macOS's `NSOpenPanel`.
 - **Or via Terminal (One Command):**
   ```bash
   cd swift-app/BeaconMac
@@ -48,7 +48,7 @@ Apple's **Mac App Store App Sandbox** prevents sandboxed apps from directly spaw
   ```
   *(Replace `com.beaconmac.app` with your final Bundle Identifier.)*
 
-This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, and `beacon-startup.sh`. Non-sandboxed launches (`swift run` and Direct Developer ID DMGs) auto-install these scripts automatically on boot.
+This installs `beacon-deploy.sh`, `beacon-check-deps.sh`, `beacon-launchd.sh`, `beacon-restart.sh`, `beacon-stop.sh`, `beacon-git-pull.sh`, `beacon-startup.sh`, `beacon-node-server.sh`, `beacon-node-host.mjs`, and `beacon-nginx.sh`. Non-sandboxed launches (`swift run` and Direct Developer ID DMGs) auto-install all 10 scripts automatically on boot.
 
 ---
 

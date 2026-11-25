@@ -5,6 +5,7 @@ struct AppEditorSheet: View {
     @Bindable var controller: BeaconController
     let existingApp: ManagedApp?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var name: String = ""
     @State private var stackPreset: AppStackPreset = .auto
@@ -20,15 +21,17 @@ struct AppEditorSheet: View {
     @State private var runOnStartup: Bool = false
     @State private var detectedScriptsNote: String?
 
-    private let bg = Color(red: 0.055, green: 0.067, blue: 0.086)
-    private let inputBg = Color(red: 0.035, green: 0.043, blue: 0.055)
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text(existingApp == nil ? "Add Local App to Monitor & Deploy" : "Edit \(existingApp?.name ?? "App")")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                BeaconSectionHeaderText(
+                    title: existingApp == nil ? "Add Local App to Monitor & Deploy" : "Edit \(existingApp?.name ?? "App")",
+                    fontSize: 16
+                )
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .buttonStyle(BeaconSecondaryButtonStyle())
@@ -40,7 +43,7 @@ struct AppEditorSheet: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Quick-fill from connected GitHub repositories")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(palette.secondaryText)
                             Picker("GitHub Repo", selection: Binding(
                                 get: { repoURL },
                                 set: { selectedCloneURL in
@@ -71,7 +74,7 @@ struct AppEditorSheet: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Stack Preset")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(palette.secondaryText)
                             Picker("Stack", selection: $stackPreset) {
                                 ForEach(AppStackPreset.allCases) { preset in
                                     Text(preset.rawValue).tag(preset)
@@ -98,15 +101,16 @@ struct AppEditorSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Local Folder (cloned automatically if empty or missing)")
                             .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                         HStack(spacing: 8) {
                             TextField("/Users/you/BeaconApps/my-app", text: $localPath)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(palette.primaryText)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
-                                .background(inputBg)
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.12)))
+                                .background(palette.input)
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
                                 .clipShape(RoundedRectangle(cornerRadius: 7))
                             Button("Browse...") {
                                 let panel = NSOpenPanel()
@@ -124,12 +128,12 @@ struct AppEditorSheet: View {
 
                     field("Local App URL to Monitor", placeholder: "http://localhost:5173 or http://127.0.0.1:3000", text: $monitorURL)
 
-                    Divider().overlay(Color.white.opacity(0.08))
+                    Divider().overlay(palette.border)
 
                     HStack {
                         Text("Build & Run Commands")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(palette.sectionHeader)
                         Spacer()
                         Button {
                             detectScriptsFromPackageJSON(silentIfMissing: false)
@@ -143,12 +147,12 @@ struct AppEditorSheet: View {
                     if let note = detectedScriptsNote {
                         Text(note)
                             .font(.system(size: 11))
-                            .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.65))
+                            .foregroundStyle(palette.successText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.08)))
+                            .background(palette.row)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(palette.border))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
 
@@ -156,7 +160,7 @@ struct AppEditorSheet: View {
                     field("Build Command (auto = run build only if script exists; blank = skip)", placeholder: "auto", text: $buildCommand)
                     field("Start Command (auto = detect dev/start/serve script)", placeholder: "auto", text: $startCommand)
 
-                    Divider().overlay(Color.white.opacity(0.08))
+                    Divider().overlay(palette.border)
 
                     HStack(spacing: 20) {
                         Toggle("Auto-restart on crash", isOn: $autoRestart)
@@ -164,7 +168,7 @@ struct AppEditorSheet: View {
                         Toggle("Run on macOS startup / cron", isOn: $runOnStartup)
                     }
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.bodyText)
                 }
             }
 
@@ -203,7 +207,7 @@ struct AppEditorSheet: View {
         }
         .padding(22)
         .frame(width: 620, height: 630)
-        .background(bg)
+        .background(palette.sheetCanvas)
         .onAppear {
             if let app = existingApp {
                 name = app.name
@@ -296,14 +300,15 @@ struct AppEditorSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
             TextField(placeholder, text: text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(palette.primaryText)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(inputBg)
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.12)))
+                .background(palette.input)
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
         }
     }

@@ -53,7 +53,9 @@ public enum EmbeddedScripts {
         "beacon-startup.sh",
         "beacon-launchd.sh",
         "beacon-node-server.sh",
-        "beacon-node-host.mjs"
+        "beacon-node-host.mjs",
+        "beacon-nginx.sh",
+        "beacon-cloudflared.sh"
     ]
 
     public static func areScriptsInstalled() -> Bool {
@@ -117,7 +119,7 @@ public enum EmbeddedScripts {
 
         let panel = NSOpenPanel()
         panel.title = "Install BeaconMac Hook Scripts"
-        panel.message = "Select \"\(targetDir.lastPathComponent)\" (or \"Application Scripts\") and click \"Install Scripts\" to install BeaconMac's 7 helper scripts."
+        panel.message = "Select \"\(targetDir.lastPathComponent)\" (or \"Application Scripts\") and click \"Install Scripts\" to install BeaconMac's \(requiredScriptNames.count) helper scripts."
         panel.prompt = "Install Scripts"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -176,13 +178,20 @@ public enum EmbeddedScripts {
         "beacon-startup.sh": startupScript,
         "beacon-launchd.sh": launchdScript,
         "beacon-node-server.sh": nodeServerScript,
-        "beacon-node-host.mjs": nodeHostScript
+        "beacon-node-host.mjs": nodeHostScript,
+        "beacon-nginx.sh": nginxScript,
+        "beacon-cloudflared.sh": cloudflaredScript
     ]
 
     // MARK: - Embedded Script Bodies
 
     private static let checkDepsScript = #"""
 #!/bin/bash
+# Place in: ~/Library/Application Scripts/<YOUR_BUNDLE_ID>/beacon-check-deps.sh
+# Audits required macOS runtime tools and project dependencies, OR when invoked with
+# `--install [workdir] [tools_csv] [strategy]`, performs a silent, non-interactive
+# installation of missing runtimes (node, bun, pnpm, yarn, python3, uv, go, git)
+# via Homebrew or verified direct official downloads, plus auto-detected project dependencies.
 set -euo pipefail
 
 export NONINTERACTIVE=1
@@ -192,7 +201,7 @@ export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 export PNPM_HOME="$HOME/Library/pnpm"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.local/node/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.local/node/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 if [ -d "$HOME/.nvm/versions/node" ]; then
   NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
   if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
@@ -378,6 +387,54 @@ install_runtime_tool() {
         xcode-select --install >/dev/null 2>&1 || true
       fi
       ;;
+    nginx)
+      if can_use_brew; then
+        brew install --quiet nginx
+      else
+        echo "[beacon-deps] ERROR: Homebrew is required for silent NGINX installation on macOS. Install Homebrew from https://brew.sh first." >&2
+        return 1
+      fi
+      ;;
+    cloudflared)
+      if can_use_brew; then
+        brew install --quiet cloudflared
+      elif can_use_direct; then
+        local cf_arch
+        case "$(uname -m)" in
+          arm64|aarch64) cf_arch="arm64" ;;
+          x86_64)        cf_arch="amd64" ;;
+          *)
+            echo "[beacon-deps] ERROR: Unsupported CPU architecture $(uname -m) for direct cloudflared download." >&2
+            return 1
+            ;;
+        esac
+        local cf_tmp
+        cf_tmp=$(mktemp -d)
+        echo "[beacon-deps] Downloading official Cloudflare Tunnel binary (cloudflared-darwin-${cf_arch}.tgz)..."
+        if curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${cf_arch}.tgz" -o "${cf_tmp}/cloudflared.tgz"; then
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "${cf_tmp}/cloudflared.tgz" -C "$cf_tmp"
+          if [ -f "${cf_tmp}/cloudflared" ]; then
+            mv -f "${cf_tmp}/cloudflared" "$HOME/.local/bin/cloudflared"
+            chmod +x "$HOME/.local/bin/cloudflared"
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "[beacon-deps] Installed cloudflared directly into $HOME/.local/bin/cloudflared."
+          else
+            rm -rf "$cf_tmp"
+            echo "[beacon-deps] ERROR: Downloaded archive did not contain cloudflared binary." >&2
+            return 1
+          fi
+        else
+          rm -rf "$cf_tmp"
+          echo "[beacon-deps] ERROR: Failed to download cloudflared from GitHub releases." >&2
+          return 1
+        fi
+        rm -rf "$cf_tmp"
+      else
+        echo "[beacon-deps] ERROR: Homebrew is not installed and direct download is disabled." >&2
+        return 1
+      fi
+      ;;
     *)
       echo "[beacon-deps] Skipping unknown runtime '$tool'."
       ;;
@@ -526,7 +583,11 @@ check_bin() {
   local mode="${2:-required}"
   if command -v "$name" >/dev/null 2>&1; then
     local ver
-    ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
+    if [ "$name" = "nginx" ]; then
+      ver=$("$name" -v 2>&1 | sed 's/nginx version: //' | head -n 1 || echo "installed")
+    else
+      ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
+    fi
     echo "TOOL:$name:OK:$ver"
   elif [ "$mode" = "optional" ]; then
     echo "TOOL:$name:OPTIONAL:not installed (optional)"
@@ -544,6 +605,8 @@ check_bin bun optional
 check_bin python3 optional
 check_bin uv optional
 check_bin go optional
+check_bin nginx optional
+check_bin cloudflared optional
 
 if [ -n "$WORKDIR" ]; then
   if [ ! -d "$WORKDIR" ]; then
@@ -799,7 +862,7 @@ if [ -f "package.json" ]; then
       esac
     else
       echo "[beacon-deploy] Running install command: $INSTALL_CMD"
-      /bin/zsh -lc "$INSTALL_CMD"
+      /bin/bash -c "$INSTALL_CMD"
     fi
   else
     echo "[beacon-deploy] Dependencies up to date (node_modules present)."
@@ -820,22 +883,40 @@ if [ -n "$BUILD_CMD_TRIMMED" ] && [ "$BUILD_CMD_TRIMMED" != "skip" ]; then
     echo "[beacon-deploy] WARNING: \"$BUILD_CMD_TRIMMED\" requested, but package.json has no \"build\" script (available: $(pkg_script_names)). Skipping build step."
   else
     echo "[beacon-deploy] Building application: $BUILD_CMD_TRIMMED"
-    /bin/zsh -lc "$BUILD_CMD_TRIMMED"
+    /bin/bash -c "$BUILD_CMD_TRIMMED"
   fi
+fi
+
+LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
+LOG_DIR="$HOME/beaconmac/logs"
+PID_DIR="$HOME/beaconmac/pids"
+mkdir -p "$LOG_DIR" "$PID_DIR"
+APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
+PID_FILE="$PID_DIR/${LOG_SLUG:-app}-${PORT}.pid"
+SERVER_LOG="$HOME/beaconmac/server.log"
+
+if [ -f "$PID_FILE" ]; then
+  OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    echo "[beacon-deploy] Stopping previous tracked instance (PID $OLD_PID)..."
+    kill -TERM -- "-$OLD_PID" 2>/dev/null || true
+    pkill -TERM -P "$OLD_PID" 2>/dev/null || true
+    kill -TERM "$OLD_PID" 2>/dev/null || true
+    sleep 0.6
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+      kill -KILL -- "-$OLD_PID" 2>/dev/null || true
+      kill -KILL "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PID_FILE"
 fi
 
 EXISTING_PID=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$EXISTING_PID" ]; then
   echo "[beacon-deploy] Stopping previous process on port $PORT (PID $EXISTING_PID)..."
-  kill -TERM "$EXISTING_PID" 2>/dev/null || true
+  kill -TERM $EXISTING_PID 2>/dev/null || true
   sleep 1
 fi
-
-LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
-LOG_DIR="$HOME/beaconmac/logs"
-mkdir -p "$LOG_DIR"
-APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
-SERVER_LOG="$HOME/beaconmac/server.log"
 
 START_CMD_TRIMMED=$(printf '%s' "$START_CMD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 FINAL_START_CMD=""
@@ -860,16 +941,45 @@ else
   echo "[beacon-deploy] Starting app on port $PORT: $FINAL_START_CMD"
 fi
 
-PORT="$PORT" nohup /bin/zsh -lc "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+echo "=== [beacon-deploy] $(date -u +"%Y-%m-%dT%H:%M:%SZ") starting (PORT=$PORT): $FINAL_START_CMD ===" >> "$APP_LOG"
+if [ -x /usr/bin/perl ]; then
+  PORT="$PORT" nohup /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+else
+  PORT="$PORT" nohup /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+fi
 
 NEW_PID=$!
+echo "$NEW_PID" > "$PID_FILE"
 disown "$NEW_PID" 2>/dev/null || true
-sleep 1
-if ! kill -0 "$NEW_PID" 2>/dev/null; then
+
+EXITED_EARLY=0
+for _ in 1 2 3 4 5 6 7 8; do
+  if ! kill -0 "$NEW_PID" 2>/dev/null; then
+    EXITED_EARLY=1
+    break
+  fi
+  sleep 0.25
+done
+
+if [ "$EXITED_EARLY" -eq 1 ]; then
+  rm -f "$PID_FILE"
+  sleep 0.25
   echo "[beacon-deploy] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
-  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  tail -n 25 "$APP_LOG" 2>/dev/null >&2 || true
   exit 15
 fi
+
+BOUND_PORTS=$(lsof -Pan -p "$NEW_PID" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $9}' | sed -E 's/.*:([0-9]+)$/\1/' | sort -u | tr '\n' ' ' || true)
+CHILD_PIDS=$(pgrep -P "$NEW_PID" 2>/dev/null | tr '\n' ',' | sed 's/,$//' || true)
+if [ -n "$CHILD_PIDS" ]; then
+  CHILD_PORTS=$(lsof -Pan -p "$CHILD_PIDS" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $9}' | sed -E 's/.*:([0-9]+)$/\1/' | sort -u | tr '\n' ' ' || true)
+  BOUND_PORTS="$BOUND_PORTS $CHILD_PORTS"
+fi
+BOUND_PORTS=$(echo "$BOUND_PORTS" | xargs 2>/dev/null || true)
+if [ -n "$BOUND_PORTS" ] && ! echo " $BOUND_PORTS " | grep -q " $PORT "; then
+  echo "[beacon-deploy] NOTE: App is listening on port(s) [$BOUND_PORTS] instead of configured port $PORT. Check if your server hardcodes its port or update Monitor URL in Edit App."
+fi
+
 SUMMARY="[beacon-deploy] Deployed commit $CURRENT_SHA on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $SUMMARY" >> "$SERVER_LOG"
@@ -898,7 +1008,7 @@ fi
 
 EXISTING_PID=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$EXISTING_PID" ]; then
-  kill -TERM "$EXISTING_PID" 2>/dev/null || true
+  kill -TERM $EXISTING_PID 2>/dev/null || true
   sleep 1
 fi
 
@@ -1017,9 +1127,26 @@ resolve_auto_start_cmd() {
 
 LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
 LOG_DIR="$HOME/beaconmac/logs"
-mkdir -p "$LOG_DIR"
+PID_DIR="$HOME/beaconmac/pids"
+mkdir -p "$LOG_DIR" "$PID_DIR"
 APP_LOG="$LOG_DIR/${LOG_SLUG:-app}-${PORT}.log"
+PID_FILE="$PID_DIR/${LOG_SLUG:-app}-${PORT}.pid"
 SERVER_LOG="$HOME/beaconmac/server.log"
+
+if [ -f "$PID_FILE" ]; then
+  OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill -TERM -- "-$OLD_PID" 2>/dev/null || true
+    pkill -TERM -P "$OLD_PID" 2>/dev/null || true
+    kill -TERM "$OLD_PID" 2>/dev/null || true
+    sleep 0.6
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+      kill -KILL -- "-$OLD_PID" 2>/dev/null || true
+      kill -KILL "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PID_FILE"
+fi
 
 PM=$(detect_pm)
 CUSTOM_CMD_TRIMMED=$(printf '%s' "$CUSTOM_CMD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -1044,15 +1171,34 @@ else
   FINAL_START_CMD="$CUSTOM_CMD_TRIMMED"
 fi
 
-PORT="$PORT" nohup /bin/zsh -lc "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+echo "=== [beacon-restart] $(date -u +"%Y-%m-%dT%H:%M:%SZ") starting (PORT=$PORT): $FINAL_START_CMD ===" >> "$APP_LOG"
+if [ -x /usr/bin/perl ]; then
+  PORT="$PORT" nohup /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+else
+  PORT="$PORT" nohup /bin/bash -c "$FINAL_START_CMD" </dev/null >>"$APP_LOG" 2>&1 &
+fi
+
 NEW_PID=$!
+echo "$NEW_PID" > "$PID_FILE"
 disown "$NEW_PID" 2>/dev/null || true
-sleep 1
-if ! kill -0 "$NEW_PID" 2>/dev/null; then
+
+EXITED_EARLY=0
+for _ in 1 2 3 4 5 6 7 8; do
+  if ! kill -0 "$NEW_PID" 2>/dev/null; then
+    EXITED_EARLY=1
+    break
+  fi
+  sleep 0.25
+done
+
+if [ "$EXITED_EARLY" -eq 1 ]; then
+  rm -f "$PID_FILE"
+  sleep 0.25
   echo "[beacon-restart] ERROR: Process exited immediately on port $PORT. Recent output from $APP_LOG:" >&2
-  tail -n 15 "$APP_LOG" 2>/dev/null >&2 || true
+  tail -n 25 "$APP_LOG" 2>/dev/null >&2 || true
   exit 15
 fi
+
 SUMMARY="Restarted target local app in $WORKDIR on port $PORT (PID $NEW_PID, log: $APP_LOG)"
 echo "$SUMMARY"
 echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") [beacon-restart] $SUMMARY" >> "$SERVER_LOG"
@@ -1063,19 +1209,116 @@ echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") [beacon-restart] $SUMMARY" >> "$SERVER_LO
 set -euo pipefail
 
 PORT="${1:-}"
+WORKDIR="${2:-}"
+
 if [ -z "$PORT" ]; then
   echo "Port number required" >&2
   exit 1
 fi
 
-PIDS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
-if [ -z "$PIDS" ]; then
-  echo "No process listening on port $PORT"
-  exit 0
+PID_DIR="$HOME/beaconmac/pids"
+STOPPED_ANY=0
+
+kill_tree_term() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  pkill -TERM -P "$pid" 2>/dev/null || true
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+kill_tree_kill() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  pkill -KILL -P "$pid" 2>/dev/null || true
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+TRACKED_PIDS=()
+if [ -d "$PID_DIR" ]; then
+  if [ -n "$WORKDIR" ]; then
+    LOG_SLUG=$(basename "$WORKDIR" | tr -cd '[:alnum:]-_')
+    CAND_FILE="$PID_DIR/${LOG_SLUG:-app}-${PORT}.pid"
+    if [ -f "$CAND_FILE" ]; then
+      TPID=$(cat "$CAND_FILE" 2>/dev/null || true)
+      if [ -n "$TPID" ]; then
+        TRACKED_PIDS+=("$TPID")
+      fi
+      rm -f "$CAND_FILE"
+    fi
+  fi
+  for pfile in "$PID_DIR"/*-"${PORT}.pid"; do
+    [ -f "$pfile" ] || continue
+    TPID=$(cat "$pfile" 2>/dev/null || true)
+    if [ -n "$TPID" ]; then
+      TRACKED_PIDS+=("$TPID")
+    fi
+    rm -f "$pfile"
+  done
 fi
 
-kill -TERM $PIDS 2>/dev/null || true
-echo "Sent SIGTERM to process(es) on port $PORT: $PIDS"
+for pid in "${TRACKED_PIDS[@]:-}"; do
+  [ -n "$pid" ] || continue
+  if kill -0 "$pid" 2>/dev/null; then
+    kill_tree_term "$pid"
+    STOPPED_ANY=1
+  fi
+done
+
+PORT_PIDS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+if [ -n "$PORT_PIDS" ]; then
+  for pid in $PORT_PIDS; do
+    PPID_VAL=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+    PGID_VAL=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+    kill_tree_term "$pid"
+    if [ -n "$PPID_VAL" ] && [ "$PPID_VAL" -gt 1 ] 2>/dev/null; then
+      PCOMM=$(ps -o command= -p "$PPID_VAL" 2>/dev/null || true)
+      if echo "$PCOMM" | grep -qiE '(bun|npm|pnpm|yarn|tsx|nodemon|vite|next|node)'; then
+        kill_tree_term "$PPID_VAL"
+      fi
+    fi
+    if [ -n "$PGID_VAL" ] && [ "$PGID_VAL" -gt 1 ] 2>/dev/null; then
+      MY_PGID=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)
+      if [ "$PGID_VAL" != "$MY_PGID" ]; then
+        kill -TERM -- "-$PGID_VAL" 2>/dev/null || true
+      fi
+    fi
+    STOPPED_ANY=1
+  done
+fi
+
+if [ "$STOPPED_ANY" -eq 1 ]; then
+  for _ in 1 2 3 4 5 6 7 8; do
+    STILL_PORT=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+    STILL_TRACKED=""
+    for pid in "${TRACKED_PIDS[@]:-}"; do
+      if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        STILL_TRACKED="$STILL_TRACKED $pid"
+      fi
+    done
+    if [ -z "$STILL_PORT" ] && [ -z "$STILL_TRACKED" ]; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  for pid in "${TRACKED_PIDS[@]:-}"; do
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill_tree_kill "$pid"
+    fi
+  done
+
+  REMAINING=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+  if [ -n "$REMAINING" ]; then
+    for pid in $REMAINING; do
+      kill_tree_kill "$pid"
+    done
+  fi
+  echo "Stopped process(es) on port $PORT"
+else
+  echo "No process listening on port $PORT"
+fi
 """#
 
     private static let gitPullScript = #"""
@@ -1926,5 +2169,609 @@ function shutdown() {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+"""#
+
+    private static let nginxScript = #"""
+#!/bin/bash
+# Manages BeaconMac's built-in NGINX reverse proxy instance using a dedicated
+# user-space nginx.conf, PID file, and temp/log directories under ~/beaconmac/nginx.
+# Never requires sudo and never modifies Homebrew's system nginx.conf.
+#
+# Arguments:
+#   $1 = action ("start" | "stop" | "restart" | "reload" | "test" | "status")
+#   $2 = path to generated nginx.conf
+#   $3 = listen port (default: 8080)
+set -euo pipefail
+
+ACTION="${1:-status}"
+CONF_PATH="${2:-$HOME/Library/Application Support/Beacon/nginx/nginx.conf}"
+PORT="${3:-8080}"
+
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+
+NGINX_DIR="$HOME/beaconmac/nginx"
+PID_FILE="$NGINX_DIR/nginx.pid"
+ERROR_LOG="$NGINX_DIR/error.log"
+ACCESS_LOG="$NGINX_DIR/access.log"
+
+mkdir -p "$NGINX_DIR/client_body" "$NGINX_DIR/proxy_temp" "$NGINX_DIR/fastcgi_temp" "$NGINX_DIR/uwsgi_temp" "$NGINX_DIR/scgi_temp"
+
+find_nginx_bin() {
+  for candidate in \
+    "$(command -v nginx 2>/dev/null || true)" \
+    "/opt/homebrew/bin/nginx" \
+    "/opt/homebrew/sbin/nginx" \
+    "/usr/local/bin/nginx" \
+    "/usr/local/sbin/nginx" \
+    "$HOME/.local/bin/nginx"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+NGINX_BIN=$(find_nginx_bin || true)
+
+read_pid() {
+  if [ -f "$PID_FILE" ]; then
+    local p
+    p=$(tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+      echo "$p"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+stop_nginx() {
+  local running_pid
+  running_pid=$(read_pid || true)
+  if [ -n "$running_pid" ]; then
+    if [ -n "$NGINX_BIN" ] && [ -f "$CONF_PATH" ]; then
+      "$NGINX_BIN" -p "$NGINX_DIR/" -c "$CONF_PATH" -s quit >/dev/null 2>&1 || true
+      sleep 0.5
+    fi
+    if kill -0 "$running_pid" 2>/dev/null; then
+      kill -TERM "$running_pid" 2>/dev/null || true
+      sleep 0.4
+    fi
+    if kill -0 "$running_pid" 2>/dev/null; then
+      kill -KILL "$running_pid" 2>/dev/null || true
+      sleep 0.2
+    fi
+  fi
+  rm -f "$PID_FILE"
+
+  # Clean up any orphaned beacon nginx process listening on this port
+  local listener_pids
+  listener_pids=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+  if [ -n "$listener_pids" ]; then
+    for lpid in $listener_pids; do
+      local cmdline
+      cmdline=$(ps -p "$lpid" -o command= 2>/dev/null || true)
+      if echo "$cmdline" | grep -q "Beacon/nginx/nginx.conf"; then
+        kill -TERM "$lpid" 2>/dev/null || true
+        sleep 0.3
+      fi
+    done
+  fi
+}
+
+nginx_version_str() {
+  if [ -n "$NGINX_BIN" ]; then
+    "$NGINX_BIN" -v 2>&1 | sed 's/nginx version: //' | head -n 1 || echo "nginx"
+  else
+    echo "missing"
+  fi
+}
+
+case "$ACTION" in
+  status)
+    VER=$(nginx_version_str)
+    if [ -z "$NGINX_BIN" ]; then
+      echo "NGINX:INSTALLED:NO:not found"
+      echo "NGINX:RUNNING:NO:not installed"
+      exit 0
+    fi
+    echo "NGINX:INSTALLED:YES:$VER"
+    RUNNING_PID=$(read_pid || true)
+    if [ -n "$RUNNING_PID" ]; then
+      echo "NGINX:RUNNING:YES:$RUNNING_PID"
+    else
+      echo "NGINX:RUNNING:NO:stopped"
+    fi
+    ;;
+
+  test)
+    if [ -z "$NGINX_BIN" ]; then
+      echo "[beacon-nginx] ERROR: NGINX is not installed. Click 'Install NGINX' in BeaconMac (installs silently via Homebrew)." >&2
+      exit 12
+    fi
+    if [ ! -f "$CONF_PATH" ]; then
+      echo "[beacon-nginx] ERROR: Config file not found at $CONF_PATH." >&2
+      exit 13
+    fi
+    "$NGINX_BIN" -t -p "$NGINX_DIR/" -c "$CONF_PATH" 2>&1
+    echo "NGINX:TEST:OK:$CONF_PATH"
+    ;;
+
+  start|restart)
+    if [ -z "$NGINX_BIN" ]; then
+      echo "[beacon-nginx] ERROR: NGINX is not installed. Click 'Install NGINX' in BeaconMac to install it silently via Homebrew." >&2
+      exit 12
+    fi
+    if [ ! -f "$CONF_PATH" ]; then
+      echo "[beacon-nginx] ERROR: Missing NGINX configuration at $CONF_PATH." >&2
+      exit 13
+    fi
+
+    # Validate config before touching running process
+    if ! TEST_OUT=$("$NGINX_BIN" -t -p "$NGINX_DIR/" -c "$CONF_PATH" 2>&1); then
+      echo "[beacon-nginx] ERROR: nginx.conf validation failed:" >&2
+      echo "$TEST_OUT" >&2
+      exit 16
+    fi
+
+    stop_nginx
+
+    OCCUPIED=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+    if [ -n "$OCCUPIED" ]; then
+      echo "[beacon-nginx] ERROR: Port $PORT is already in use by another process (PID $OCCUPIED). Choose a different NGINX listen port." >&2
+      exit 14
+    fi
+
+    "$NGINX_BIN" -p "$NGINX_DIR/" -c "$CONF_PATH" 2>&1
+    sleep 0.5
+
+    NEW_PID=$(read_pid || true)
+    if [ -z "$NEW_PID" ]; then
+      echo "[beacon-nginx] ERROR: NGINX failed to start on port $PORT. Recent error log:" >&2
+      tail -n 20 "$ERROR_LOG" 2>/dev/null >&2 || true
+      exit 15
+    fi
+
+    VER=$(nginx_version_str)
+    echo "NGINX:INSTALLED:YES:$VER"
+    echo "NGINX:RUNNING:YES:$NEW_PID"
+    echo "[beacon-nginx] Started NGINX reverse proxy ($VER) on port $PORT (PID $NEW_PID)"
+    ;;
+
+  reload)
+    if [ -z "$NGINX_BIN" ]; then
+      echo "[beacon-nginx] ERROR: NGINX is not installed." >&2
+      exit 12
+    fi
+    if [ ! -f "$CONF_PATH" ]; then
+      echo "[beacon-nginx] ERROR: Missing NGINX configuration at $CONF_PATH." >&2
+      exit 13
+    fi
+
+    if ! TEST_OUT=$("$NGINX_BIN" -t -p "$NGINX_DIR/" -c "$CONF_PATH" 2>&1); then
+      echo "[beacon-nginx] ERROR: nginx.conf validation failed — keeping previous routes active:" >&2
+      echo "$TEST_OUT" >&2
+      exit 16
+    fi
+
+    RUNNING_PID=$(read_pid || true)
+    if [ -n "$RUNNING_PID" ]; then
+      "$NGINX_BIN" -p "$NGINX_DIR/" -c "$CONF_PATH" -s reload 2>&1
+      sleep 0.3
+      VER=$(nginx_version_str)
+      echo "NGINX:INSTALLED:YES:$VER"
+      echo "NGINX:RUNNING:YES:$RUNNING_PID"
+      echo "[beacon-nginx] Reloaded NGINX reverse proxy configuration (PID $RUNNING_PID)"
+    else
+      "$NGINX_BIN" -p "$NGINX_DIR/" -c "$CONF_PATH" 2>&1
+      sleep 0.5
+      NEW_PID=$(read_pid || true)
+      if [ -z "$NEW_PID" ]; then
+        echo "[beacon-nginx] ERROR: NGINX failed to start during reload." >&2
+        tail -n 20 "$ERROR_LOG" 2>/dev/null >&2 || true
+        exit 15
+      fi
+      VER=$(nginx_version_str)
+      echo "NGINX:INSTALLED:YES:$VER"
+      echo "NGINX:RUNNING:YES:$NEW_PID"
+      echo "[beacon-nginx] Started NGINX reverse proxy ($VER) on port $PORT (PID $NEW_PID)"
+    fi
+    ;;
+
+  stop)
+    stop_nginx
+    echo "NGINX:RUNNING:NO:stopped"
+    echo "[beacon-nginx] Stopped NGINX reverse proxy on port $PORT"
+    ;;
+
+  *)
+    echo "[beacon-nginx] Unknown action: $ACTION (expected start|stop|restart|reload|test|status)" >&2
+    exit 2
+    ;;
+esac
+"""#
+
+    private static let cloudflaredScript = #"""
+#!/bin/bash
+# Manages BeaconMac's one-click Cloudflare Tunnels (`cloudflared`) supporting:
+#   1. Dynamic Cloudflare API named tunnels via generated `config.yml` (`start-config`)
+#      or secure Keychain-provisioned token files (`start-token`, passed via env, never CLI args)
+#   2. Zero-config Quick Tunnels (`start`, `*.trycloudflare.com`)
+#
+# Per-tunnel PID, URL, mode, and log files are stored under ~/beaconmac/tunnels/<tunnel_id>.
+# Never requires sudo.
+#
+# Arguments:
+#   $1 = action ("status" | "start" | "start-config" | "start-token" | "stop" | "stop-all")
+#   $2 = tunnel_id (alphanumeric/dash/underscore, or "all" for status)
+#   $3 = target_url (for "start") | config_yml_path (for "start-config") | token_file_path (for "start-token")
+#   $4 = protocol (for "start") | public_url (for "start-config" / "start-token")
+#   $5 = target_url (for "start-config" / "start-token")
+set -euo pipefail
+
+ACTION="${1:-status}"
+TUNNEL_ID="${2:-all}"
+ARG3="${3:-}"
+ARG4="${4:-auto}"
+ARG5="${5:-}"
+
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+
+TUNNELS_ROOT="$HOME/beaconmac/tunnels"
+mkdir -p "$TUNNELS_ROOT"
+
+find_cloudflared_bin() {
+  for candidate in \
+    "$(command -v cloudflared 2>/dev/null || true)" \
+    "/opt/homebrew/bin/cloudflared" \
+    "/usr/local/bin/cloudflared" \
+    "$HOME/.local/bin/cloudflared"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+CF_BIN=$(find_cloudflared_bin || true)
+
+cf_version_str() {
+  if [ -n "$CF_BIN" ]; then
+    "$CF_BIN" --version 2>&1 | head -n 1 | sed 's/cloudflared version //' | awk '{print $1}' || echo "installed"
+  else
+    echo "missing"
+  fi
+}
+
+sanitize_id() {
+  local raw="$1"
+  local cleaned
+  cleaned=$(printf '%s' "$raw" | tr -cd 'A-Za-z0-9_-')
+  printf '%s' "${cleaned:0:80}"
+}
+
+read_pid_for_dir() {
+  local dir="$1"
+  local pf="$dir/tunnel.pid"
+  if [ -f "$pf" ]; then
+    local p
+    p=$(tr -d '[:space:]' < "$pf" 2>/dev/null || true)
+    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+      echo "$p"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+extract_public_url() {
+  local logfile="$1"
+  if [ -f "$logfile" ]; then
+    grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$logfile" 2>/dev/null | head -n 1 || true
+  fi
+}
+
+stop_tunnel_dir() {
+  local dir="$1"
+  local running_pid
+  running_pid=$(read_pid_for_dir "$dir" || true)
+  if [ -n "$running_pid" ]; then
+    kill -TERM "$running_pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      if ! kill -0 "$running_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if kill -0 "$running_pid" 2>/dev/null; then
+      kill -KILL "$running_pid" 2>/dev/null || true
+      sleep 0.1
+    fi
+  fi
+  rm -f "$dir/tunnel.pid" "$dir/public.url" "$dir/mode.txt"
+}
+
+wait_for_named_tunnel() {
+  local new_pid="$1"
+  local logfile="$2"
+  local connected=0
+  for _ in $(seq 1 50); do
+    if ! kill -0 "$new_pid" 2>/dev/null; then
+      echo "[beacon-cloudflared] ERROR: cloudflared exited before registering the tunnel connection. Recent output:" >&2
+      tail -n 20 "$logfile" 2>/dev/null >&2 || true
+      return 1
+    fi
+    if grep -qiE 'Registered tunnel connection|Connection .* registered' "$logfile" 2>/dev/null; then
+      connected=1
+      break
+    fi
+    sleep 0.35
+  done
+  # Even if log verbosity varies, if process is still healthy after waiting, verify alive
+  if [ "$connected" -eq 0 ] && ! kill -0 "$new_pid" 2>/dev/null; then
+    echo "[beacon-cloudflared] ERROR: cloudflared failed to maintain connection. Recent output:" >&2
+    tail -n 20 "$logfile" 2>/dev/null >&2 || true
+    return 1
+  fi
+  return 0
+}
+
+case "$ACTION" in
+  status)
+    VER=$(cf_version_str)
+    if [ -z "$CF_BIN" ]; then
+      echo "CLOUDFLARED:INSTALLED:NO:not found"
+      exit 0
+    fi
+    echo "CLOUDFLARED:INSTALLED:YES:$VER"
+
+    if [ "$TUNNEL_ID" = "all" ] || [ -z "$TUNNEL_ID" ]; then
+      for dir in "$TUNNELS_ROOT"/*; do
+        [ -d "$dir" ] || continue
+        tid=$(basename "$dir")
+        rpid=$(read_pid_for_dir "$dir" || true)
+        if [ -n "$rpid" ]; then
+          pub_url=""
+          if [ -f "$dir/public.url" ]; then
+            pub_url=$(tr -d '[:space:]' < "$dir/public.url" 2>/dev/null || true)
+          fi
+          if [ -z "$pub_url" ]; then
+            pub_url=$(extract_public_url "$dir/tunnel.log")
+            [ -n "$pub_url" ] && printf '%s\n' "$pub_url" > "$dir/public.url"
+          fi
+          tgt_url=""
+          if [ -f "$dir/target.url" ]; then
+            tgt_url=$(tr -d '[:space:]' < "$dir/target.url" 2>/dev/null || true)
+          fi
+          mode="quick"
+          if [ -f "$dir/mode.txt" ]; then
+            mode=$(tr -d '[:space:]' < "$dir/mode.txt" 2>/dev/null || echo "quick")
+          fi
+          echo "TUNNEL:ENTRY:$tid:$rpid:$pub_url|$tgt_url|$mode"
+        else
+          rm -f "$dir/tunnel.pid" "$dir/public.url" "$dir/mode.txt"
+        fi
+      done
+    else
+      SAFE_ID=$(sanitize_id "$TUNNEL_ID")
+      TDIR="$TUNNELS_ROOT/$SAFE_ID"
+      rpid=$(read_pid_for_dir "$TDIR" || true)
+      if [ -n "$rpid" ]; then
+        pub_url=""
+        if [ -f "$TDIR/public.url" ]; then
+          pub_url=$(tr -d '[:space:]' < "$TDIR/public.url" 2>/dev/null || true)
+        fi
+        if [ -z "$pub_url" ]; then
+          pub_url=$(extract_public_url "$TDIR/tunnel.log")
+          [ -n "$pub_url" ] && printf '%s\n' "$pub_url" > "$TDIR/public.url"
+        fi
+        echo "TUNNEL:RUNNING:YES:$rpid:$pub_url"
+      else
+        echo "TUNNEL:RUNNING:NO:stopped:"
+      fi
+    fi
+    ;;
+
+  start)
+    TARGET_URL="$ARG3"
+    PROTOCOL="$ARG4"
+    if [ -z "$CF_BIN" ]; then
+      echo "CLOUDFLARED:INSTALLED:NO:not found"
+      echo "[beacon-cloudflared] ERROR: cloudflared is not installed." >&2
+      exit 12
+    fi
+
+    SAFE_ID=$(sanitize_id "$TUNNEL_ID")
+    if [ -z "$SAFE_ID" ] || [ "$SAFE_ID" = "all" ]; then
+      echo "[beacon-cloudflared] ERROR: Invalid tunnel ID." >&2
+      exit 13
+    fi
+
+    if ! printf '%s' "$TARGET_URL" | grep -qE '^https?://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]{1,5})?(/.*)?$'; then
+      echo "[beacon-cloudflared] ERROR: Target URL must be a local loopback address (http://127.0.0.1:<port> or http://localhost:<port>)." >&2
+      exit 14
+    fi
+
+    case "$PROTOCOL" in
+      auto|http2|quic) ;;
+      *) PROTOCOL="auto" ;;
+    esac
+
+    TDIR="$TUNNELS_ROOT/$SAFE_ID"
+    mkdir -p "$TDIR"
+    stop_tunnel_dir "$TDIR"
+
+    LOG_FILE="$TDIR/tunnel.log"
+    : > "$LOG_FILE"
+    printf '%s\n' "$TARGET_URL" > "$TDIR/target.url"
+    printf '%s\n' "quick" > "$TDIR/mode.txt"
+
+    if [ "$PROTOCOL" = "auto" ]; then
+      nohup "$CF_BIN" tunnel --url "$TARGET_URL" --no-autoupdate > "$LOG_FILE" 2>&1 < /dev/null &
+    else
+      nohup "$CF_BIN" tunnel --url "$TARGET_URL" --protocol "$PROTOCOL" --no-autoupdate > "$LOG_FILE" 2>&1 < /dev/null &
+    fi
+    NEW_PID=$!
+    printf '%s\n' "$NEW_PID" > "$TDIR/tunnel.pid"
+
+    PUBLIC_URL=""
+    for _ in $(seq 1 60); do
+      if ! kill -0 "$NEW_PID" 2>/dev/null; then
+        echo "[beacon-cloudflared] ERROR: cloudflared exited unexpectedly before establishing a tunnel. Recent output:" >&2
+        tail -n 20 "$LOG_FILE" 2>/dev/null >&2 || true
+        rm -f "$TDIR/tunnel.pid" "$TDIR/public.url"
+        exit 15
+      fi
+      PUBLIC_URL=$(extract_public_url "$LOG_FILE")
+      if [ -n "$PUBLIC_URL" ]; then
+        break
+      fi
+      sleep 0.35
+    done
+
+    if [ -z "$PUBLIC_URL" ]; then
+      echo "[beacon-cloudflared] ERROR: Timed out waiting for Cloudflare Quick Tunnel URL. Recent output:" >&2
+      tail -n 20 "$LOG_FILE" 2>/dev/null >&2 || true
+      stop_tunnel_dir "$TDIR"
+      exit 16
+    fi
+
+    printf '%s\n' "$PUBLIC_URL" > "$TDIR/public.url"
+    VER=$(cf_version_str)
+    echo "CLOUDFLARED:INSTALLED:YES:$VER"
+    echo "TUNNEL:RUNNING:YES:$NEW_PID:$PUBLIC_URL"
+    echo "[beacon-cloudflared] Live Quick Tunnel ready: $PUBLIC_URL -> $TARGET_URL (PID $NEW_PID)"
+    ;;
+
+  start-config)
+    CONFIG_PATH="$ARG3"
+    PUBLIC_URL="$ARG4"
+    TARGET_URL="$ARG5"
+    if [ -z "$CF_BIN" ]; then
+      echo "CLOUDFLARED:INSTALLED:NO:not found"
+      echo "[beacon-cloudflared] ERROR: cloudflared is not installed." >&2
+      exit 12
+    fi
+
+    SAFE_ID=$(sanitize_id "$TUNNEL_ID")
+    if [ -z "$SAFE_ID" ] || [ "$SAFE_ID" = "all" ]; then
+      echo "[beacon-cloudflared] ERROR: Invalid tunnel ID." >&2
+      exit 13
+    fi
+
+    if [ ! -f "$CONFIG_PATH" ]; then
+      echo "[beacon-cloudflared] ERROR: Generated cloudflared config.yml not found at $CONFIG_PATH." >&2
+      exit 17
+    fi
+
+    TDIR="$TUNNELS_ROOT/$SAFE_ID"
+    mkdir -p "$TDIR"
+    stop_tunnel_dir "$TDIR"
+
+    LOG_FILE="$TDIR/tunnel.log"
+    : > "$LOG_FILE"
+    printf '%s\n' "$TARGET_URL" > "$TDIR/target.url"
+    printf '%s\n' "$PUBLIC_URL" > "$TDIR/public.url"
+    printf '%s\n' "api" > "$TDIR/mode.txt"
+
+    nohup "$CF_BIN" tunnel --config "$CONFIG_PATH" --no-autoupdate run > "$LOG_FILE" 2>&1 < /dev/null &
+    NEW_PID=$!
+    printf '%s\n' "$NEW_PID" > "$TDIR/tunnel.pid"
+
+    if ! wait_for_named_tunnel "$NEW_PID" "$LOG_FILE"; then
+      stop_tunnel_dir "$TDIR"
+      exit 18
+    fi
+
+    VER=$(cf_version_str)
+    echo "CLOUDFLARED:INSTALLED:YES:$VER"
+    echo "TUNNEL:RUNNING:YES:$NEW_PID:$PUBLIC_URL"
+    echo "[beacon-cloudflared] Live Cloudflare API Named Tunnel ready: $PUBLIC_URL -> $TARGET_URL (PID $NEW_PID, config: $CONFIG_PATH)"
+    ;;
+
+  start-token)
+    TOKEN_FILE="$ARG3"
+    PUBLIC_URL="$ARG4"
+    TARGET_URL="$ARG5"
+    if [ -z "$CF_BIN" ]; then
+      echo "CLOUDFLARED:INSTALLED:NO:not found"
+      echo "[beacon-cloudflared] ERROR: cloudflared is not installed." >&2
+      exit 12
+    fi
+
+    SAFE_ID=$(sanitize_id "$TUNNEL_ID")
+    if [ -z "$SAFE_ID" ] || [ "$SAFE_ID" = "all" ]; then
+      echo "[beacon-cloudflared] ERROR: Invalid tunnel ID." >&2
+      exit 13
+    fi
+
+    if [ ! -f "$TOKEN_FILE" ]; then
+      echo "[beacon-cloudflared] ERROR: Temporary tunnel token file not found." >&2
+      exit 19
+    fi
+
+    RAW_TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
+    rm -f "$TOKEN_FILE"
+    if [ -z "$RAW_TOKEN" ]; then
+      echo "[beacon-cloudflared] ERROR: Empty Cloudflare tunnel token." >&2
+      exit 20
+    fi
+
+    TDIR="$TUNNELS_ROOT/$SAFE_ID"
+    mkdir -p "$TDIR"
+    stop_tunnel_dir "$TDIR"
+
+    LOG_FILE="$TDIR/tunnel.log"
+    : > "$LOG_FILE"
+    printf '%s\n' "$TARGET_URL" > "$TDIR/target.url"
+    printf '%s\n' "$PUBLIC_URL" > "$TDIR/public.url"
+    printf '%s\n' "api" > "$TDIR/mode.txt"
+
+    # Pass token via TUNNEL_TOKEN environment variable so it never appears in ps/process arguments
+    TUNNEL_TOKEN="$RAW_TOKEN" nohup "$CF_BIN" tunnel --no-autoupdate run > "$LOG_FILE" 2>&1 < /dev/null &
+    NEW_PID=$!
+    unset RAW_TOKEN
+    printf '%s\n' "$NEW_PID" > "$TDIR/tunnel.pid"
+
+    if ! wait_for_named_tunnel "$NEW_PID" "$LOG_FILE"; then
+      stop_tunnel_dir "$TDIR"
+      exit 21
+    fi
+
+    VER=$(cf_version_str)
+    echo "CLOUDFLARED:INSTALLED:YES:$VER"
+    echo "TUNNEL:RUNNING:YES:$NEW_PID:$PUBLIC_URL"
+    echo "[beacon-cloudflared] Live Cloudflare API Tunnel ready: $PUBLIC_URL -> $TARGET_URL (PID $NEW_PID)"
+    ;;
+
+  stop)
+    SAFE_ID=$(sanitize_id "$TUNNEL_ID")
+    if [ -n "$SAFE_ID" ] && [ -d "$TUNNELS_ROOT/$SAFE_ID" ]; then
+      stop_tunnel_dir "$TUNNELS_ROOT/$SAFE_ID"
+    fi
+    echo "TUNNEL:RUNNING:NO:stopped:"
+    echo "[beacon-cloudflared] Stopped Cloudflare tunnel '$SAFE_ID'"
+    ;;
+
+  stop-all)
+    COUNT=0
+    for dir in "$TUNNELS_ROOT"/*; do
+      [ -d "$dir" ] || continue
+      if read_pid_for_dir "$dir" >/dev/null 2>&1; then
+        COUNT=$((COUNT + 1))
+      fi
+      stop_tunnel_dir "$dir"
+    done
+    echo "TUNNEL:STOPPED_ALL:$COUNT"
+    echo "[beacon-cloudflared] Stopped $COUNT active Cloudflare tunnel(s)"
+    ;;
+
+  *)
+    echo "[beacon-cloudflared] Unknown action: $ACTION (expected status|start|start-config|start-token|stop|stop-all)" >&2
+    exit 2
+    ;;
+esac
 """#
 }

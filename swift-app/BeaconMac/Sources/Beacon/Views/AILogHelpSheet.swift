@@ -5,6 +5,7 @@ struct AILogHelpSheet: View {
     @Bindable var controller: BeaconController
     let context: AILogContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedProvider: AIHelpProvider = .auto
     @State private var followUpQuestion: String = ""
@@ -13,12 +14,46 @@ struct AILogHelpSheet: View {
     @State private var copiedPrompt = false
     @State private var copiedAnswer = false
 
-    private let canvasBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
-    private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
-    private let terminalBackground = Color(red: 0.031, green: 0.037, blue: 0.047)
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
 
     private var hasConnectedAI: Bool {
-        controller.claude.isConnected || controller.ollama.isConnected || controller.keychain.read(.claudeAPIKey) != nil
+        controller.hasAnyConnectedAIProvider
+    }
+
+    private var connectedProviderBadges: [(label: String, connected: Bool, detail: String)] {
+        var items: [(String, Bool, String)] = []
+
+        if controller.claude.isConnected {
+            items.append(("Claude", true, controller.claude.activeModel))
+        }
+        let cloudOrder: [(CloudProviderKind, String)] = [
+            (.openai, "ChatGPT"),
+            (.gemini, "Gemini"),
+            (.openrouter, "OpenRouter"),
+            (.groq, "Groq"),
+            (.cloudflare, "Cloudflare AI"),
+            (.customOpenAI, "Custom AI")
+        ]
+        for (kind, label) in cloudOrder {
+            let st = controller.cloudProviderState(for: kind)
+            if st.isConnected {
+                let model = controller.cloudProviderConfig(for: kind).selectedModel
+                items.append((label, true, model.isEmpty ? kind.defaultModel : model))
+            }
+        }
+        if controller.ollama.isConnected {
+            items.append(("Ollama", true, controller.ollama.activeModel))
+        }
+
+        if items.isEmpty {
+            items = [
+                ("Cloud AI APIs", false, "Connect ChatGPT, Gemini, or Claude in Settings"),
+                ("Local Ollama", false, "Offline")
+            ]
+        }
+        return items
     }
 
     var body: some View {
@@ -27,15 +62,13 @@ struct AILogHelpSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(palette.sectionHeader)
                             .font(.system(size: 14, weight: .semibold))
-                        Text("AI Log Troubleshooter — \(context.title)")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+                        BeaconSectionHeaderText(title: "AI Log Troubleshooter — \(context.title)", fontSize: 16)
                     }
-                    Text("Secrets are automatically redacted before analysis · Powered by your connected Local Ollama or Claude API")
+                    Text("Secrets are automatically redacted before analysis · Powered by ChatGPT, Gemini, Claude, OpenRouter, Groq, Cloudflare AI, or Local Ollama")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 }
 
                 Spacer()
@@ -47,7 +80,7 @@ struct AILogHelpSheet: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .frame(width: 135)
+                .frame(width: 175)
 
                 Button("Done") {
                     dismiss()
@@ -57,16 +90,17 @@ struct AILogHelpSheet: View {
 
             // Provider readiness strip + quick copy buttons
             HStack(spacing: 12) {
-                providerIndicator(
-                    label: "Claude API",
-                    connected: controller.claude.isConnected,
-                    detail: controller.claude.isConnected ? controller.claude.activeModel : "Not connected"
-                )
-                providerIndicator(
-                    label: "Local Ollama",
-                    connected: controller.ollama.isConnected,
-                    detail: controller.ollama.isConnected ? controller.ollama.activeModel : "Offline"
-                )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(connectedProviderBadges, id: \.label) { badge in
+                            providerIndicator(
+                                label: badge.label,
+                                connected: badge.connected,
+                                detail: badge.detail
+                            )
+                        }
+                    }
+                }
 
                 Spacer()
 
@@ -92,22 +126,22 @@ struct AILogHelpSheet: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(cardBackground)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+            .background(palette.card)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if showRawLogs {
                 ScrollView([.vertical, .horizontal]) {
                     Text(context.logText.isEmpty ? "(No log output captured yet)" : context.logText)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.86))
+                        .foregroundStyle(palette.bodyText)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                 }
                 .frame(height: 120)
-                .background(terminalBackground)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+                .background(palette.console)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -116,11 +150,11 @@ struct AILogHelpSheet: View {
                 TextField("Optional question (e.g. \"Why is localhost:3001 failing?\" or leave blank for full diagnosis)", text: $followUpQuestion)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.primaryText)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(terminalBackground)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.14)))
+                    .background(palette.input)
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(palette.inputBorder))
                     .clipShape(RoundedRectangle(cornerRadius: 7))
                     .onSubmit {
                         runAnalysis()
@@ -142,23 +176,23 @@ struct AILogHelpSheet: View {
                                 .controlSize(.small)
                             Text("Analyzing redacted logs…")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.cyan)
+                                .foregroundStyle(palette.accentLink)
                         }
                     } else if let result = controller.aiHelpResult {
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(result.ok ? Color.green : Color.orange)
+                                .fill(result.ok ? palette.successText : palette.warningText)
                                 .frame(width: 7, height: 7)
                             Text(result.ok
                                  ? "Diagnosis via \(result.providerLabel) · \(result.durationMs) ms"
                                  : result.providerLabel)
                                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                                .foregroundStyle(result.ok ? .white.opacity(0.88) : .orange)
+                                .foregroundStyle(result.ok ? palette.bodyText : palette.warningText)
                         }
                     } else {
                         Text("AI Troubleshooting Output")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                     }
 
                     Spacer()
@@ -179,7 +213,7 @@ struct AILogHelpSheet: View {
                             if result.ok {
                                 Text(result.answer)
                                     .font(.system(size: 12.5, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.94))
+                                    .foregroundStyle(palette.primaryText)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(14)
@@ -187,11 +221,11 @@ struct AILogHelpSheet: View {
                                 VStack(alignment: .leading, spacing: 10) {
                                     Text(result.error ?? "Unable to analyze logs.")
                                         .font(.system(size: 12.5))
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(palette.warningText)
                                         .textSelection(.enabled)
-                                    Text("Tip: You can connect a Claude API key or start Local Ollama (port 11434) in the Service Cards, or click \"Copy AI Prompt\" above to paste these redacted logs into any AI tool.")
+                                    Text("Tip: Connect ChatGPT (OpenAI), Google Gemini, Claude, OpenRouter, Groq, or Cloudflare AI in Settings, start Local Ollama (port 11434), or click \"Copy AI Prompt\" above.")
                                         .font(.system(size: 11.5))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(palette.secondaryText)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(14)
@@ -199,23 +233,23 @@ struct AILogHelpSheet: View {
                         } else if !controller.isAnalyzingLogs {
                             Text(hasConnectedAI
                                  ? "Click \"Analyze with AI\" above to diagnose these logs."
-                                 : "No AI provider connected yet. Connect Claude API or start Local Ollama in BeaconMac, or click \"Copy AI Prompt\" above to copy a ready-to-paste troubleshooting prompt.")
+                                 : "No AI provider connected yet. Connect ChatGPT, Google Gemini, Claude, OpenRouter, Groq, or Cloudflare AI in Settings (or start Local Ollama), or click \"Copy AI Prompt\" above.")
                                 .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(palette.secondaryText)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(14)
                         }
                     }
                 }
                 .frame(minHeight: 280, maxHeight: .infinity)
-                .background(terminalBackground)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.08)))
+                .background(palette.console)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.border))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding(20)
-        .frame(minWidth: 760, minHeight: 540)
-        .background(canvasBackground)
+        .frame(minWidth: 780, minHeight: 540)
+        .background(palette.sheetCanvas)
         .onAppear {
             controller.aiHelpResult = nil
             if hasConnectedAI && !context.logText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -235,14 +269,14 @@ struct AILogHelpSheet: View {
     private func providerIndicator(label: String, connected: Bool, detail: String) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(connected ? Color.green : Color.gray.opacity(0.5))
+                .fill(connected ? palette.successText : Color.gray.opacity(0.5))
                 .frame(width: 6, height: 6)
             Text("\(label):")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
             Text(detail)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(connected ? .white.opacity(0.9) : .secondary)
+                .foregroundStyle(connected ? palette.bodyText : palette.secondaryText)
                 .lineLimit(1)
         }
     }

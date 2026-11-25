@@ -13,12 +13,14 @@
       "sha256": null,
       "sizeBytes": null,
       "notes": [
-        "Added Install Dependencies button with Project Type presets (Node.js/npm, pnpm, Yarn, Bun, Python/uv, Go) for silent background installation via Homebrew or verified direct official downloads",
-        "Added AI Help log troubleshooting (using Local Ollama or Claude API with automatic secret redaction) plus one-click Copy buttons across Terminal, Server Log Search, and Activity Logs",
-        "Hardened Self-Updater: pinned arjunmarri/beacon feed, strict download/redirect allowlist, pre-mount SHA-256 verification, Developer ID Team ID pinning (SecStaticCodeCheckValidity), codesign & Gatekeeper (spctl) checks, preserved quarantine, and explicit user install confirmation",
-        "Added signed & notarized Universal DMG pipeline with explicit Beacon-DMG.entitlements (Hardened Runtime) alongside App Store Beacon.entitlements and fail-closed CI notarization",
-        "Added Server Log Search (grep / regex) bar & modal for ~/beaconmac/server.log with -E/-F, case sensitivity, and ±2 context lines",
-        "Fixed App Sandbox NSUserUnixTask Bad file descriptor errors, SwiftPM launch guards, and localhost/IPv6/proxy health probing"
+        "Added Inbuilt NGINX Reverse Proxy (~/beaconmac/nginx, zero sudo) with path-prefix routes, *.localhost virtual hosts, WebSocket/HMR headers, optional LAN (0.0.0.0) exposure, live nginx -t & zero-downtime reload, nginx.conf viewer, and 1-click Expose via NGINX",
+        "Added Built-In Node.js Server (http://127.0.0.1:4173) to load any static/built app folder (dist/build/out/public SPA fallback) or local port proxy with 1-click Load in Node Host",
+        "Added high-contrast Blue section headers and a real-time White (Light) / Dark theme toggle in the top bar, Settings, and Menu Bar",
+        "Added Settings integrations (stored in macOS Keychain with live verification) for OpenAI (ChatGPT), Google Gemini, Anthropic Claude, OpenRouter, Groq, Custom OpenAI-Compatible APIs, Cloudflare (API & Workers AI), Vercel, and Supabase — powering AI Log Help alongside Local Ollama",
+        "Enhanced Activity, Terminal, and Server Log views with chronological auto-scroll, Pause/Resume auto-scroll (with unread badge), inline per-entry Copy buttons & context menus, and Export Logs (.txt / .json)",
+        "Added Install Dependencies with Project Type presets (Node.js/npm, pnpm, Yarn, Bun, Python/uv, Go, plus NGINX) for silent Homebrew or verified direct official installation",
+        "Hardened Self-Updater (pinned arjunmarri/beacon feed, pre-mount SHA-256, Developer ID Team ID pinning, codesign & Gatekeeper spctl, explicit user confirmation) and signed/notarized Universal DMG pipeline",
+        "Fixed Stop button to halt local apps completely without auto-restart respawning, silenced premature HTTP probe errors on unconfigured apps, and made deploy/restart auto-detect package.json scripts gracefully"
       ]
     },
     {

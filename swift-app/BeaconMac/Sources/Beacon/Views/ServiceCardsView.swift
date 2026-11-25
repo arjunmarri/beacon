@@ -2,15 +2,18 @@ import SwiftUI
 
 struct ServiceCardsView: View {
     @Bindable var controller: BeaconController
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var gitTokenDraft: String = ""
     @State private var editingGitKey: Bool = false
     @State private var claudeKeyDraft: String = ""
     @State private var editingClaudeKey: Bool = false
 
-    private let cardBackground = Color(red: 0.075, green: 0.086, blue: 0.106)
-    private let inputBackground = Color(red: 0.043, green: 0.051, blue: 0.063)
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 16)]
+
+    private var palette: BeaconPalette {
+        BeaconPalette(colorScheme: colorScheme)
+    }
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 16) {
@@ -25,13 +28,11 @@ struct ServiceCardsView: View {
     private var gitAccountCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("GitHub Account")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "GitHub Account", fontSize: 15)
                     Text(controller.git.connectedUsername.map { "@\($0) · \(controller.git.repos.count) repos" } ?? "Paste PAT to sync & auto-deploy repos")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                 }
                 Spacer()
@@ -42,43 +43,44 @@ struct ServiceCardsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("GitHub token (stored in macOS Keychain)")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     HStack {
                         Image(systemName: "key.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(palette.successText)
                             .font(.system(size: 11))
                         Text(keyHint)
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(palette.bodyText)
                         Spacer()
                         Button("Replace") { editingGitKey = true }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(palette.accentLink)
                         Button("Clear") { controller.disconnectGitToken() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.red.opacity(0.85))
+                            .foregroundStyle(palette.errorText)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(inputBackground)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1)))
+                    .background(palette.input)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Paste GitHub Personal Access Token (Keychain)")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     HStack(spacing: 8) {
                         SecureField("ghp_... or github_pat_...", text: $gitTokenDraft)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(palette.primaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
-                            .background(inputBackground)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.12)))
+                            .background(palette.input)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         Button("Connect") {
                             let token = gitTokenDraft
@@ -104,7 +106,7 @@ struct ServiceCardsView: View {
                 }
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(palette.border)
 
             HStack(spacing: 22) {
                 metricCell(
@@ -124,12 +126,12 @@ struct ServiceCardsView: View {
             if let error = controller.git.lastError {
                 Text(error)
                     .font(.system(size: 11))
-                    .foregroundStyle(.red.opacity(0.9))
+                    .foregroundStyle(palette.errorText)
                     .lineLimit(2)
             } else {
                 Text("Connected repositories populate the Quick Pick menu inside + Add Local App and enable automatic commit polling.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                     .lineLimit(2)
             }
 
@@ -137,9 +139,10 @@ struct ServiceCardsView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(cardBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
+        .background(palette.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: palette.cardShadow, radius: 6, y: 2)
     }
 
     // MARK: - 2. Local LLM (Ollama) Card
@@ -147,20 +150,18 @@ struct ServiceCardsView: View {
     private var ollamaCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Local LLM (Ollama)")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "Local LLM (Ollama)", fontSize: 15)
                     Text(controller.ollama.endpoint)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                 }
                 Spacer()
                 TrafficLightLampView(active: controller.ollama.light, label: controller.ollama.statusLabel)
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(palette.border)
 
             HStack(spacing: 22) {
                 metricCell(
@@ -179,16 +180,16 @@ struct ServiceCardsView: View {
                 )
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(palette.border)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Active local model")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                 if controller.ollama.models.isEmpty {
                     Text("Start Ollama locally on port 11434 to list models")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 } else {
                     Picker("Ollama Model", selection: Binding(
                         get: { controller.ollama.activeModel },
@@ -218,9 +219,10 @@ struct ServiceCardsView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(cardBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
+        .background(palette.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: palette.cardShadow, radius: 6, y: 2)
     }
 
     // MARK: - 3. Claude API Health Checker Card
@@ -228,13 +230,11 @@ struct ServiceCardsView: View {
     private var claudeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Claude API")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 3) {
+                    BeaconSectionHeaderText(title: "Claude API", fontSize: 15)
                     Text("api.anthropic.com · /v1/models")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                 }
                 Spacer()
                 TrafficLightLampView(active: controller.claude.light, label: controller.claude.statusLabel)
@@ -244,39 +244,40 @@ struct ServiceCardsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Claude API key (stored in macOS Keychain)")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     HStack {
                         Image(systemName: "key.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(palette.successText)
                             .font(.system(size: 11))
                         Text(hint)
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(palette.bodyText)
                         Spacer()
                         Button("Replace") { editingClaudeKey = true }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.cyan)
+                            .foregroundStyle(palette.accentLink)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(inputBackground)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1)))
+                    .background(palette.input)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Paste Claude API key (verified via /v1/models)")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                     HStack(spacing: 8) {
                         SecureField("sk-ant-api03-...", text: $claudeKeyDraft)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(palette.primaryText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
-                            .background(inputBackground)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.12)))
+                            .background(palette.input)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.inputBorder))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         Button("Check") {
                             let key = claudeKeyDraft
@@ -300,7 +301,7 @@ struct ServiceCardsView: View {
                 }
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(palette.border)
 
             HStack(spacing: 22) {
                 metricCell(
@@ -308,7 +309,9 @@ struct ServiceCardsView: View {
                     value: controller.claude.isConnected
                         ? "\(controller.claude.httpStatus ?? 200) OK"
                         : (controller.claude.httpStatus.map { "HTTP \($0)" } ?? "—"),
-                    valueColor: controller.claude.isConnected ? .green : (controller.claude.lastError != nil ? .red : .secondary)
+                    valueColor: controller.claude.isConnected
+                        ? palette.successText
+                        : (controller.claude.lastError != nil ? palette.errorText : palette.secondaryText)
                 )
                 metricCell(
                     title: "Latency",
@@ -323,7 +326,7 @@ struct ServiceCardsView: View {
             if let error = controller.claude.lastError {
                 Text(error)
                     .font(.system(size: 11))
-                    .foregroundStyle(.red.opacity(0.9))
+                    .foregroundStyle(palette.errorText)
                     .lineLimit(1)
             }
 
@@ -361,48 +364,24 @@ struct ServiceCardsView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 255, alignment: .topLeading)
-        .background(cardBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
+        .background(palette.card)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.border))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: palette.cardShadow, radius: 6, y: 2)
     }
 
     // MARK: - Helpers
 
-    private func metricCell(title: String, value: String, valueColor: Color = .white) -> some View {
+    private func metricCell(title: String, value: String, valueColor: Color? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
             Text(value)
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(valueColor)
+                .foregroundStyle(valueColor ?? palette.primaryText)
                 .lineLimit(1)
         }
-    }
-}
-
-struct BeaconPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color(red: 0.043, green: 0.051, blue: 0.063))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color(red: 0.22, green: 0.74, blue: 0.97).opacity(configuration.isPressed ? 0.8 : 1.0))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-    }
-}
-
-struct BeaconSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.white.opacity(0.92))
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
-            .background(Color.white.opacity(configuration.isPressed ? 0.14 : 0.08))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.1)))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }

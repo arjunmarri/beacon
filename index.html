@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BeaconMac — Native macOS Multi-App Deploy &amp; Service Monitor</title>
+    <title>BeaconMac — Native macOS Multi-App Deploy, Node Host &amp; NGINX Monitor</title>
     <meta
       name="description"
-      content="Download BeaconMac (.dmg) for macOS 14+. Clone remote Git repos, verify Vite/Node dependencies, build and deploy multiple local apps, manage launchd daemons, prevent Mac sleep, and monitor Ollama and Claude API health."
+      content="Download BeaconMac (.dmg) for macOS 14+. Multi-app Git deployer, Built-In Node.js Server, Inbuilt NGINX Reverse Proxy (zero sudo), real-time Dark/White theme with Blue headers, Cloud AI & Edge APIs (ChatGPT, Gemini, Claude, Cloudflare, Vercel, Supabase), exportable auto-scrolling logs, and Apple launchd supervision."
     />
-    <meta property="og:title" content="BeaconMac — Native macOS Multi-App Deploy & Service Monitor" />
+    <meta property="og:title" content="BeaconMac — Native macOS Multi-App Deploy, Node Host & NGINX Monitor" />
     <meta
       property="og:description"
-      content="Download BeaconMac (.dmg) for macOS 14+ — native SwiftUI multi-app deployer, Apple launchd background daemon manager, live tail -f logs, and IOKit sleep prevention."
+      content="Download BeaconMac (.dmg) for macOS 14+ — native SwiftUI multi-app deployer, Built-In Node.js Server, Inbuilt NGINX Reverse Proxy, Cloud AI Keychain integrations, exportable logs, and Apple launchd daemon manager."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -948,12 +948,14 @@
         <h1>BeaconMac</h1>
 
         <p>
-          A lightweight native macOS multi-app deployer and traffic-light monitor built in SwiftUI.
-          Clone remote Git repositories, silently install missing Node.js, pnpm, Yarn, Bun, or
-          Python dependencies by project type, build and deploy multiple local apps, troubleshoot
-          logs with AI Help, manage background startup natively via Apple <code>launchd</code>
-          with live <code>tail -f</code> logs and IOKit / <code>caffeinate -s</code> sleep
-          prevention, and monitor Ollama LLMs and Claude API health — backed by macOS Keychain.
+          A lightweight native macOS multi-app deployer, <strong>Built-In Node.js Server</strong>,
+          <strong>Inbuilt NGINX Reverse Proxy</strong> (path prefixes, <code>*.localhost</code>, and
+          optional LAN exposure with zero <code>sudo</code>), and traffic-light monitor built in
+          SwiftUI. Clone Git repos, silently install missing dependencies, inspect logs with
+          <strong>auto-scroll pause, per-entry copy, AI Help, and <code>.txt</code>/<code>.json</code> export</strong>,
+          switch between <strong>Dark &amp; White themes</strong> in real time, manage Apple
+          <code>launchd</code> + IOKit sleep prevention, and connect Ollama, ChatGPT, Gemini, Claude,
+          Cloudflare, Vercel, and Supabase — all encrypted in macOS Keychain.
         </p>
 
         <div class="actions">
@@ -1046,34 +1048,35 @@ git tag v1.1.0 &amp;&amp; git push origin v1.1.0
               </div>
               <p>
                 Monitor multiple local Vite, Node.js, and Next.js apps with real-time traffic-light
-                probes, runtime tool audits, and one-click Clone &amp; Deploy or Terminal access.
+                probes, one-click <strong>Load in Node Host</strong> and <strong>Expose via NGINX</strong>,
+                clean Stop controls, and real-time White/Dark theming with Blue section headers.
               </p>
             </figcaption>
           </figure>
 
           <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg" data-lightbox-caption="02 · Keychain Secrets, Local Ollama & Claude API">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg" data-lightbox-caption="02 · Keychain Secrets, Local Ollama & Cloud AI / Edge APIs">
               <img
                 src="/src/assets/images/beaconmac_services_dark_1795439976131.jpg"
-                alt="BeaconMac cards for GitHub Account via Keychain, Local LLM Ollama model switcher, and Claude API health checker"
+                alt="BeaconMac cards for GitHub Account via Keychain, Local LLM Ollama model switcher, and Cloud AI API health checkers"
                 loading="lazy"
                 referrerpolicy="no-referrer"
               />
             </div>
             <figcaption class="shot-caption">
               <div class="shot-caption-title">
-                <span>Keychain Secrets, Local Ollama &amp; Claude API</span>
+                <span>Keychain Secrets, Ollama &amp; Cloud AI / Edge APIs</span>
                 <span class="shot-step">02 / 04</span>
               </div>
               <p>
-                Store GitHub PATs and Claude API keys encrypted in macOS Keychain, switch local
-                Ollama models with live VRAM metrics, and run zero-token Claude health checks.
+                Connect GitHub, ChatGPT, Gemini, Claude, OpenRouter, Groq, Cloudflare, Vercel, and
+                Supabase encrypted in macOS Keychain alongside live local Ollama VRAM metrics.
               </p>
             </figcaption>
           </figure>
 
           <figure class="shot-card">
-            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg" data-lightbox-caption="03 · Integrated Terminal Output & Activity Log">
+            <div class="shot-frame" data-lightbox-src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg" data-lightbox-caption="03 · Auto-Scrolling Terminal, Activity Log & .txt/.json Export">
               <img
                 src="/src/assets/images/beaconmac_terminal_deploy_1795439945477.jpg"
                 alt="BeaconMac Integrated Terminal Output streaming git pull, pnpm install, npm run build, and local deployment logs"
@@ -1083,12 +1086,13 @@ git tag v1.1.0 &amp;&amp; git push origin v1.1.0
             </div>
             <figcaption class="shot-caption">
               <div class="shot-caption-title">
-                <span>Integrated Terminal Output &amp; Activity Log</span>
+                <span>Terminal Output, Auto-Scroll &amp; Export Logs</span>
                 <span class="shot-step">03 / 04</span>
               </div>
               <p>
-                Stream live stdout and stderr from <code>git clone</code>, dependency installs, and
-                builds directly inside BeaconMac alongside filterable flat-file activity logs.
+                Stream live stdout/stderr with <strong>Pause auto-scroll</strong>, inline per-entry
+                <strong>Copy</strong>, <strong>AI Help</strong> diagnostics, Server Log Search, and
+                redacted <strong>Export Logs</strong> (<code>.txt</code> / <code>.json</code>).
               </p>
             </figcaption>
           </figure>
@@ -1161,23 +1165,75 @@ git tag v1.1.0 &amp;&amp; git push origin v1.1.0
 
           <details class="faq-item">
             <summary>
-              <span>Do I need a .env file, or how does macOS Keychain management work?</span>
+              <span>How does the Inbuilt NGINX Reverse Proxy expose my local apps?</span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
             <div class="faq-answer">
               <p>
-                BeaconMac requires <strong>no <code>.env</code> file</strong>. Paste your GitHub
-                Personal Access Token and Anthropic Claude API key directly inside the app — both are
-                stored encrypted in your <strong>macOS Keychain</strong> (<code>Security.framework</code>),
-                displayed only as masked hints, and automatically redacted from all logs and terminal
-                output.
+                BeaconMac runs a self-contained user-space NGINX instance under
+                <code>~/beaconmac/nginx/</code> with <strong>zero <code>sudo</code></strong>. Click
+                <strong>Expose via NGINX</strong> on any Managed Local App (or add custom routes) to
+                proxy any local port behind clean path prefixes
+                (<code>http://127.0.0.1:8080/&lt;slug&gt;/</code>), <code>*.localhost</code> virtual
+                hosts, or an Active Root (<code>/</code>) — complete with WebSocket/HMR headers,
+                live <code>nginx -t</code> validation, zero-downtime reloads, and an
+                <code>nginx.conf</code> viewer.
               </p>
               <p>
-                For secrets needed by your individual deployed apps, keep an untracked
-                <code>.env.local</code> inside each app's folder or inject Keychain values via
-                <code>security find-generic-password</code> in the app's Start Command.
+                Need to test on a phone or share on your local network? Toggle
+                <strong>Expose LAN (<code>0.0.0.0</code>)</strong> to get a one-click Copy LAN URL
+                banner using your Mac's local IP. If NGINX isn't installed yet, click
+                <strong>Install NGINX</strong> inside BeaconMac to install it silently via Homebrew.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How do I load an app directly into the Built-In Node.js Server?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                Open the <strong>Built-In Node.js Server</strong> section (default
+                <code>http://127.0.0.1:4173</code>) and click <strong>Start Server</strong>. Then
+                click <strong>+ Load App</strong> — or click <strong>Load in Node Host</strong> on
+                any Managed Local App — to serve static/built folders (auto-detecting
+                <code>dist/</code>, <code>build/</code>, <code>out/</code>, <code>public/</code>, or
+                root <code>index.html</code> with SPA fallback) or proxy any local port. Browse all
+                mounted apps anytime at <code>http://127.0.0.1:4173/_beacon/</code>.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How do Cloud AI APIs (ChatGPT, Gemini, Claude, Cloudflare) &amp; macOS Keychain work?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                BeaconMac requires <strong>no <code>.env</code> file</strong>. Open
+                <strong>Settings → Cloud AI &amp; Platform Integrations</strong> to connect and
+                live-verify <strong>OpenAI (ChatGPT)</strong>, <strong>Google Gemini</strong>,
+                <strong>Anthropic Claude</strong>, <strong>OpenRouter</strong>,
+                <strong>Groq</strong>, <strong>Custom OpenAI-Compatible</strong> endpoints,
+                <strong>Cloudflare</strong>, <strong>Vercel</strong>, <strong>Supabase</strong>, and
+                your <strong>GitHub PAT</strong>. Every key is stored encrypted in your
+                <strong>macOS Keychain</strong> under <code>com.beaconmac.app</code>, displayed only
+                as masked hints, and redacted from all logs and exports.
+              </p>
+              <p>
+                After installing a new DMG update, macOS may prompt once for your
+                <code>login</code> keychain password to grant the updated binary access to
+                <code>com.beaconmac.app</code> — click <strong>Always Allow</strong> to restore your
+                saved tokens seamlessly.
               </p>
             </div>
           </details>
@@ -1299,29 +1355,54 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
 
           <details class="faq-item">
             <summary>
-              <span>How does BeaconMac handle automatic updates?</span>
+              <span>How do Export Logs, Pause Auto-Scroll, Per-Entry Copy, and White/Dark themes work?</span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </summary>
             <div class="faq-answer">
               <p>
-                BeaconMac uses the <strong>Sparkle framework</strong> to deliver seamless background
-                updates. It automatically checks for signed releases in the background, downloads
-                updates without interrupting your running local apps, and applies the update cleanly
-                on relaunch.
+                The Activity Log, Terminal Output, and Server Log Search panels automatically scroll
+                to the newest entry and include a <strong>Pause auto-scroll</strong> button (with a
+                live unread count badge on <strong>Resume</strong>), inline per-entry
+                <strong>Copy</strong> icons, right-click menus, and an <strong>Export Logs</strong>
+                button to save all or filtered session logs (system, Git, services, deployment
+                output) as redacted <code>.txt</code> or <code>.json</code> files.
               </p>
               <p>
-                To check manually at any time, click the <strong>BeaconMac</strong> icon in the
-                macOS <strong>Menu Bar</strong> and select <strong>Check for Updates…</strong> (you
-                can also trigger a manual check or adjust automatic update preferences from the app
-                menubar and Settings).
+                To switch between <strong>Dark</strong> and <strong>White (Light)</strong> mode in
+                real time, use the Theme switcher in the top toolbar, Settings, or Menu Bar — all
+                section headers stay highlighted in crisp <strong>Blue</strong> for fast scanning.
               </p>
             </div>
           </details>
+
           <details class="faq-item">
             <summary>
-              <span>How can I install missing tools like pnpm, Bun, or Yarn and troubleshoot logs?</span>
+              <span>How does BeaconMac handle verified self-updates?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <div class="faq-answer">
+              <p>
+                BeaconMac checks the pinned <code>arjunmarri/beacon</code> GitHub Releases feed,
+                verifies the published <code>.sha256</code> checksum via <code>CryptoKit</code>
+                before mounting, validates the staged app's Apple Developer ID signature &amp;
+                Team ID via <code>SecStaticCodeCheckValidity</code>, <code>codesign</code>, and
+                Gatekeeper (<code>spctl</code>), preserves <code>com.apple.quarantine</code>, and
+                always asks for your explicit confirmation before replacing and relaunching.
+              </p>
+              <p>
+                Click the <strong>BeaconMac</strong> icon in the macOS <strong>Menu Bar</strong> and
+                select <strong>Check for Updates…</strong> anytime.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>
+              <span>How can I install missing tools like pnpm, Bun, Yarn, or NGINX and troubleshoot logs?</span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
@@ -1330,15 +1411,15 @@ caffeinate -s   # or System Settings &gt; Energy / Displays</pre>
               <p>
                 Click <strong>Install Dependencies</strong> in BeaconMac's top bar, Managed Local
                 Apps header, or Menu Bar, pick your project type (such as <strong>Node.js + pnpm</strong>,
-                <strong>Node.js + Yarn</strong>, <strong>Bun</strong>, or <strong>Python (python3 + uv)</strong>),
+                <strong>Node.js + Yarn</strong>, <strong>Bun</strong>, <strong>Python (python3 + uv)</strong>,
+                <strong>Go</strong>, or <strong>Custom</strong> including <strong>NGINX</strong>),
                 and BeaconMac silently installs missing tools via Homebrew or verified direct
-                official downloads (including SHA-256–verified Node.js LTS tarballs, <code>get.pnpm.io</code>,
-                and <code>bun.sh</code>) without leaving the app.
+                official downloads without leaving the app.
               </p>
               <p>
-                Every log panel also includes one-click <strong>Copy</strong> and <strong>AI Help</strong>
-                buttons to analyze redacted errors directly with your connected Local Ollama or
-                Claude API.
+                Every log panel also includes inline <strong>Copy</strong> and <strong>AI Help</strong>
+                buttons to analyze redacted errors directly with your Local Ollama model or any
+                connected Cloud AI provider (ChatGPT, Gemini, Claude, OpenRouter, Groq, or Custom).
               </p>
             </div>
           </details>

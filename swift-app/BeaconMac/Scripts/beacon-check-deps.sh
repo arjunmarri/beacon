@@ -13,7 +13,7 @@ export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 export PNPM_HOME="$HOME/Library/pnpm"
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.local/node/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.local/node/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm:$HOME/.volta/bin:$HOME/.fnm/current/bin:$HOME/.local/share/mise/shims:$HOME/.asdf/shims:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 if [ -d "$HOME/.nvm/versions/node" ]; then
   NVM_LATEST=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -n 1 || true)
   if [ -n "$NVM_LATEST" ] && [ -d "$HOME/.nvm/versions/node/$NVM_LATEST/bin" ]; then
@@ -199,6 +199,54 @@ install_runtime_tool() {
         xcode-select --install >/dev/null 2>&1 || true
       fi
       ;;
+    nginx)
+      if can_use_brew; then
+        brew install --quiet nginx
+      else
+        echo "[beacon-deps] ERROR: Homebrew is required for silent NGINX installation on macOS. Install Homebrew from https://brew.sh first." >&2
+        return 1
+      fi
+      ;;
+    cloudflared)
+      if can_use_brew; then
+        brew install --quiet cloudflared
+      elif can_use_direct; then
+        local cf_arch
+        case "$(uname -m)" in
+          arm64|aarch64) cf_arch="arm64" ;;
+          x86_64)        cf_arch="amd64" ;;
+          *)
+            echo "[beacon-deps] ERROR: Unsupported CPU architecture $(uname -m) for direct cloudflared download." >&2
+            return 1
+            ;;
+        esac
+        local cf_tmp
+        cf_tmp=$(mktemp -d)
+        echo "[beacon-deps] Downloading official Cloudflare Tunnel binary (cloudflared-darwin-${cf_arch}.tgz)..."
+        if curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${cf_arch}.tgz" -o "${cf_tmp}/cloudflared.tgz"; then
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "${cf_tmp}/cloudflared.tgz" -C "$cf_tmp"
+          if [ -f "${cf_tmp}/cloudflared" ]; then
+            mv -f "${cf_tmp}/cloudflared" "$HOME/.local/bin/cloudflared"
+            chmod +x "$HOME/.local/bin/cloudflared"
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "[beacon-deps] Installed cloudflared directly into $HOME/.local/bin/cloudflared."
+          else
+            rm -rf "$cf_tmp"
+            echo "[beacon-deps] ERROR: Downloaded archive did not contain cloudflared binary." >&2
+            return 1
+          fi
+        else
+          rm -rf "$cf_tmp"
+          echo "[beacon-deps] ERROR: Failed to download cloudflared from GitHub releases." >&2
+          return 1
+        fi
+        rm -rf "$cf_tmp"
+      else
+        echo "[beacon-deps] ERROR: Homebrew is not installed and direct download is disabled." >&2
+        return 1
+      fi
+      ;;
     *)
       echo "[beacon-deps] Skipping unknown runtime '$tool'."
       ;;
@@ -347,7 +395,11 @@ check_bin() {
   local mode="${2:-required}"
   if command -v "$name" >/dev/null 2>&1; then
     local ver
-    ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
+    if [ "$name" = "nginx" ]; then
+      ver=$("$name" -v 2>&1 | sed 's/nginx version: //' | head -n 1 || echo "installed")
+    else
+      ver=$("$name" --version 2>/dev/null | head -n 1 || echo "installed")
+    fi
     echo "TOOL:$name:OK:$ver"
   elif [ "$mode" = "optional" ]; then
     echo "TOOL:$name:OPTIONAL:not installed (optional)"
@@ -365,6 +417,8 @@ check_bin bun optional
 check_bin python3 optional
 check_bin uv optional
 check_bin go optional
+check_bin nginx optional
+check_bin cloudflared optional
 
 if [ -n "$WORKDIR" ]; then
   if [ ! -d "$WORKDIR" ]; then
