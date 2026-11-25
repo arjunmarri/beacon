@@ -20,6 +20,7 @@ struct ConfigurationView: View {
     @State private var editingKeyFor: Set<CloudProviderKind> = []
     @State private var claudeKeyDraft: String = ""
     @State private var editingClaudeKey: Bool = false
+    @State private var showingPrivacyPolicy: Bool = false
 
     private var palette: BeaconPalette { BeaconPalette(colorScheme: colorScheme) }
 
@@ -218,6 +219,11 @@ struct ConfigurationView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(palette.accentLink)
                             .textSelection(.enabled)
+                        Spacer()
+                        Button("View Privacy Policy") {
+                            showingPrivacyPolicy = true
+                        }
+                        .buttonStyle(BeaconSecondaryButtonStyle())
                     }
                 }
                 .padding(12)
@@ -234,6 +240,10 @@ struct ConfigurationView: View {
         .shadow(color: palette.cardShadow, radius: 6, y: 2)
         .onAppear {
             syncFromController()
+        }
+        .sheet(isPresented: $showingPrivacyPolicy) {
+            PrivacyPolicySheet()
+                .preferredColorScheme(controller.config.appearanceMode == .light ? .light : .dark)
         }
     }
 

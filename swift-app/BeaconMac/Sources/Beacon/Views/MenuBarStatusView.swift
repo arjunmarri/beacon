@@ -48,6 +48,11 @@ struct MenuBarStatusView: View {
 
             Divider()
 
+            let ollamaTunnelLive = controller.ollamaCloudflareTunnel?.isRunning == true
+            Button(ollamaTunnelLive ? "Stop Ollama Cloudflare Tunnel" : "Expose Ollama via Cloudflare") {
+                Task { await controller.toggleOllamaCloudflareTunnel() }
+            }
+
             let liveTunnels = controller.cloudflareTunnel.activeTunnels.filter { $0.isRunning && $0.publicURL != nil }
             if !liveTunnels.isEmpty {
                 ForEach(liveTunnels) { tunnel in
@@ -60,6 +65,8 @@ struct MenuBarStatusView: View {
                 Button("Stop All Cloudflare Tunnels") {
                     Task { await controller.stopAllCloudflareTunnels() }
                 }
+                Divider()
+            } else {
                 Divider()
             }
 

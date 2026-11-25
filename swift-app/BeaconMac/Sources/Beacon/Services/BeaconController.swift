@@ -1892,6 +1892,14 @@ public final class BeaconController {
         cloudflareTunnel.tunnels[cloudflareTunnelKey(for: app)]
     }
 
+    public var ollamaPort: Int {
+        LocalProcessService.extractPort(from: config.ollamaEndpoint, fallback: 11434)
+    }
+
+    public var ollamaCloudflareTunnel: CloudflareTunnelEntry? {
+        cloudflareTunnel.tunnels["ollama"]
+    }
+
     public func generatedCloudflaredConfig(for key: String) -> String? {
         cloudflareTunnelService.readGeneratedConfig(for: key)
     }
@@ -1924,6 +1932,9 @@ public final class BeaconController {
             } else if item.tunnelID == "node-host" {
                 label = "Built-In Node.js Server"
                 targetKind = .builtInNode
+            } else if item.tunnelID == "ollama" {
+                label = "Ollama LLM"
+                targetKind = .ollama
             } else if item.tunnelID.hasPrefix("app-") {
                 let rawUUID = String(item.tunnelID.dropFirst(4))
                 if let matchedApp = config.managedApps.first(where: { $0.id.uuidString.lowercased() == rawUUID }) {
@@ -2036,6 +2047,30 @@ public final class BeaconController {
         }
     }
 
+    public func toggleOllamaCloudflareTunnel() async {
+        let key = "ollama"
+        if cloudflareTunnel.tunnels[key]?.isRunning == true {
+            await stopCloudflareTunnel(key: key)
+            return
+        }
+
+        let port = ollamaPort
+        if !ollama.isConnected {
+            await probeOllama(logResult: false)
+            if !ollama.isConnected {
+                log(.ollama, .warn, "Starting Cloudflare Tunnel for Ollama on :\(port) — make sure Ollama is running locally at \(config.ollamaEndpoint)")
+            }
+        }
+
+        await startCloudflareTunnel(
+            key: key,
+            label: "Ollama LLM",
+            targetKind: .ollama,
+            targetPort: port,
+            httpHostHeader: "localhost:\(port)"
+        )
+    }
+
     public func exposeCustomPortViaCloudflare(port: Int, label: String = "") async {
         let clampedPort = max(1, min(65535, port))
         let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2053,7 +2088,8 @@ public final class BeaconController {
         label: String,
         targetKind: CloudflareTunnelTargetKind,
         appID: UUID? = nil,
-        targetPort: Int
+        targetPort: Int,
+        httpHostHeader: String? = nil
     ) async {
         let clampedPort = max(1, min(65535, targetPort))
         let targetURL = "http://127.0.0.1:\(clampedPort)"
@@ -2145,7 +2181,8 @@ public final class BeaconController {
             preferCloudflareAPI: config.cloudflareTunnel.preferCloudflareAPI,
             customBaseDomain: config.cloudflareTunnel.customBaseDomain,
             apiToken: apiToken,
-            configuredAccountID: cfConfig.accountID
+            configuredAccountID: cfConfig.accountID,
+            httpHostHeader: httpHostHeader
         )
 
         // Persist auto-discovered Cloudflare Account ID if it wasn't previously entered
@@ -2190,11 +2227,14 @@ public final class BeaconController {
             )
         case .quickTunnel:
             let proto = config.cloudflareTunnel.preferredProtocol.rawValue
-            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start \(key) \(targetURL) \(proto)")
+            let hostHeaderArg = CloudflareTunnelService.sanitizeHostHeader(httpHostHeader)
+            let extraArgs = hostHeaderArg.map { [targetURL, proto, $0] } ?? [targetURL, proto]
+            let headerLogSuffix = hostHeaderArg.map { " \($0)" } ?? ""
+            appendTerminal(appName: "cloudflare", text: "$ beacon-cloudflared.sh start \(key) \(targetURL) \(proto)\(headerLogSuffix)")
             probe = await deploymentService.runCloudflaredAction(
                 "start",
                 tunnelID: key,
-                extraArgs: [targetURL, proto]
+                extraArgs: extraArgs
             )
         }
 

@@ -20,7 +20,8 @@ let package = Package(
                 "Resources/Assets.xcassets"
             ],
             resources: [
-                .copy("Resources/PrivacyInfo.xcprivacy")
+                .copy("Resources/PrivacyInfo.xcprivacy"),
+                .copy("Resources/PRIVACY_POLICY.md")
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

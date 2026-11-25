@@ -651,6 +651,7 @@ public enum CloudflareTunnelTargetKind: String, Codable, Sendable {
     case managedApp
     case nginxProxy
     case builtInNode
+    case ollama
     case customPort
 }
 

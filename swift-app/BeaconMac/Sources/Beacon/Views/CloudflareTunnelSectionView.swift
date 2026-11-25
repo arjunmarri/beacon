@@ -136,6 +136,15 @@ struct CloudflareTunnelSectionView: View {
                 .disabled(nodeTunnelStarting)
                 .buttonStyle(BeaconSecondaryButtonStyle())
 
+                let ollamaTunnelLive = controller.ollamaCloudflareTunnel?.isRunning == true
+                let ollamaTunnelStarting = controller.ollamaCloudflareTunnel?.isStarting == true
+                Button(ollamaTunnelStarting ? "Tunneling Ollama…" : (ollamaTunnelLive ? "Stop Ollama Tunnel" : "Expose Ollama (:\(controller.ollamaPort))")) {
+                    Task { await controller.toggleOllamaCloudflareTunnel() }
+                }
+                .disabled(ollamaTunnelStarting)
+                .buttonStyle(BeaconSecondaryButtonStyle())
+                .help("Expose local Ollama LLM API over HTTPS via Cloudflare Tunnel")
+
                 // Quick custom port expose
                 HStack(spacing: 6) {
                     Text("Port")

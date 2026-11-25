@@ -137,10 +137,13 @@ else
     "$SWIFT_DIR/Sources/Beacon/Resources/Info.plist" > "$APP_BUNDLE/Contents/Info.plist"
 fi
 
-# Ensure PrivacyInfo.xcprivacy and AppIcon.icns are bundled inside Contents/Resources BEFORE code signing
+# Ensure PrivacyInfo.xcprivacy, PRIVACY_POLICY.md, and AppIcon.icns are bundled inside Contents/Resources BEFORE code signing
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 if [ -f "$SWIFT_DIR/Sources/Beacon/Resources/PrivacyInfo.xcprivacy" ] && [ ! -f "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy" ]; then
   cp "$SWIFT_DIR/Sources/Beacon/Resources/PrivacyInfo.xcprivacy" "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy"
+fi
+if [ -f "$SWIFT_DIR/Sources/Beacon/Resources/PRIVACY_POLICY.md" ] && [ ! -f "$APP_BUNDLE/Contents/Resources/PRIVACY_POLICY.md" ]; then
+  cp "$SWIFT_DIR/Sources/Beacon/Resources/PRIVACY_POLICY.md" "$APP_BUNDLE/Contents/Resources/PRIVACY_POLICY.md"
 fi
 if [ ! -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ] && command -v iconutil >/dev/null 2>&1; then
   ICONSET_SRC="$SWIFT_DIR/Sources/Beacon/Resources/Assets.xcassets/AppIcon.appiconset"

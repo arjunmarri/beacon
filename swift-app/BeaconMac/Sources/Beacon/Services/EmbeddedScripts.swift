@@ -2412,7 +2412,7 @@ esac
 #   $2 = tunnel_id (alphanumeric/dash/underscore, or "all" for status)
 #   $3 = target_url (for "start") | config_yml_path (for "start-config") | token_file_path (for "start-token")
 #   $4 = protocol (for "start") | public_url (for "start-config" / "start-token")
-#   $5 = target_url (for "start-config" / "start-token")
+#   $5 = optional http_host_header (for "start") | target_url (for "start-config" / "start-token")
 set -euo pipefail
 
 ACTION="${1:-status}"
@@ -2582,6 +2582,7 @@ case "$ACTION" in
   start)
     TARGET_URL="$ARG3"
     PROTOCOL="$ARG4"
+    HTTP_HOST_HEADER="$ARG5"
     if [ -z "$CF_BIN" ]; then
       echo "CLOUDFLARED:INSTALLED:NO:not found"
       echo "[beacon-cloudflared] ERROR: cloudflared is not installed." >&2
@@ -2604,6 +2605,10 @@ case "$ACTION" in
       *) PROTOCOL="auto" ;;
     esac
 
+    if [ -n "$HTTP_HOST_HEADER" ]; then
+      HTTP_HOST_HEADER=$(printf '%s' "$HTTP_HOST_HEADER" | tr -cd 'A-Za-z0-9.:-')
+    fi
+
     TDIR="$TUNNELS_ROOT/$SAFE_ID"
     mkdir -p "$TDIR"
     stop_tunnel_dir "$TDIR"
@@ -2613,11 +2618,14 @@ case "$ACTION" in
     printf '%s\n' "$TARGET_URL" > "$TDIR/target.url"
     printf '%s\n' "quick" > "$TDIR/mode.txt"
 
-    if [ "$PROTOCOL" = "auto" ]; then
-      nohup "$CF_BIN" tunnel --url "$TARGET_URL" --no-autoupdate > "$LOG_FILE" 2>&1 < /dev/null &
-    else
-      nohup "$CF_BIN" tunnel --url "$TARGET_URL" --protocol "$PROTOCOL" --no-autoupdate > "$LOG_FILE" 2>&1 < /dev/null &
+    CF_ARGS=(tunnel --url "$TARGET_URL" --no-autoupdate)
+    if [ "$PROTOCOL" != "auto" ]; then
+      CF_ARGS+=(--protocol "$PROTOCOL")
     fi
+    if [ -n "$HTTP_HOST_HEADER" ]; then
+      CF_ARGS+=(--http-host-header "$HTTP_HOST_HEADER")
+    fi
+    nohup "$CF_BIN" "${CF_ARGS[@]}" > "$LOG_FILE" 2>&1 < /dev/null &
     NEW_PID=$!
     printf '%s\n' "$NEW_PID" > "$TDIR/tunnel.pid"
 

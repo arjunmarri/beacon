@@ -39,14 +39,16 @@ interface GitHubReleaseRecord {
 const PORT = Number(process.env.PORT || 3000);
 const ROOT_DIR = process.cwd();
 const INDEX_HTML_PATH = path.join(ROOT_DIR, 'index.html');
+const PRIVACY_HTML_PATH = path.join(ROOT_DIR, 'privacy.html');
 const SWIFT_APP_DIR = path.join(ROOT_DIR, 'swift-app', 'BeaconMac');
 const DOCS_DIR = path.join(ROOT_DIR, 'docs');
+const PRIVACY_MD_PATH = path.join(DOCS_DIR, 'PRIVACY_POLICY.md');
 const RELEASES_DIR = path.join(ROOT_DIR, 'releases');
 const RELEASES_MANIFEST_PATH = path.join(RELEASES_DIR, 'releases.json');
 const VERSION_FILE_PATH = path.join(ROOT_DIR, 'version.json');
 const WORKFLOWS_DIR = path.join(ROOT_DIR, '.github');
 
-const ROOT_FILES = ['README.md', 'LICENSE', 'CHANGELOG.md', 'version.json'];
+const ROOT_FILES = ['README.md', 'LICENSE', 'CHANGELOG.md', 'version.json', 'privacy.html'];
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
 let ghCache: { fetchedAt: number; assetsByVersion: Map<string, { url: string; size: number; name: string }> } = {
@@ -335,6 +337,34 @@ app.get('/api/download-swift', async (_req: Request, res: Response) => {
 
 app.get('/healthz', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
+});
+
+app.get(['/privacy', '/privacy.html'], (_req: Request, res: Response) => {
+  fs.readFile(PRIVACY_HTML_PATH, 'utf8', (err, html) => {
+    if (err) {
+      if (!res.headersSent) {
+        res.status(404).send('Privacy Policy document not found.');
+      }
+      return;
+    }
+    if (!res.headersSent) {
+      res.status(200).type('text/html; charset=utf-8').send(html);
+    }
+  });
+});
+
+app.get('/privacy.md', (_req: Request, res: Response) => {
+  fs.readFile(PRIVACY_MD_PATH, 'utf8', (err, markdown) => {
+    if (err) {
+      if (!res.headersSent) {
+        res.status(404).send('Privacy Policy markdown file not found.');
+      }
+      return;
+    }
+    if (!res.headersSent) {
+      res.status(200).type('text/markdown; charset=utf-8').send(markdown);
+    }
+  });
 });
 
 app.get('*', (_req: Request, res: Response) => {

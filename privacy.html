@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — BeaconMac</title>
+    <meta
+      name="description"
+      content="BeaconMac Privacy Policy placeholder notice for Mac App Store compliance: local-first storage, macOS Keychain encryption, and zero tracking."
+    />
+    <meta property="og:title" content="Privacy Policy — BeaconMac" />
+    <meta
+      property="og:description"
+      content="BeaconMac Privacy Policy placeholder notice: local-first storage, encrypted macOS Keychain credentials, and zero analytics or tracking."
+    />
+    <meta property="og:type" content="website" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        background-color: #07090d;
+        color: #f3f5f8;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background:
+          radial-gradient(65% 55% at 18% 10%, rgba(56, 189, 248, 0.13) 0%, rgba(56, 189, 248, 0) 68%),
+          radial-gradient(55% 50% at 86% 20%, rgba(99, 102, 241, 0.11) 0%, rgba(99, 102, 241, 0) 65%),
+          linear-gradient(180deg, #0b0f17 0%, #07090d 55%, #06080c 100%);
+      }
+
+      .top-nav {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        background: rgba(7, 9, 13, 0.82);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .top-nav-inner {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .nav-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        color: #f3f5f8;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: -0.01em;
+      }
+
+      .nav-brand-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #38bdf8, #818cf8);
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.65);
+      }
+
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 13px;
+      }
+
+      .nav-actions a {
+        color: #cbd5e1;
+        text-decoration: none;
+        padding: 6px 11px;
+        border-radius: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+        transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+      }
+
+      .nav-actions a:hover {
+        color: #38bdf8;
+        border-color: rgba(56, 189, 248, 0.45);
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      main {
+        flex: 1;
+        width: 100%;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 24px 48px;
+      }
+
+      .policy-card {
+        background: rgba(15, 20, 30, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 16px;
+        padding: 34px 36px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #f8fafc;
+      }
+
+      .subtitle {
+        margin: 0 0 22px;
+        color: #94a3b8;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .notice-banner {
+        margin: 0 0 26px;
+        padding: 14px 16px;
+        border-radius: 10px;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.34);
+        color: #fde68a;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .notice-banner strong {
+        color: #fef3c7;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin: 0 0 28px;
+        padding: 16px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        font-size: 13px;
+      }
+
+      .meta-label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #7c8799;
+        margin-bottom: 3px;
+      }
+
+      .meta-value {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        color: #e2e8f0;
+        word-break: break-all;
+      }
+
+      section {
+        margin: 0 0 24px;
+      }
+
+      section:last-child {
+        margin-bottom: 0;
+      }
+
+      h2 {
+        margin: 0 0 9px;
+        font-size: 16px;
+        font-weight: 650;
+        color: #60a5fa;
+        letter-spacing: -0.01em;
+      }
+
+      p,
+      li {
+        margin: 0 0 10px;
+        font-size: 14px;
+        line-height: 1.65;
+        color: #cbd5e1;
+      }
+
+      ul {
+        margin: 6px 0 10px;
+        padding-left: 20px;
+      }
+
+      code {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        font-size: 12.5px;
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: #bae6fd;
+      }
+
+      footer {
+        padding: 20px 24px 28px;
+        text-align: center;
+        font-size: 13px;
+        color: #7c8799;
+      }
+
+      footer a {
+        color: #cbd5e1;
+        text-decoration: none;
+        font-weight: 500;
+        border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+        padding-bottom: 1px;
+        transition: color 150ms ease, border-color 150ms ease;
+      }
+
+      footer a:hover {
+        color: #38bdf8;
+        border-bottom-color: rgba(56, 189, 248, 0.65);
+      }
+
+      .footer-sep {
+        margin: 0 8px;
+        color: #475569;
+      }
+
+      @media (max-width: 600px) {
+        .policy-card {
+          padding: 24px 20px;
+        }
+
+        h1 {
+          font-size: 23px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top-nav">
+      <div class="top-nav-inner">
+        <a class="nav-brand" href="/">
+          <span class="nav-brand-dot" aria-hidden="true"></span>
+          <span>BeaconMac</span>
+        </a>
+        <div class="nav-actions">
+          <a href="/privacy.md" download="PRIVACY_POLICY.md">Download Markdown</a>
+          <a href="/">Back to BeaconMac</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <article class="policy-card">
+        <h1>BeaconMac Privacy Policy (Placeholder)</h1>
+        <p class="subtitle">
+          Standard Mac App Store privacy disclosure template for BeaconMac.
+        </p>
+
+        <div class="notice-banner" role="note">
+          <strong>App Store Connect Placeholder Notice:</strong> Replace the bracketed placeholders
+          (<code>[YOUR_COMPANY_OR_DEVELOPER_NAME]</code>, <code>[YOUR_SUPPORT_EMAIL]</code>,
+          <code>[YOUR_PRIVACY_POLICY_URL]</code>, and <code>[YYYY-MM-DD]</code>) and publish this
+          page at your public HTTPS URL before submitting BeaconMac to the Mac App Store.
+        </div>
+
+        <div class="meta-grid">
+          <div>
+            <span class="meta-label">Effective Date</span>
+            <span class="meta-value">[YYYY-MM-DD]</span>
+          </div>
+          <div>
+            <span class="meta-label">Developer</span>
+            <span class="meta-value">[YOUR_COMPANY_OR_DEVELOPER_NAME]</span>
+          </div>
+          <div>
+            <span class="meta-label">Support Contact</span>
+            <span class="meta-value">[YOUR_SUPPORT_EMAIL]</span>
+          </div>
+          <div>
+            <span class="meta-label">Public Policy URL</span>
+            <span class="meta-value">[YOUR_PRIVACY_POLICY_URL]</span>
+          </div>
+        </div>
+
+        <section>
+          <h2>1. Overview</h2>
+          <p>
+            BeaconMac is a local-first macOS developer utility designed to monitor local web
+            applications, built-in reverse proxies, and development services on your Mac. We do not
+            collect, sell, rent, or track personal data.
+          </p>
+        </section>
+
+        <section>
+          <h2>2. Data Stored Locally on Your Mac</h2>
+          <p>
+            All configuration files, local application paths, activity logs, and runtime state are
+            stored strictly on your device inside macOS Application Support
+            (<code>~/Library/Application Support/Beacon/</code>).
+          </p>
+          <ul>
+            <li>
+              <strong>Credentials &amp; API Tokens:</strong> Any GitHub, Cloudflare, or cloud
+              provider API tokens you choose to enter are stored encrypted in your macOS Keychain
+              (<code>Security.framework</code>) and are never written to plaintext configuration
+              files or transmitted to the developer.
+            </li>
+            <li>
+              <strong>Logs:</strong> Activity and server logs remain local to your Mac and are never
+              uploaded to third-party AI services or developer servers.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>3. Optional User-Initiated Third-Party Connections</h2>
+          <p>
+            BeaconMac only initiates outbound network requests to external services when you
+            explicitly configure and trigger them (for example, checking a GitHub repository,
+            verifying a cloud API token you entered, or starting a Cloudflare Tunnel). Those
+            requests go directly from your Mac to the third-party provider you selected and are
+            governed by that provider's privacy policy.
+          </p>
+        </section>
+
+        <section>
+          <h2>4. Tracking, Analytics &amp; Crash Reporting</h2>
+          <ul>
+            <li>
+              <strong>Tracking:</strong> BeaconMac does not track you across apps or websites
+              (<code>NSPrivacyTracking = false</code>).
+            </li>
+            <li>
+              <strong>Analytics &amp; Telemetry:</strong> BeaconMac includes no third-party
+              analytics SDKs, advertising SDKs, or behavioral telemetry.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>5. Data Deletion</h2>
+          <p>
+            You can remove stored credentials at any time using the <strong>Clear</strong> buttons
+            in BeaconMac Settings (which deletes entries from your macOS Keychain) and clear local
+            activity logs via <strong>Clear Logs</strong> or by deleting BeaconMac's Application
+            Support folder.
+          </p>
+        </section>
+
+        <section>
+          <h2>6. Contact</h2>
+          <p>
+            If you have questions about this Privacy Policy, contact us at
+            <code>[YOUR_SUPPORT_EMAIL]</code>.
+          </p>
+        </section>
+      </article>
+    </main>
+
+    <footer>
+      Designed by
+      <a href="https://soroai.com" target="_blank" rel="noopener noreferrer">SoroAI</a>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <a href="/">Home</a>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <a href="/privacy.md">Raw Policy (.md)</a>
+    </footer>
+  </body>
+</html>

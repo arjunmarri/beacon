@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var controller: BeaconController
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showingPrivacyPolicy: Bool = false
 
     private var palette: BeaconPalette { BeaconPalette(colorScheme: colorScheme) }
     private var activeScheme: ColorScheme { controller.config.appearanceMode == .light ? .light : .dark }
@@ -136,6 +137,14 @@ struct ContentView: View {
                             .foregroundStyle(palette.accentLink)
                         Text("·")
                             .foregroundStyle(palette.secondaryText)
+                        Button("Privacy Policy") {
+                            showingPrivacyPolicy = true
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(palette.accentLink)
+                        .help("View BeaconMac's Privacy Policy placeholder notice or open the local policy file")
+                        Text("·")
+                            .foregroundStyle(palette.secondaryText)
                         Text("Local-first privacy · No telemetry or third-party log sharing")
                             .foregroundStyle(palette.secondaryText)
                         Spacer()
@@ -154,6 +163,10 @@ struct ContentView: View {
                 selectedAppID: controller.dependencyInstallerAppID
             )
             .preferredColorScheme(activeScheme)
+        }
+        .sheet(isPresented: $showingPrivacyPolicy) {
+            PrivacyPolicySheet()
+                .preferredColorScheme(activeScheme)
         }
     }
 }

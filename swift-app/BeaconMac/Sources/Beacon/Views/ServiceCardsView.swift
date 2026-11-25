@@ -8,6 +8,8 @@ struct ServiceCardsView: View {
     @State private var editingGitKey: Bool = false
     @State private var claudeKeyDraft: String = ""
     @State private var editingClaudeKey: Bool = false
+    @State private var copiedOllamaTunnel: Bool = false
+    @State private var inspectedOllamaTunnel: CloudflareTunnelEntry?
 
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 16)]
 
@@ -15,11 +17,23 @@ struct ServiceCardsView: View {
         BeaconPalette(colorScheme: colorScheme)
     }
 
+    private var activeScheme: ColorScheme {
+        controller.config.appearanceMode == .light ? .light : .dark
+    }
+
     var body: some View {
         LazyVGrid(columns: columns, spacing: 16) {
             gitAccountCard
             ollamaCard
             claudeCard
+        }
+        .sheet(item: $inspectedOllamaTunnel) { tunnel in
+            CloudflareConfigInspectorSheet(
+                title: "\(tunnel.label) · cloudflared config.yml",
+                configPath: tunnel.configFilePath ?? "",
+                configText: controller.generatedCloudflaredConfig(for: tunnel.id) ?? "# No config.yml generated yet."
+            )
+            .preferredColorScheme(activeScheme)
         }
     }
 
@@ -207,10 +221,96 @@ struct ServiceCardsView: View {
                 }
             }
 
+            let ollamaTunnel = controller.ollamaCloudflareTunnel
+            if let ollamaTunnel, ollamaTunnel.isRunning || ollamaTunnel.isStarting || ollamaTunnel.lastError != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(ollamaTunnel.isRunning ? palette.successText : (ollamaTunnel.isStarting ? palette.warningText : palette.errorText))
+                            .frame(width: 7, height: 7)
+                        if let pubURL = ollamaTunnel.publicURL, ollamaTunnel.isRunning {
+                            Text(ollamaTunnel.mode == .apiManaged ? "Cloudflare API:" : "Public URL:")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(palette.successText)
+                            Text(pubURL)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(palette.accentLink)
+                                .textSelection(.enabled)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        } else if ollamaTunnel.isStarting {
+                            Text("Cloudflare Tunnel: \(ollamaTunnel.statusLabel)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(palette.warningText)
+                                .lineLimit(1)
+                        } else if let tErr = ollamaTunnel.lastError {
+                            Text("Tunnel error: \(tErr)")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(palette.errorText)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    if let pubURL = ollamaTunnel.publicURL, ollamaTunnel.isRunning {
+                        HStack(spacing: 6) {
+                            Button(copiedOllamaTunnel ? "Copied" : "Copy URL") {
+                                controller.copyTunnelURL(pubURL)
+                                copiedOllamaTunnel = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(1.8))
+                                    copiedOllamaTunnel = false
+                                }
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+
+                            Button("Open") {
+                                controller.openTunnelURL(pubURL)
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+
+                            if ollamaTunnel.configFilePath != nil {
+                                Button("config.yml") {
+                                    inspectedOllamaTunnel = ollamaTunnel
+                                }
+                                .buttonStyle(BeaconSecondaryButtonStyle())
+                            }
+                            Spacer()
+                        }
+                    } else if ollamaTunnel.lastError != nil {
+                        HStack {
+                            Button("Retry Tunnel") {
+                                Task { await controller.toggleOllamaCloudflareTunnel() }
+                            }
+                            .buttonStyle(BeaconSecondaryButtonStyle())
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ollamaTunnel.isRunning
+                    ? (palette.isLight ? Color(red: 0.91, green: 0.98, blue: 0.94) : Color(red: 0.06, green: 0.16, blue: 0.13))
+                    : palette.row)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(
+                    ollamaTunnel.isRunning ? palette.successText.opacity(0.38) : palette.subtleBorder
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             Spacer(minLength: 0)
 
-            HStack {
+            HStack(spacing: 8) {
+                Button(ollamaTunnel?.isStarting == true
+                    ? "Exposing…"
+                    : (ollamaTunnel?.isRunning == true ? "Stop Cloudflare Tunnel" : "Expose via Cloudflare")) {
+                    Task { await controller.toggleOllamaCloudflareTunnel() }
+                }
+                .disabled(ollamaTunnel?.isStarting == true)
+                .buttonStyle(BeaconPrimaryButtonStyle())
+                .help("Expose local Ollama (:\(controller.ollamaPort)) over HTTPS via Cloudflare Tunnel with automatic Host header rewrite")
+
                 Spacer()
+
                 Button("Health Check") {
                     Task { await controller.probeOllama(logResult: true) }
                 }

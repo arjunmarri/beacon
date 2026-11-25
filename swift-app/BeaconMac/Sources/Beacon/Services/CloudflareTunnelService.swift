@@ -81,6 +81,15 @@ public final class CloudflareTunnelService: Sendable {
         return cleaned.isEmpty ? "tunnel" : String(cleaned.prefix(80))
     }
 
+    public static func sanitizeHostHeader(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".:-"))
+        let cleaned = String(trimmed.unicodeScalars.filter { allowed.contains($0) })
+        return cleaned.isEmpty ? nil : String(cleaned.prefix(120))
+    }
+
     public func tunnelDirectory(for key: String) -> URL {
         tunnelsDirectoryURL.appendingPathComponent(Self.sanitizeTunnelKey(key), isDirectory: true)
     }
@@ -104,12 +113,14 @@ public final class CloudflareTunnelService: Sendable {
         preferCloudflareAPI: Bool,
         customBaseDomain: String,
         apiToken: String?,
-        configuredAccountID: String
+        configuredAccountID: String,
+        httpHostHeader: String? = nil
     ) async -> CloudflareTunnelProvisionResult {
         let safeKey = Self.sanitizeTunnelKey(tunnelKey)
         let clampedPort = max(1, min(65535, targetPort))
         let targetURL = "http://127.0.0.1:\(clampedPort)"
         let slug = Self.sanitizeSlug(appName, fallbackPort: clampedPort)
+        let safeHostHeader = Self.sanitizeHostHeader(httpHostHeader)
         let tDir = tunnelDirectory(for: safeKey)
         try? FileManager.default.createDirectory(at: tDir, withIntermediateDirectories: true)
 
@@ -128,6 +139,7 @@ public final class CloudflareTunnelService: Sendable {
                     customBaseDomain: Self.sanitizeDomain(customBaseDomain),
                     apiToken: trimmedToken,
                     configuredAccountID: configuredAccountID.trimmingCharacters(in: .whitespacesAndNewlines),
+                    httpHostHeader: safeHostHeader,
                     tunnelDir: tDir
                 )
             } catch {
@@ -136,6 +148,7 @@ public final class CloudflareTunnelService: Sendable {
                     in: tDir,
                     targetURL: targetURL,
                     protocolChoice: protocolChoice,
+                    httpHostHeader: safeHostHeader,
                     note: "Fallback to Quick Tunnel (Cloudflare API: \(reason))"
                 )
                 return CloudflareTunnelProvisionResult(
@@ -158,6 +171,7 @@ public final class CloudflareTunnelService: Sendable {
             in: tDir,
             targetURL: targetURL,
             protocolChoice: protocolChoice,
+            httpHostHeader: safeHostHeader,
             note: trimmedToken.isEmpty
                 ? "No Cloudflare API token in Keychain — using zero-config Quick Tunnel"
                 : "Quick Tunnel mode selected"
@@ -198,6 +212,7 @@ public final class CloudflareTunnelService: Sendable {
         customBaseDomain: String,
         apiToken: String,
         configuredAccountID: String,
+        httpHostHeader: String?,
         tunnelDir: URL
     ) async throws -> CloudflareTunnelProvisionResult {
         // 1. Resolve Cloudflare Account ID (use configured one or discover via API)
@@ -243,7 +258,8 @@ public final class CloudflareTunnelService: Sendable {
                     accountID: accountID,
                     tunnelID: tunnelID,
                     hostname: hostname,
-                    serviceURL: targetURL
+                    serviceURL: targetURL,
+                    httpHostHeader: httpHostHeader
                 )
                 let runToken = try await fetchTunnelRunToken(
                     apiToken: apiToken,
@@ -282,7 +298,8 @@ public final class CloudflareTunnelService: Sendable {
                 accountID: accountID,
                 tunnelID: tunnelID,
                 hostname: hostname,
-                serviceURL: targetURL
+                serviceURL: targetURL,
+                httpHostHeader: httpHostHeader
             )
             launchMode = .localConfigRun
         }
@@ -303,6 +320,7 @@ public final class CloudflareTunnelService: Sendable {
             hostname: hostname,
             targetURL: targetURL,
             protocolChoice: protocolChoice,
+            httpHostHeader: httpHostHeader,
             includeCredentialsFile: launchMode == .localConfigRun
         )
 
@@ -330,6 +348,7 @@ public final class CloudflareTunnelService: Sendable {
         hostname: String,
         targetURL: String,
         protocolChoice: CloudflareTunnelProtocol,
+        httpHostHeader: String?,
         includeCredentialsFile: Bool
     ) -> String {
         let configURL = dir.appendingPathComponent("config.yml")
@@ -349,6 +368,10 @@ public final class CloudflareTunnelService: Sendable {
         lines.append("ingress:")
         lines.append("  - hostname: \(hostname)")
         lines.append("    service: \(targetURL)")
+        if let httpHostHeader, !httpHostHeader.isEmpty {
+            lines.append("    originRequest:")
+            lines.append("      httpHostHeader: \(httpHostHeader)")
+        }
         lines.append("  - service: http_status:404")
         lines.append("")
 
@@ -361,6 +384,7 @@ public final class CloudflareTunnelService: Sendable {
         in dir: URL,
         targetURL: String,
         protocolChoice: CloudflareTunnelProtocol,
+        httpHostHeader: String?,
         note: String
     ) -> String {
         let configURL = dir.appendingPathComponent("config.yml")
@@ -371,6 +395,10 @@ public final class CloudflareTunnelService: Sendable {
         ]
         if protocolChoice != .auto {
             lines.append("protocol: \(protocolChoice.rawValue)")
+        }
+        if let httpHostHeader, !httpHostHeader.isEmpty {
+            lines.append("originRequest:")
+            lines.append("  httpHostHeader: \(httpHostHeader)")
         }
         lines.append("no-autoupdate: true")
         lines.append("")
@@ -551,9 +579,17 @@ public final class CloudflareTunnelService: Sendable {
         accountID: String,
         tunnelID: String,
         hostname: String,
-        serviceURL: String
+        serviceURL: String,
+        httpHostHeader: String? = nil
     ) async throws {
         struct EmptyResult: Decodable {}
+        var rule: [String: Any] = [
+            "hostname": hostname,
+            "service": serviceURL
+        ]
+        if let httpHostHeader, !httpHostHeader.isEmpty {
+            rule["originRequest"] = ["httpHostHeader": httpHostHeader]
+        }
         let _: EmptyResult? = try? await cfRequest(
             method: "PUT",
             path: "/accounts/\(accountID)/cfd_tunnel/\(tunnelID)/configurations",
@@ -561,10 +597,7 @@ public final class CloudflareTunnelService: Sendable {
             jsonBody: [
                 "config": [
                     "ingress": [
-                        [
-                            "hostname": hostname,
-                            "service": serviceURL
-                        ],
+                        rule,
                         [
                             "service": "http_status:404"
                         ]
