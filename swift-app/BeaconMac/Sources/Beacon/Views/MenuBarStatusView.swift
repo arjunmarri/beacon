@@ -17,8 +17,8 @@ struct MenuBarStatusView: View {
 
     var body: some View {
         ZStack {
-            BeaconAmbientCanvas()
-                .opacity(palette.isLight ? 0.42 : 0.34)
+            BeaconAmbientCanvas(interactive: false)
+                .opacity(palette.isLight ? 0.45 : 0.36)
             Rectangle()
                 .fill(palette.menuMaterial)
             Rectangle()
@@ -29,17 +29,7 @@ struct MenuBarStatusView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // Header
                 HStack(spacing: 9) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(palette.accentGradient)
-                            .shadow(color: palette.sectionAccentBar.opacity(0.32), radius: 6, y: 2)
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.45), lineWidth: 1)
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundStyle(palette.isLight ? Color.white : Color(red: 0.03, green: 0.05, blue: 0.08))
-                    }
-                    .frame(width: 26, height: 26)
+                    BeaconBrandMarkView(size: 26, cornerRadius: 7.5)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text("BeaconMac")
@@ -250,12 +240,12 @@ private struct MenuBarGlassActionRow: View {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(isDestructive ? palette.errorText : palette.sectionHeader)
+                    .foregroundStyle(isHovered ? (isDestructive ? Color.white : palette.accentInk) : (isDestructive ? palette.errorText : palette.sectionHeader))
                     .frame(width: 16, alignment: .center)
 
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(isDestructive ? palette.errorText : palette.primaryText)
+                    .foregroundStyle(isHovered ? (isDestructive ? Color.white : palette.accentInk) : (isDestructive ? palette.errorText : palette.primaryText))
                     .lineLimit(1)
 
                 Spacer()
@@ -263,25 +253,29 @@ private struct MenuBarGlassActionRow: View {
                 if let shortcut {
                     Text(shortcut)
                         .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundStyle(palette.secondaryText)
+                        .foregroundStyle(isHovered ? (isDestructive ? Color.white.opacity(0.85) : palette.accentInk.opacity(0.85)) : palette.secondaryText)
                 }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background {
-                if isHovered {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isDestructive ? Color.red.opacity(palette.isLight ? 0.10 : 0.16) : palette.menuItemHover)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(isDestructive ? Color.red.opacity(0.30) : palette.border, lineWidth: 1)
-                        )
+                ZStack {
+                    if isDestructive {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(red: 0.84, green: 0.18, blue: 0.24))
+                            .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
+                    } else {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(palette.accentGradient)
+                            .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
+                    }
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.14), value: isHovered)
+        .animation(.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.26), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }

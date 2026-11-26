@@ -112,17 +112,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 14) {
             // Top Brand Lockup
             HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(palette.accentGradient)
-                        .shadow(color: palette.sectionAccentBar.opacity(0.35), radius: 8, y: 3)
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.45), lineWidth: 1)
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(palette.isLight ? Color.white : Color(red: 0.03, green: 0.05, blue: 0.08))
-                }
-                .frame(width: 32, height: 32)
+                BeaconBrandMarkView(size: 32, cornerRadius: 9.5)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("BeaconMac")
@@ -495,15 +485,17 @@ struct ContentView: View {
     private var overviewMetricStrip: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) {
             overviewTile(
+                tag: "DEPLOY",
                 title: "Managed Apps",
                 value: "\(healthyAppsCount) / \(controller.config.managedApps.count)",
                 detail: controller.config.managedApps.isEmpty ? "Ready to add first app" : "Healthy running locally",
-                systemImage: "shippingbox.fill",
+                systemImage: "shippingbox",
                 statusLight: controller.config.managedApps.isEmpty ? .amber : (healthyAppsCount == controller.config.managedApps.count ? .green : .amber),
                 target: .apps
             )
 
             overviewTile(
+                tag: "HOST",
                 title: "Node.js Host",
                 value: controller.builtInServer.isRunning ? ":\(controller.config.builtInServer.port)" : "Stopped",
                 detail: "\(controller.config.builtInServer.mountedApps.count) mounted · \(controller.builtInServer.statusLabel)",
@@ -513,6 +505,7 @@ struct ContentView: View {
             )
 
             overviewTile(
+                tag: "TUNNEL",
                 title: "Cloudflare Tunnels",
                 value: "\(controller.cloudflareTunnel.activeCount) Active",
                 detail: controller.cloudflareTunnel.activeCount > 0 ? "Public HTTPS live" : "1-click Quick Tunnels",
@@ -522,10 +515,11 @@ struct ContentView: View {
             )
 
             overviewTile(
+                tag: "NATIVE",
                 title: "Local Ollama LLM",
                 value: controller.ollama.isConnected ? "\(controller.ollama.models.count) Models" : "Offline",
                 detail: controller.ollama.isConnected ? controller.ollama.activeModel : "Loopback port \(controller.ollamaPort)",
-                systemImage: "sparkles",
+                systemImage: "cpu",
                 statusLight: controller.ollama.light,
                 target: .tunnels
             )
@@ -533,6 +527,7 @@ struct ContentView: View {
     }
 
     private func overviewTile(
+        tag: String,
         title: String,
         value: String,
         detail: String,
@@ -546,6 +541,7 @@ struct ContentView: View {
             }
         } label: {
             OverviewGlassTile(
+                tag: tag,
                 title: title,
                 value: value,
                 detail: detail,
@@ -585,6 +581,7 @@ struct ContentView: View {
 }
 
 private struct OverviewGlassTile: View {
+    let tag: String
     let title: String
     let value: String
     let detail: String
@@ -606,13 +603,21 @@ private struct OverviewGlassTile: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                HStack(spacing: 7) {
+                HStack(spacing: 6) {
                     Image(systemName: systemImage)
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(palette.sectionHeader.opacity(isHovered ? 1.0 : 0.78))
+                        .offset(y: isHovered ? -0.5 : 0)
+                    Text(tag)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(palette.sectionHeader)
+                    Text("·")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(palette.secondaryText)
                     Text(title)
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(palette.secondaryText)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -643,23 +648,19 @@ private struct OverviewGlassTile: View {
                     .fill(palette.glassMaterial)
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(palette.card)
-                if isHovered {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(palette.hoverFill)
-                }
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(palette.hoverFill)
+                    .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
             }
         }
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(
-                    isHovered ? palette.sectionAccentBar.opacity(0.45) : palette.border,
-                    lineWidth: 1
-                )
+                .strokeBorder(palette.specularBorderGradient, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: palette.cardShadow, radius: isHovered ? 16 : 10, y: isHovered ? 6 : 3)
         .offset(y: isHovered ? -1.5 : 0)
-        .animation(.spring(response: 0.24, dampingFraction: 0.80), value: isHovered)
+        .animation(.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.26), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }

@@ -11,8 +11,8 @@ struct BeaconPalette {
 
     var canvas: Color {
         isLight
-            ? Color(red: 0.945, green: 0.962, blue: 0.990)
-            : Color(red: 0.036, green: 0.044, blue: 0.062)
+            ? Color(red: 0.824, green: 0.875, blue: 0.941)
+            : Color(red: 0.012, green: 0.020, blue: 0.039)
     }
 
     var topBar: Color {
@@ -23,8 +23,8 @@ struct BeaconPalette {
 
     var sidebarFill: Color {
         isLight
-            ? Color.white.opacity(0.20)
-            : Color(red: 0.050, green: 0.062, blue: 0.088).opacity(0.24)
+            ? Color.white.opacity(0.22)
+            : Color(red: 0.050, green: 0.062, blue: 0.088).opacity(0.26)
     }
 
     var menuMaterial: Material {
@@ -33,34 +33,34 @@ struct BeaconPalette {
 
     var menuItemHover: Color {
         isLight
-            ? Color.white.opacity(0.42)
-            : Color.white.opacity(0.085)
+            ? Color.white.opacity(0.46)
+            : Color.white.opacity(0.095)
     }
 
     var menuItemSelected: Color {
         isLight
-            ? Color.white.opacity(0.68)
+            ? Color.white.opacity(0.72)
             : Color(red: 0.25, green: 0.59, blue: 1.0).opacity(0.22)
     }
 
     var glassMaterial: Material {
-        isLight ? .regularMaterial : .ultraThinMaterial
+        .ultraThinMaterial
     }
 
     var controlMaterial: Material {
-        isLight ? .regularMaterial : .thinMaterial
+        .ultraThinMaterial
     }
 
     var card: Color {
         isLight
-            ? Color.white.opacity(0.72)
-            : Color(red: 0.078, green: 0.095, blue: 0.132).opacity(0.62)
+            ? Color.white.opacity(0.54)
+            : Color(red: 0.086, green: 0.125, blue: 0.204).opacity(0.50)
     }
 
     var row: Color {
         isLight
-            ? Color.white.opacity(0.58)
-            : Color(red: 0.058, green: 0.072, blue: 0.102).opacity(0.58)
+            ? Color.white.opacity(0.48)
+            : Color.white.opacity(0.065)
     }
 
     var input: Color {
@@ -206,12 +206,16 @@ struct BeaconPalette {
         isLight ? Color(red: 0.09, green: 0.16, blue: 0.32).opacity(0.075) : Color.black.opacity(0.38)
     }
 
+    var accentInk: Color {
+        isLight ? Color.white : Color(red: 0.032, green: 0.045, blue: 0.072)
+    }
+
     var accentGradient: LinearGradient {
         if isLight {
             return LinearGradient(
                 colors: [
-                    Color(red: 0.19, green: 0.46, blue: 0.98),
-                    Color(red: 0.11, green: 0.36, blue: 0.88)
+                    Color(red: 0.23, green: 0.51, blue: 0.98),
+                    Color(red: 0.11, green: 0.31, blue: 0.85)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -219,8 +223,30 @@ struct BeaconPalette {
         } else {
             return LinearGradient(
                 colors: [
-                    Color(red: 0.42, green: 0.79, blue: 1.0),
-                    Color(red: 0.20, green: 0.60, blue: 0.97)
+                    Color(red: 0.43, green: 0.83, blue: 1.0),
+                    Color(red: 0.16, green: 0.66, blue: 0.96)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    var accentHoverGradient: LinearGradient {
+        if isLight {
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.15, green: 0.39, blue: 0.92),
+                    Color(red: 0.12, green: 0.25, blue: 0.69)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.56, green: 0.88, blue: 1.0),
+                    Color(red: 0.22, green: 0.74, blue: 0.97)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -231,23 +257,38 @@ struct BeaconPalette {
 
 // MARK: - Ambient Liquid Glass Backdrop Canvas
 
-/// Soft luminous backdrop rendered behind translucent macOS materials so Liquid Glass surfaces
-/// naturally refract subtle sapphire, cyan, and indigo depth in both Dark and Light themes.
+/// Darkened same-hue backdrop with slow blackhole gravitational infall space motion and
+/// pointer-reactive translucent undersea glass stingrays gliding behind Liquid Glass panels.
 struct BeaconAmbientCanvas: View {
+    var interactive: Bool = true
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let isLight = colorScheme == .light
         ZStack {
-            BeaconPalette(colorScheme: colorScheme).canvas
+            LinearGradient(
+                colors: isLight
+                    ? [
+                        Color(red: 0.867, green: 0.906, blue: 0.965),
+                        Color(red: 0.812, green: 0.867, blue: 0.941),
+                        Color(red: 0.749, green: 0.812, blue: 0.906)
+                    ]
+                    : [
+                        Color(red: 0.024, green: 0.039, blue: 0.078),
+                        Color(red: 0.012, green: 0.024, blue: 0.047),
+                        Color(red: 0.008, green: 0.012, blue: 0.031)
+                    ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
 
             GeometryReader { geo in
                 ZStack {
                     RadialGradient(
                         colors: [
                             isLight
-                                ? Color(red: 0.24, green: 0.56, blue: 1.0).opacity(0.22)
-                                : Color(red: 0.18, green: 0.56, blue: 0.98).opacity(0.20),
+                                ? Color(red: 0.22, green: 0.74, blue: 0.97).opacity(0.20)
+                                : Color(red: 0.22, green: 0.74, blue: 0.97).opacity(0.16),
                             Color.clear
                         ],
                         center: .topLeading,
@@ -258,8 +299,8 @@ struct BeaconAmbientCanvas: View {
                     RadialGradient(
                         colors: [
                             isLight
-                                ? Color(red: 0.46, green: 0.42, blue: 0.96).opacity(0.15)
-                                : Color(red: 0.36, green: 0.34, blue: 0.92).opacity(0.17),
+                                ? Color(red: 0.39, green: 0.40, blue: 0.95).opacity(0.18)
+                                : Color(red: 0.39, green: 0.40, blue: 0.95).opacity(0.15),
                             Color.clear
                         ],
                         center: .topTrailing,
@@ -270,8 +311,8 @@ struct BeaconAmbientCanvas: View {
                     RadialGradient(
                         colors: [
                             isLight
-                                ? Color(red: 0.14, green: 0.76, blue: 0.70).opacity(0.12)
-                                : Color(red: 0.10, green: 0.68, blue: 0.64).opacity(0.10),
+                                ? Color(red: 0.08, green: 0.72, blue: 0.65).opacity(0.14)
+                                : Color(red: 0.06, green: 0.73, blue: 0.51).opacity(0.10),
                             Color.clear
                         ],
                         center: .bottom,
@@ -279,6 +320,10 @@ struct BeaconAmbientCanvas: View {
                         endRadius: max(geo.size.width, geo.size.height) * 0.65
                     )
                 }
+            }
+
+            if interactive {
+                BeaconUnderseaBackdropView()
             }
         }
         .ignoresSafeArea()
@@ -471,17 +516,21 @@ private struct BeaconPrimaryButtonBody: View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
             .lineLimit(1)
-            .foregroundStyle(isLight ? Color.white : Color(red: 0.032, green: 0.045, blue: 0.072))
+            .foregroundStyle(palette.accentInk)
             .padding(.horizontal, 13)
             .padding(.vertical, 6.5)
             .background {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(palette.accentGradient)
+                    // Smooth left-to-right background fill on hover (no border shift)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(palette.accentHoverGradient)
+                        .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color.white.opacity(isHovered ? 0.30 : 0.20), Color.clear],
+                                colors: [Color.white.opacity(0.24), Color.clear],
                                 startPoint: .top,
                                 endPoint: .center
                             )
@@ -489,10 +538,11 @@ private struct BeaconPrimaryButtonBody: View {
                 }
             }
             .overlay {
+                // Fixed non-shifting border
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Color.white.opacity(isLight ? 0.55 : 0.65), Color.white.opacity(0.08)],
+                            colors: [Color.white.opacity(isLight ? 0.55 : 0.62), Color.white.opacity(0.08)],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
@@ -509,7 +559,7 @@ private struct BeaconPrimaryButtonBody: View {
             .opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1.0) : 0.45)
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .animation(.spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.15), value: isHovered)
+            .animation(.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.30), value: isHovered)
             .onHover { hovering in
                 isHovered = hovering
             }
@@ -535,7 +585,7 @@ private struct BeaconSecondaryButtonBody: View {
         configuration.label
             .font(.system(size: 12, weight: .medium))
             .lineLimit(1)
-            .foregroundStyle(isLight ? Color(red: 0.10, green: 0.15, blue: 0.23) : Color.white.opacity(0.92))
+            .foregroundStyle(isHovered ? palette.accentInk : (isLight ? Color(red: 0.08, green: 0.13, blue: 0.22) : Color.white.opacity(0.92)))
             .padding(.horizontal, 11.5)
             .padding(.vertical, 6)
             .background {
@@ -543,27 +593,29 @@ private struct BeaconSecondaryButtonBody: View {
                     RoundedRectangle(cornerRadius: 8.5, style: .continuous)
                         .fill(palette.controlMaterial)
                     RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                        .fill(
-                            isLight
-                                ? Color.white.opacity(isHovered ? 0.92 : 0.68)
-                                : Color.white.opacity(isHovered ? 0.13 : 0.065)
-                        )
+                        .fill(isLight ? Color.white.opacity(0.56) : Color.white.opacity(0.075))
+                    // Smooth left-to-right accent color fill on hover (no border change)
+                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                        .fill(palette.accentGradient)
+                        .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
                 }
             }
             .overlay {
+                // Fixed non-shifting border
                 RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                    .strokeBorder(
-                        isHovered
-                            ? (isLight ? palette.sectionAccentBar.opacity(0.45) : Color.white.opacity(0.28))
-                            : palette.border,
-                        lineWidth: 1
-                    )
+                    .strokeBorder(palette.border, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1.0) : 0.42)
+            .shadow(
+                color: palette.sectionAccentBar.opacity(isEnabled && isHovered ? 0.24 : 0),
+                radius: isHovered ? 8 : 0,
+                x: 0,
+                y: isHovered ? 3 : 0
+            )
+            .opacity(isEnabled ? (configuration.isPressed ? 0.84 : 1.0) : 0.42)
             .scaleEffect(configuration.isPressed ? 0.975 : 1.0)
             .animation(.spring(response: 0.22, dampingFraction: 0.80), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.14), value: isHovered)
+            .animation(.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.30), value: isHovered)
             .onHover { hovering in
                 isHovered = hovering
             }
@@ -587,23 +639,123 @@ private struct BeaconDangerButtonBody: View {
         configuration.label
             .font(.system(size: 12, weight: .medium))
             .lineLimit(1)
-            .foregroundStyle(palette.errorText)
+            .foregroundStyle(isHovered ? Color.white : palette.errorText)
             .padding(.horizontal, 11)
             .padding(.vertical, 6)
-            .background(
-                Color.red.opacity(palette.isLight ? (isHovered ? 0.14 : 0.07) : (isHovered ? 0.20 : 0.11))
-            )
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                        .fill(Color.red.opacity(palette.isLight ? 0.08 : 0.12))
+                    // Smooth left-to-right crimson fill on hover (no border change)
+                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.92, green: 0.24, blue: 0.29), Color(red: 0.78, green: 0.14, blue: 0.20)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .scaleEffect(x: isHovered ? 1.0 : 0.001, y: 1.0, anchor: .leading)
+                }
+            }
             .overlay {
+                // Fixed non-shifting border
                 RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                    .strokeBorder(Color.red.opacity(isHovered ? 0.45 : 0.25), lineWidth: 1)
+                    .strokeBorder(Color.red.opacity(0.28), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1.0) : 0.42)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.84 : 1.0) : 0.42)
             .scaleEffect(configuration.isPressed ? 0.975 : 1.0)
             .animation(.spring(response: 0.22, dampingFraction: 0.80), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.14), value: isHovered)
+            .animation(.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.28), value: isHovered)
             .onHover { hovering in
                 isHovered = hovering
             }
     }
 }
+
+// MARK: - BeaconMac Brand Mark (Matches Website Icon & macOS AppIcon)
+
+struct BeaconBrandMarkView: View {
+    var size: CGFloat = 32
+    var cornerRadius: CGFloat = 10
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.29, green: 0.61, blue: 1.00),
+                            Color(red: 0.23, green: 0.51, blue: 0.96),
+                            Color(red: 0.11, green: 0.31, blue: 0.85),
+                            Color(red: 0.08, green: 0.22, blue: 0.68)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color(red: 0.49, green: 0.83, blue: 0.99).opacity(0.34), Color.clear],
+                                center: UnitPoint(x: 0.26, y: 0.16),
+                                startRadius: 1,
+                                endRadius: size * 0.85
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.62), Color.white.opacity(0.16)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color(red: 0.15, green: 0.39, blue: 0.92).opacity(0.34), radius: size * 0.24, y: size * 0.09)
+
+            Canvas { context, canvasSize in
+                let center = CGPoint(x: canvasSize.width * 0.5, y: canvasSize.height * 0.5)
+                let unit = min(canvasSize.width, canvasSize.height) / 24.0
+                let strokeStyle = StrokeStyle(lineWidth: 2.3 * unit, lineCap: .round, lineJoin: .round)
+
+                // Central beacon emitter dot
+                let dotR = 2.35 * unit
+                let dotRect = CGRect(x: center.x - dotR, y: center.y - dotR, width: dotR * 2, height: dotR * 2)
+                context.fill(Path(ellipseIn: dotRect), with: .color(.white))
+
+                // Symmetric inner & outer broadcast arcs (matching website SVG)
+                for radiusUnits in [6.0, 10.0] {
+                    let r = radiusUnits * unit
+                    var rightArc = Path()
+                    rightArc.addArc(
+                        center: center,
+                        radius: r,
+                        startAngle: .degrees(-45),
+                        endAngle: .degrees(45),
+                        clockwise: false
+                    )
+                    context.stroke(rightArc, with: .color(.white), style: strokeStyle)
+
+                    var leftArc = Path()
+                    leftArc.addArc(
+                        center: center,
+                        radius: r,
+                        startAngle: .degrees(135),
+                        endAngle: .degrees(225),
+                        clockwise: false
+                    )
+                    context.stroke(leftArc, with: .color(.white), style: strokeStyle)
+                }
+            }
+            .padding(size * 0.14)
+        }
+        .frame(width: size, height: size)
+    }
+}
+

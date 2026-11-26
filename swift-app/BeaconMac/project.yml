@@ -24,6 +24,7 @@ targets:
           - Resources/Info.plist
           - Resources/Beacon.entitlements
           - Resources/Beacon-DMG.entitlements
+          - Resources/BeaconAppIcon.png
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.beaconmac.app
@@ -47,6 +48,7 @@ targets:
         CFBundleDisplayName: BeaconMac
         CFBundleName: BeaconMac
         CFBundleIconName: AppIcon
+        CFBundleIconFile: AppIcon
         CFBundleShortVersionString: "1.1.0"
         CFBundleVersion: "2"
         LSApplicationCategoryType: public.app-category.developer-tools

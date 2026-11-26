@@ -21,7 +21,8 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources/PrivacyInfo.xcprivacy"),
-                .copy("Resources/PRIVACY_POLICY.md")
+                .copy("Resources/PRIVACY_POLICY.md"),
+                .copy("Resources/BeaconAppIcon.png")
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

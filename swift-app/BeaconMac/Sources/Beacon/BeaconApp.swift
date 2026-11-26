@@ -1,8 +1,19 @@
+import AppKit
 import SwiftUI
 
 @main
 struct BeaconApp: App {
     @State private var controller = BeaconController()
+
+    init() {
+        #if SWIFT_PACKAGE
+        if !Bundle.main.bundlePath.hasSuffix(".app"),
+           let iconURL = Bundle.module.url(forResource: "BeaconAppIcon", withExtension: "png"),
+           let iconImage = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = iconImage
+        }
+        #endif
+    }
 
     private var activeScheme: ColorScheme {
         controller.config.appearanceMode == .light ? .light : .dark
