@@ -67,6 +67,40 @@
     { xRatio: 0.50, yRatio: 0.82, r: 340, dark: '16, 185, 129', light: '20, 184, 166', alphaDark: 0.08, alphaLight: 0.08, sx: 0.11, sy: -0.12, p: 4.2 }
   ];
 
+  // Very slow blackhole gravitational-infall space field (polar spiral particles + spacetime rings)
+  const SPACE_PARTICLE_COUNT = 96;
+  const spaceParticles = [];
+  function maxViewportRadius() {
+    return Math.hypot(width * 0.5, height * 0.5) * 1.15;
+  }
+  function createSpaceParticle(spawnAtEdge) {
+    const maxR = maxViewportRadius();
+    const minR = Math.min(width, height) * 0.055;
+    const normR = spawnAtEdge
+      ? 0.88 + Math.random() * 0.24
+      : Math.pow(Math.random(), 0.62); // fuller spread from outer rim to near horizon
+    return {
+      r: minR + normR * (maxR - minR),
+      angle: Math.random() * Math.PI * 2,
+      infallSpeed: 7 + Math.random() * 11,      // very slow inward drift (px/s base)
+      angularSpeed: 0.035 + Math.random() * 0.045, // subtle slow orbital frame-dragging
+      size: 0.75 + Math.random() * 1.55,
+      alpha: 0.18 + Math.random() * 0.42,
+      tintIdx: Math.floor(Math.random() * 3),
+      phase: Math.random() * Math.PI * 2
+    };
+  }
+  for (let i = 0; i < SPACE_PARTICLE_COUNT; i++) {
+    spaceParticles.push(createSpaceParticle(false));
+  }
+
+  const LENS_RING_COUNT = 8;
+  const lensRings = Array.from({ length: LENS_RING_COUNT }, (_, i) => ({
+    phase: i / LENS_RING_COUNT,
+    tilt: 0.76 + (i % 3) * 0.05,
+    rotOffset: i * 0.78
+  }));
+
   // Subtle drifting translucent marine plankton / bubble motes
   const motes = [];
   const MOTE_COUNT = 28;
@@ -832,6 +866,152 @@
     ctx.restore();
   }
 
+  function drawBlackholeSpace(t, dt, isLight) {
+    const cx = width * 0.5 + Math.sin(t * 0.11) * 14;
+    const cy = height * 0.5 + Math.cos(t * 0.09) * 10;
+    const maxR = maxViewportRadius();
+    const horizonR = Math.min(width, height) * 0.06;
+    const photonR = Math.min(width, height) * 0.165;
+
+    // 1. Subtle darkened gravitational well pulling softly toward the center
+    const wellGrad = ctx.createRadialGradient(cx, cy, horizonR * 0.25, cx, cy, maxR * 0.78);
+    if (isLight) {
+      wellGrad.addColorStop(0, 'rgba(13, 27, 56, 0.22)');
+      wellGrad.addColorStop(0.18, 'rgba(20, 42, 82, 0.12)');
+      wellGrad.addColorStop(0.45, 'rgba(30, 58, 108, 0.05)');
+      wellGrad.addColorStop(1, 'rgba(30, 58, 108, 0)');
+    } else {
+      wellGrad.addColorStop(0, 'rgba(0, 2, 7, 0.78)');
+      wellGrad.addColorStop(0.18, 'rgba(2, 6, 16, 0.42)');
+      wellGrad.addColorStop(0.48, 'rgba(6, 14, 30, 0.14)');
+      wellGrad.addColorStop(1, 'rgba(6, 14, 30, 0)');
+    }
+    ctx.fillStyle = wellGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Soft rotating accretion-halo glow rings around the distant event horizon
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let a = 0; a < 4; a++) {
+      const rot = t * (0.045 + a * 0.012) + a * (Math.PI * 0.5);
+      const rx = photonR * (1.05 + a * 0.48);
+      const ry = rx * (0.76 + (a % 2) * 0.08);
+      ctx.save();
+      ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 1.18);
+      ctx.lineWidth = 1.6 + a * 0.5;
+      ctx.strokeStyle = isLight
+        ? `rgba(30, 74, 158, ${0.075 - a * 0.013})`
+        : `rgba(96, 165, 250, ${0.11 - a * 0.018})`;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 3. Very slowly contracting concentric spacetime lensing rings (moving inward into the blackhole)
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (const ring of lensRings) {
+      if (dt > 0) {
+        // Complete one calm inward contraction every ~32 seconds
+        ring.phase -= dt * 0.031;
+        if (ring.phase <= 0) ring.phase += 1;
+      }
+      // Exponential curve creates authentic depth acceleration as rings approach the horizon
+      const eased = Math.pow(ring.phase, 1.55);
+      const radius = horizonR * 0.8 + eased * (maxR - horizonR * 0.8);
+      // Fade in gently at outer edge and dissolve smoothly at the horizon
+      const fade = Math.sin(ring.phase * Math.PI);
+      const alpha = (isLight ? 0.11 : 0.13) * fade * fade;
+
+      ctx.save();
+      ctx.rotate(ring.rotOffset + t * 0.025 + (1 - ring.phase) * 0.65);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius, radius * ring.tilt, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 0.8 + (1 - ring.phase) * 0.7;
+      ctx.strokeStyle = isLight
+        ? `rgba(29, 78, 216, ${alpha})`
+        : `rgba(125, 211, 252, ${alpha})`;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 4. Slow inward-spiraling cosmic dust / stretched starlight streaks
+    const lightTints = ['30, 64, 148', '14, 116, 190', '79, 70, 229'];
+    const darkTints = ['186, 230, 253', '129, 140, 248', '94, 234, 212'];
+
+    for (let i = 0; i < spaceParticles.length; i++) {
+      const sp = spaceParticles[i];
+      const normDist = Math.max(0.01, (sp.r - horizonR) / Math.max(1, maxR - horizonR));
+
+      if (dt > 0) {
+        // Gentle gravitational pull: very slow far out, subtly quicker near the photon sphere
+        const gravityPull = 1 + 1.9 * Math.pow(1 - Math.min(1, normDist), 2.1);
+        sp.r -= sp.infallSpeed * gravityPull * dt;
+        sp.angle += sp.angularSpeed * (0.75 + 1.65 * (1 - Math.min(1, normDist))) * dt;
+
+        if (sp.r <= horizonR * 0.85) {
+          const fresh = createSpaceParticle(true);
+          sp.r = fresh.r;
+          sp.angle = fresh.angle;
+          sp.infallSpeed = fresh.infallSpeed;
+          sp.angularSpeed = fresh.angularSpeed;
+          sp.size = fresh.size;
+          sp.alpha = fresh.alpha;
+        }
+      }
+
+      const px = cx + Math.cos(sp.angle) * sp.r;
+      const py = cy + Math.sin(sp.angle) * sp.r;
+
+      // Short curved spiral trail pointing back along where the particle drifted from
+      const trailR = sp.r + (7 + 16 * (1 - Math.min(1, normDist)));
+      const trailAngle = sp.angle - (0.025 + 0.055 * (1 - Math.min(1, normDist)));
+      const tx = cx + Math.cos(trailAngle) * trailR;
+      const ty = cy + Math.sin(trailAngle) * trailR;
+
+      const edgeFade = Math.min(1, normDist * 5.2) * Math.min(1, (1.12 - normDist) * 4.5);
+      const twinkle = 0.72 + 0.28 * Math.sin(t * 0.9 + sp.phase);
+      const a = sp.alpha * Math.max(0, edgeFade) * twinkle * (isLight ? 0.58 : 0.72);
+      if (a <= 0.004) continue;
+
+      const rgb = isLight ? lightTints[sp.tintIdx] : darkTints[sp.tintIdx];
+      const grad = ctx.createLinearGradient(px, py, tx, ty);
+      grad.addColorStop(0, `rgba(${rgb}, ${a})`);
+      grad.addColorStop(1, `rgba(${rgb}, 0)`);
+
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(tx, ty);
+      ctx.lineWidth = sp.size * (0.75 + 0.35 * (1 - Math.min(1, normDist)));
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = grad;
+      ctx.stroke();
+    }
+
+    // 5. Faint luminous photon ring edge around the central singularity
+    const ringGrad = ctx.createRadialGradient(cx, cy, horizonR * 0.6, cx, cy, photonR * 1.15);
+    if (isLight) {
+      ringGrad.addColorStop(0, 'rgba(15, 29, 58, 0.14)');
+      ringGrad.addColorStop(0.58, 'rgba(56, 139, 235, 0.09)');
+      ringGrad.addColorStop(0.72, 'rgba(255, 255, 255, 0.16)');
+      ringGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    } else {
+      ringGrad.addColorStop(0, 'rgba(0, 0, 4, 0.55)');
+      ringGrad.addColorStop(0.58, 'rgba(56, 189, 248, 0.14)');
+      ringGrad.addColorStop(0.72, 'rgba(186, 230, 253, 0.08)');
+      ringGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    }
+    ctx.fillStyle = ringGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, photonR * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   function drawScene(nowMs, dt) {
     const t = nowMs * 0.001;
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -841,6 +1021,9 @@
     if (nowMs - pointer.lastMoveTime > 90) {
       pointer.speed *= Math.exp(-dt * 8);
     }
+
+    // 0. Very slow blackhole spacetime infall background motion
+    drawBlackholeSpace(t, dt, isLight);
 
     // 1. Ambient Liquid Glass aurora pools
     for (const orb of orbs) {
